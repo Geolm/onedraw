@@ -16,6 +16,8 @@ project(sdf2d)
 # --- Header builder ---
 
 add_executable(builder
+./pre-build/bc4_encoder.c
+./pre-build/bin2h.c
 ./pre-build/builder.c
 )
 
@@ -23,7 +25,7 @@ add_custom_command(
     TARGET builder
     POST_BUILD
     COMMAND builder
-    COMMENT "Building one-header lib..."
+    COMMENT "Building library ..."
 )
 
 add_custom_target(build_lib ALL DEPENDS builder)
