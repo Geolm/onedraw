@@ -2,7 +2,7 @@
 #include <string.h>
 #include "bin2h.h"
 #include "bc4_encoder.h"
-#include "../lib/sdf2d.h"
+#include "../lib/renderer.h"
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
@@ -101,6 +101,7 @@ bool build_font(Arena *arena, float font_height, uint32_t atlas_width, uint32_t 
     font->num_glyphs = FONT_NUM_CHARS;
     font->texture_width = atlas_width;
     font->texture_height = atlas_height;
+    font->font_height = font_height;
 
     for(uint32_t i=0; i<FONT_NUM_CHARS; ++i)
     {

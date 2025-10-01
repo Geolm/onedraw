@@ -1,9 +1,9 @@
-#ifndef __SDF2D_H__
-#define __SDF2D_H__
+#ifndef __RENDERER_H__
+#define __RENDERER_H__
 
 #include <stdint.h>
 
-#define SDF2D_FONT_MAX_CHARS (128)
+#define RENDERER_FONT_MAX_CHARS (128)
 
 typedef struct 
 {
@@ -14,7 +14,8 @@ typedef struct
 
 typedef struct
 {
-    font_glyph_t glyphs[SDF2D_FONT_MAX_CHARS];
+    font_glyph_t glyphs[RENDERER_FONT_MAX_CHARS];
+    float font_height;
     uint16_t num_glyphs;
     uint16_t first_glyph;
     uint16_t texture_width;
