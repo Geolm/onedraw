@@ -20,6 +20,9 @@
 #define FONT_CHAR_LAST 126
 #define FONT_NUM_CHARS 95
 
+#define SDF2D_MAJOR_VERSION (0)
+#define SDF2D_MINOR_VERSION (1)
+
 // ---------------------------------------------------------------------------------------------------------------------------
 void* read_file(const char* filename, size_t* file_size, Arena* arena)
 {
@@ -130,6 +133,8 @@ int main(int argc, const char * argv[])
     UNUSED_VARIABLE(argv);
 
     Arena arena = {0};
+
+    fprintf(stdout, "sdf2d %u.%u library builder\n\n", SDF2D_MAJOR_VERSION, SDF2D_MINOR_VERSION);
 
     bool success = build_font(&arena, 32.f, 256, 256);
     if (!success)
