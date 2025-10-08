@@ -13,7 +13,7 @@
 
 #define UNUSED_VARIABLE(a) (void)(a)
 
-#define FONT_FILENAME "../fonts/CommitMono-400-Regular.otf"
+#define FONT_FILENAME "../fonts/Satoshi-Medium.otf"
 #define FONT_H "../lib/default_font_atlas.h"
 #define GLYPH_H "../lib/default_font.h"
 #define FONT_CHAR_FIRST 33
@@ -115,6 +115,13 @@ bool build_font(Arena *arena, float font_height, uint32_t atlas_width, uint32_t 
             .bearing_y = glyphs[i].yoff,
             .advance_x = glyphs[i].xadvance
         };
+
+        // fprintf(stdout, "char %c\n", i+font->first_glyph);
+        //fprintf(stdout, "\tx0:%d, y0:%d\n", glyphs[i].x0, glyphs[i].y0);
+        //fprintf(stdout, "\tx1:%d, y1:%d\n", glyphs[i].x1, glyphs[i].y1);
+        // fprintf(stdout, "\twidth:%d height:%d\n", glyphs[i].x1 - glyphs[i].x0, glyphs[i].y1 - glyphs[i].y0);
+        // fprintf(stdout, "\txoff:%f, yoff:%f\n", glyphs[i].xoff, glyphs[i].yoff);
+        // fprintf(stdout, "\txavance:%f\n", glyphs[i].xadvance);
     }
 
     fprintf(stdout, "ok\nwritting %s : ", GLYPH_H);
