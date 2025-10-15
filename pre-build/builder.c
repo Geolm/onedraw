@@ -2,7 +2,7 @@
 #include <string.h>
 #include "bin2h.h"
 #include "bc4_encoder.h"
-#include "../lib/renderer.h"
+#include "../lib/font.h"
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
@@ -92,11 +92,11 @@ bool build_font(Arena *arena, float font_height, uint32_t atlas_width, uint32_t 
 
     fprintf(stdout, "ok\nfilling glyphs structure : ");
 
-    font_t* font = arena_alloc(arena, sizeof(font_t));
+    struct alphabet* font = arena_alloc(arena, sizeof(struct alphabet));
     if (font == NULL)
         return false;
 
-    memset(font, 0, sizeof(font_t));
+    memset(font, 0, sizeof(struct alphabet));
     font->first_glyph = FONT_CHAR_FIRST;
     font->num_glyphs = FONT_NUM_CHARS;
     font->texture_width = atlas_width;
@@ -105,7 +105,7 @@ bool build_font(Arena *arena, float font_height, uint32_t atlas_width, uint32_t 
 
     for(uint32_t i=0; i<FONT_NUM_CHARS; ++i)
     {
-        font->glyphs[i] = (font_glyph_t)
+        font->glyphs[i] = (struct glyph)
         {
             .x0 = glyphs[i].x0,
             .y0 = glyphs[i].y0,
@@ -115,22 +115,22 @@ bool build_font(Arena *arena, float font_height, uint32_t atlas_width, uint32_t 
             .bearing_y = glyphs[i].yoff,
             .advance_x = glyphs[i].xadvance
         };
-
-        // fprintf(stdout, "char %c\n", i+font->first_glyph);
-        //fprintf(stdout, "\tx0:%d, y0:%d\n", glyphs[i].x0, glyphs[i].y0);
-        //fprintf(stdout, "\tx1:%d, y1:%d\n", glyphs[i].x1, glyphs[i].y1);
-        // fprintf(stdout, "\twidth:%d height:%d\n", glyphs[i].x1 - glyphs[i].x0, glyphs[i].y1 - glyphs[i].y0);
-        // fprintf(stdout, "\txoff:%f, yoff:%f\n", glyphs[i].xoff, glyphs[i].yoff);
-        // fprintf(stdout, "\txavance:%f\n", glyphs[i].xadvance);
     }
 
     fprintf(stdout, "ok\nwritting %s : ", GLYPH_H);
 
-    if (!bin2h(GLYPH_H, "default_font", font, sizeof(font_t)))
+    if (!bin2h(GLYPH_H, "default_font", font, sizeof(struct alphabet)))
         return false;
 
     fprintf(stdout, "ok\n");
     return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+bool prepare_shaders(Arena *arena)
+{
+    fprintf(stdout, "\npreparing shaders");
+    return false;
 }
 
 
@@ -145,6 +145,12 @@ int main(int argc, const char * argv[])
     fprintf(stdout, "sdf2d %u.%u library builder\n\n", SDF2D_MAJOR_VERSION, SDF2D_MINOR_VERSION);
 
     bool success = build_font(&arena, 32.f, 256, 256);
+    if (!success)
+        fprintf(stdout, "failed\n");
+
+    arena_reset(&arena);
+
+    success = success && prepare_shaders(&arena);
     if (!success)
         fprintf(stdout, "failed\n");
 

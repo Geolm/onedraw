@@ -19,6 +19,7 @@ add_executable(builder
 ./pre-build/bc4_encoder.c
 ./pre-build/bin2h.c
 ./pre-build/builder.c
+./pre-build/shader_reader.c
 )
 
 add_custom_command(
