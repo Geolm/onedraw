@@ -7,21 +7,31 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
+#include "shader_reader.h"
+
 #define ARENA_NOSTDIO
 #define ARENA_IMPLEMENTATION
 #include "arena.h"
 
+
+
 #define UNUSED_VARIABLE(a) (void)(a)
 
+#define LIB_FOLDER "../lib/"
 #define FONT_FILENAME "../fonts/Satoshi-Medium.otf"
 #define FONT_H "../lib/default_font_atlas.h"
 #define GLYPH_H "../lib/default_font.h"
 #define FONT_CHAR_FIRST 33
 #define FONT_CHAR_LAST 126
 #define FONT_NUM_CHARS 95
+#define SHADERS_PATH    "../lib/shaders/"
+#define BINNING_SHADER          "binning.metal"
+#define RASTERIZER_SHADER       "rasterizer.metal"
+#define CPU_GPU_COMMON_FILE     "common.h"
+
 
 #define SDF2D_MAJOR_VERSION (0)
-#define SDF2D_MINOR_VERSION (1)
+#define SDF2D_MINOR_VERSION (2)
 
 // ---------------------------------------------------------------------------------------------------------------------------
 void* read_file(const char* filename, size_t* file_size, Arena* arena)
@@ -129,8 +139,20 @@ bool build_font(Arena *arena, float font_height, uint32_t atlas_width, uint32_t 
 // ---------------------------------------------------------------------------------------------------------------------------
 bool prepare_shaders(Arena *arena)
 {
-    fprintf(stdout, "\npreparing shaders");
-    return false;
+    fprintf(stdout, "\npreparing shaders\n");
+
+    fprintf(stdout, "opening %s ", BINNING_SHADER);
+    char* shader = read_shader_include(arena, SHADERS_PATH, BINNING_SHADER);
+
+    if (shader == NULL)
+        return false;
+
+    fprintf(stdout, "ok\nwritting header ");
+    if (!bin2h(LIB_FOLDER"binning.h", "binning_shader", shader, strlen(shader) + 1))
+        return false;
+
+    fprintf(stdout, "ok\n");
+    return true;
 }
 
 

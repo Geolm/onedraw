@@ -8,7 +8,7 @@
 #define INCLUDE_TAG "#include"
 
 //----------------------------------------------------------------------------------------------------------------------------
-char* read_shader(const char* filename)
+char* read_shader(Arena* arena, const char* filename)
 {
     FILE* f = fopen(filename, "r");
     if (f != NULL)
@@ -17,7 +17,7 @@ char* read_shader(const char* filename)
         long filesize = ftell(f);
         fseek(f, 0, SEEK_SET);
         
-        char* buffer = (char*) malloc(filesize +1);
+        char* buffer = (char*) arena_alloc(arena, (filesize +1));
         fread(buffer, filesize, 1, f);
         buffer[filesize] = 0;
         fclose(f);
@@ -27,9 +27,9 @@ char* read_shader(const char* filename)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-static inline char* string_concat(const char* a, size_t strlen_a, const char* b, size_t strlen_b)
+static inline char* string_concat(Arena* arena, const char* a, size_t strlen_a, const char* b, size_t strlen_b)
 {
-    char* output = (char*) malloc(strlen_a + strlen_b + 1);
+    char* output = (char*) arena_alloc(arena, strlen_a + strlen_b + 1);
     char* ptr = output;
 
     for(size_t i=0; i<strlen_a; i++)
@@ -44,9 +44,9 @@ static inline char* string_concat(const char* a, size_t strlen_a, const char* b,
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-char* remplace_include(char* shader_buffer, const char* include_buffer, char* include, char* end_of_include, char** next)
+char* remplace_include(Arena* arena, char* shader_buffer, const char* include_buffer, char* include, char* end_of_include, char** next)
 {
-    char* new_buffer = (char*) malloc(strlen(shader_buffer) + strlen(include_buffer) + 1 - (end_of_include - include));
+    char* new_buffer = (char*) arena_alloc(arena, strlen(shader_buffer) + strlen(include_buffer) + 1 - (end_of_include - include));
     char* output = new_buffer;
 
     while (shader_buffer < include)
@@ -65,11 +65,11 @@ char* remplace_include(char* shader_buffer, const char* include_buffer, char* in
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-char* read_shader_include(const char* include_path, const char* filename)
+char* read_shader_include(Arena* arena, const char* include_path, const char* filename)
 {
     size_t include_path_length = strlen(include_path);
-    char* shader_full = string_concat(include_path, include_path_length, filename, strlen(filename));
-    char* buffer = read_shader(shader_full);
+    char* shader_full = string_concat(arena, include_path, include_path_length, filename, strlen(filename));
+    char* buffer = read_shader(arena, shader_full);
 
     if (buffer != NULL)
     {
@@ -88,29 +88,22 @@ char* read_shader_include(const char* include_path, const char* filename)
             while (!IS_QUOTE(*current)) current++;
 
             size_t include_filename_length = current - include_filename;
-            char* include_full = string_concat(include_path, include_path_length, include_filename, include_filename_length);
-            char* include_buffer = read_shader(include_full);
+            char* include_full = string_concat(arena, include_path, include_path_length, include_filename, include_filename_length);
+            char* include_buffer = read_shader(arena, include_full);
             current++;
 
             if (include_buffer != NULL)
             {
                 char* after_include;
-                char* new_buffer = remplace_include(buffer, include_buffer, include, current, &after_include);
-                
-                free(buffer);
-                free(include_buffer);
+                char* new_buffer = remplace_include(arena, buffer, include_buffer, include, current, &after_include);
 
                 buffer = new_buffer;
                 current = after_include;
             }
 
-            free(include_full);
-
             include = strstr(current, INCLUDE_TAG);
             current = include;
         }
     }
-    
-    free(shader_full);
     return buffer;
 }
