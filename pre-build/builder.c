@@ -2,7 +2,7 @@
 #include <string.h>
 #include "bin2h.h"
 #include "bc4_encoder.h"
-#include "../lib/font.h"
+#include "../src/font.h"
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
@@ -24,7 +24,7 @@
 #define FONT_CHAR_FIRST 33
 #define FONT_CHAR_LAST 126
 #define FONT_NUM_CHARS 95
-#define SHADERS_PATH    "../lib/shaders/"
+#define SHADERS_PATH    "../src/shaders/"
 #define BINNING_SHADER          "binning.metal"
 #define RASTERIZER_SHADER       "rasterizer.metal"
 #define CPU_GPU_COMMON_FILE     "common.h"
