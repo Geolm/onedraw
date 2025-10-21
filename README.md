@@ -2,18 +2,19 @@
 GPU driven 2d sdf renderer drop-in library
 
 
-## repo organization
+## project structure
 
-The library is at the root : sdf2d.h
+```C
 
-### lib 
-contains all source files that will produce the one-header file
+onedraw
+ |
+ |--src         source files that will produce the one-cpp library
+ |
+ |--lib         the library to be included in a project
+ |
+ |--pre-build   source code to generate font, shader, library
+ |
+ |--tests       benchmark, unit-test
+ |
 
-## pre-build
-
-source code that generate font texture, shader, one-header file
-
-## tests
-
-benchmark
-sokol example
+```
