@@ -2,7 +2,7 @@
 
 | Section | Description |
 |---------|-------------|
-| [Overview](index.md) | Objectives and overview of its initial design |
+| [Overview](index.md) | Goals and Initial Architecture |
 | [Part 1](part1.md) | Binning commands |
 | [Part 2](part2.md) | Hierarchical binning and intrinsic tricks |
 | [Part 3](part2.md) | SDF Group, smoothmin |
