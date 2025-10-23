@@ -10,4 +10,11 @@
 | [Part 5](part4.md) | Font and textured quads |
 
 
-## Objectives
+## Goals and Initial Architecture
+
+I started the project with the following objectives:
+
+* Not triangle-based: shapes are defined using signed distance functions (SDFs).
+* High quality: anti-aliased edges by default, perfectly smooth curves (no tessellation required), optimized for high-resolution displays.
+* Fast and GPU-driven: offload as much work as possible to the GPU and minimize draw calls.
+* Efficient alpha blending: designed to make extensive use of transparency without significant performance cost.
