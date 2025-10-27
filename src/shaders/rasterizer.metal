@@ -1,20 +1,13 @@
 #include <metal_stdlib>
+#define RASTERIZER_SHADER
 #include "common.h"
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// SDF functions
+// signed distance functions
 // ---------------------------------------------------------------------------------------------------------------------------
 
-inline float erf(float x) {return sign(x) * sqrt(1.0 - exp2(-1.787776 * x * x));}
-inline float sd_disc(float2 position, float2 center, float radius) {return length(center-position) - radius;}
-
-//-----------------------------------------------------------------------------
-inline float sd_segment(float2 position, float2 a, float2 b)
-{
-    float2 pa = position-a, ba = b-a;
-    float h = clamp( dot(pa,ba)/dot(ba,ba), 0.f, 1.f);
-    return length(pa - ba*h);
-}
+static inline float erf(float x) {return sign(x) * sqrt(1.0 - exp2(-1.787776 * x * x));}
+static inline float sd_disc(float2 position, float2 center, float radius) {return length(center-position) - radius;}
 
 //-----------------------------------------------------------------------------
 // based on https://www.shadertoy.com/view/NsVSWy
@@ -22,7 +15,7 @@ inline float sd_segment(float2 position, float2 a, float2 b)
 // returns a float2
 //      .x = distance to box
 //      .y = gaussian blur value (alpha)
-inline float2 sd_gaussian_box(float2 position, float2 box_center, float2 box_size, float radius)
+static inline float2 sd_gaussian_box(float2 position, float2 box_center, float2 box_size, float radius)
 {
     position -= box_center;
     float2 d = abs(position) - box_size;
@@ -35,7 +28,7 @@ inline float2 sd_gaussian_box(float2 position, float2 box_center, float2 box_siz
 }
 
 //-----------------------------------------------------------------------------
-inline float sd_aabox(float2 position, float2 box_center, float2 half_extents, float radius)
+static inline float sd_aabox(float2 position, float2 box_center, float2 half_extents, float radius)
 {
     position -= box_center;
     position = abs(position) - half_extents + radius;
@@ -43,7 +36,7 @@ inline float sd_aabox(float2 position, float2 box_center, float2 half_extents, f
 }
 
 //-----------------------------------------------------------------------------
-inline float sd_oriented_box(float2 position, float2 a, float2 b, float width)
+static inline float sd_oriented_box(float2 position, float2 a, float2 b, float width)
 {
     float l = length(b-a);
     float2  d = (b-a)/l;
@@ -54,7 +47,7 @@ inline float sd_oriented_box(float2 position, float2 a, float2 b, float width)
 }
 
 //-----------------------------------------------------------------------------
-inline float sd_triangle(float2 p, float2 p0, float2 p1, float2 p2 )
+static inline float sd_triangle(float2 p, float2 p0, float2 p1, float2 p2 )
 {
     float2 e0 = p1 - p0;
     float2 e1 = p2 - p1;
@@ -78,7 +71,7 @@ inline float sd_triangle(float2 p, float2 p0, float2 p1, float2 p2 )
 
 //-----------------------------------------------------------------------------
 // based on https://www.shadertoy.com/view/tt3yz7
-inline float sd_ellipse(float2 p, float2 e)
+static inline float sd_ellipse(float2 p, float2 e)
 {
     float2 pAbs = abs(p);
     float2 ei = 1.f / e;
@@ -102,7 +95,7 @@ inline float sd_ellipse(float2 p, float2 e)
 }
 
 //-----------------------------------------------------------------------------
-inline float sd_oriented_ellipse(float2 position, float2 a, float2 b, float width)
+static inline float sd_oriented_ellipse(float2 position, float2 a, float2 b, float width)
 {
     float height = length(b-a);
     float2  axis = (b-a)/height;
@@ -112,7 +105,7 @@ inline float sd_oriented_ellipse(float2 position, float2 a, float2 b, float widt
 }
 
 //-----------------------------------------------------------------------------
-inline float sd_oriented_pie(float2 position, float2 center, float2 direction, float2 aperture, float radius)
+static inline float sd_oriented_pie(float2 position, float2 center, float2 direction, float2 aperture, float radius)
 {
     direction = -skew(direction);
     position -= center;
@@ -124,7 +117,7 @@ inline float sd_oriented_pie(float2 position, float2 center, float2 direction, f
 }
 
 //-----------------------------------------------------------------------------
-inline float sd_oriented_ring(float2 position, float2 center, float2 direction, float2 aperture, float radius, float thickness)
+static inline float sd_oriented_ring(float2 position, float2 center, float2 direction, float2 aperture, float radius, float thickness)
 {
     direction = -skew(direction);
     position -= center;
@@ -132,45 +125,6 @@ inline float sd_oriented_ring(float2 position, float2 center, float2 direction, 
     position.x = abs(position.x);
     position = float2x2(aperture.y,aperture.x,-aperture.x,aperture.y)*position;
     return max(abs(length(position)-radius)-thickness*0.5,length(float2(position.x,max(0.0,abs(radius-position.y)-thickness*0.5)))*sign(position.x) );
-}
-
-//-----------------------------------------------------------------------------
-inline float sd_uneven_capsule(float2 p, float2 pa, float2 pb, float ra, float rb)
-{
-    p  -= pa;
-    pb -= pa;
-    float h = dot(pb,pb);
-    float2  q = float2( dot(p,float2(pb.y,-pb.x)), dot(p,pb) )/h;
-    
-    q.x = abs(q.x);
-    float b = ra-rb;
-    float2  c = float2(sqrt(h-b*b),b);
-    
-    float k = cross2(c,q);
-    float m = dot(c,q);
-    float n = dot(q,q);
-
-         if( k < 0.0 ) return sqrt(h*(n            )) - ra;
-    else if( k > c.x ) return sqrt(h*(n+1.f-2.f*q.y)) - rb;
-                       return m                       - ra;
-}
-
-//-----------------------------------------------------------------------------
-// based on https://www.shadertoy.com/view/wtSyWc to avoid middle line from the iq sdf
-inline float sd_trapezoid(float2 p, float2 a, float2 b, float ra, float rb)
-{
-    float2 pa = p - a;
-    float2 ba = b - a;
-    float baba = dot(ba, ba);
-    float x = abs(dot(float2(-pa.y, pa.x), ba)) / sqrt(baba);
-    float paba = dot(pa, ba) / baba;
-    float rba = rb - ra;
-    float cax = max(0., x - ((paba < 0.5) ? ra : rb));
-    float cay = abs(paba - 0.5) - 0.5;
-    float f = saturate((rba*(x - ra) + paba * baba) / (rba * rba + baba));
-    float cbx = x - ra - f * rba;
-    float cby = paba - f;
-    return sign(max(cbx,cay)) * sqrt(min(cax*cax + cay * cay*baba, cbx*cbx + cby * cby*baba));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -200,19 +154,11 @@ float2 smooth_minimum(float a, float b, float k)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-float smooth_substraction(float d1, float d2, float k)
+static inline half4 accumulate_color(half4 color, half4 backbuffer)
 {
-    if (k>0.f)
-    {
-        float h = saturate(0.5f - 0.5f*(d2+d1)/k);
-        return mix(d1, -d2, h) + k*h*(1.0f-h);
-    }
-    else
-    {
-        return max(-d2, d1);
-    }
+    half3 rgb = mix(backbuffer.rgb, color.rgb, color.a);
+    return half4(rgb, 1.h);
 }
-
 
 struct vs_out
 {
@@ -248,12 +194,6 @@ vertex vs_out tile_vs(uint instance_id [[instance_id]],
     return out;
 }
 
-half4 accumulate_color(half4 color, half4 backbuffer)
-{
-    half3 rgb = mix(backbuffer.rgb, color.rgb, color.a);
-    return half4(rgb, 1.h);
-}
-
 // ---------------------------------------------------------------------------------------------------------------------------
 // fragment shader
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -268,40 +208,45 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
 
     float previous_distance;
     half4 previous_color;
-    float combination_smoothness;
-    bool combining = false;
+    float group_smoothness;
+    sdf_operator group_op = op_overwrite;
+    bool grouping = false;
 
-    half4 outline_color = unpack_unorm4x8_to_half(input.outline_color.packed_data);
-    float outline_full = -input.outline_width;
-    float outline_start = outline_full - input.aa_width;
+    float outline_width = 0.f;
+    float outline_start = -input.aa_width;
 
     while (node_index != INVALID_INDEX)
     {
         const tile_node node = tiles.nodes[node_index];
-        constant draw_command& cmd = input.commands[node.command_index];
-        constant clip_rect& clip = input.clips[cmd.clip_index];
-        const uint32_t data_index = quad_broadcast(cmd.data_index, 0);
-        const uint8_t quad_type = quad_broadcast(cmd.type, 0);
-        half4 cmd_color = unpack_unorm4x8_srgb_to_half(cmd.color.packed_data);
+        constant draw_command* raw_cmd = &input.commands[node.command_index];
+
+        uint32_t packed_data = quad_broadcast(raw_cmd->packed_data, 0);
+        uint8_t extra = packed_data & 0xFF;
+
+        constant clip_rect& clip = input.clips[(packed_data >> 8) & 0xFF];
+        const uint32_t data_index = quad_broadcast(raw_cmd->data_index, 0);
+        const command_type type = (command_type) ((packed_data >> 24) & 0xFF);
+        const primitive_fillmode fillmode = (primitive_fillmode) ((packed_data >> 16) & 0xFF);
+        half4 cmd_color = unpack_unorm4x8_srgb_to_half(input.colors[node.command_index]);
 
         // check if the pixel is in the clip rect
         if (all(float4(in.pos.xy, clip.max_x, clip.max_y) >= float4(clip.min_x, clip.min_y, in.pos.xy)))
         {
             float distance = 10.f;
             constant float* data = &input.draw_data[data_index];
-            command_type type = primitive_get_type(quad_type);
 
-            if (type == combination_begin)
+            if (type == begin_group)
             {
                 previous_color = 0.h;
                 previous_distance = 100000000.f;
-                combination_smoothness = data[0];
-                combining = true;
+                group_smoothness = data[0];
+                grouping = true;
+                group_op = (sdf_operator) extra;
+                outline_width = data[1];
+                outline_start = -outline_width - input.aa_width;
             }
             else
             {
-                const primitive_fillmode fillmode =  primitive_get_fillmode(quad_type);
-
                 switch(type)
                 {
                 case primitive_disc :
@@ -342,7 +287,7 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                 }
                 case primitive_char:
                 {
-                    uint glyph_index = cmd.custom_data;
+                    uint glyph_index = extra;
                     if (glyph_index<MAX_GLYPHS)
                     {
                         float2 top_left = float2(data[0], data[1]);
@@ -401,33 +346,6 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                         distance = abs(distance) - data[7];
                     break;
                 }
-                case primitive_uneven_capsule:
-                {
-                    float2 p0 = float2(data[0], data[1]);
-                    float2 p1 = float2(data[2], data[3]);
-                    float radius0 = data[4];
-                    float radius1 = data[5];
-
-                    distance = sd_uneven_capsule(in.pos.xy, p0, p1, radius0, radius1);
-                    if (fillmode == fill_hollow)
-                        distance = abs(distance) - data[6];
-                    break;
-                }
-                case primitive_trapezoid:
-                {
-                    float2 p0 = float2(data[0], data[1]);
-                    float2 p1 = float2(data[2], data[3]);
-                    float radius0 = data[4];
-                    float radius1 = data[5];
-
-                    distance = sd_trapezoid(in.pos.xy, p0, p1, radius0, radius1);
-                    if (fillmode == fill_hollow)
-                        distance = abs(distance) - data[6];
-                    else
-                        distance -= data[6];
-
-                    break;
-                }
                 case primitive_blurred_box:
                 {
                     float2 center = float2(data[0], data[1]);
@@ -444,56 +362,39 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                 }
 
                 half4 color;
-                if (type == combination_end)
+                if (type == end_group)
                 {
-                    combining = false;
+                    grouping = false;
                     color = previous_color;
                     distance = previous_distance;
+                    group_op = op_overwrite;
                 }
                 else
                 {
                     color = cmd_color;
-
-                    if (fillmode == fill_outline && distance >= outline_start)
-                    {
-                        if (distance >= outline_full && distance <= input.aa_width)
-                            color.rgb = outline_color.rgb;
-                        else if (distance < outline_full)
-                            color.rgb = mix(outline_color.rgb, color.rgb, linearstep(half(outline_full), half(outline_start), half(distance)));
-                    }
                 }
 
                 // blend distance / color and skip writing output
-                if (combining)
+                if (grouping)
                 {
-                    float smooth_factor = (cmd.op == op_blend) ? combination_smoothness : input.aa_width;
-                    switch(cmd.op)
-                    {
-                    case op_add :
-                    case op_blend :
-                        {
-                            float2 smooth = smooth_minimum(distance, previous_distance, smooth_factor);
-                            previous_distance = smooth.x;
-                            previous_color = mix(color, previous_color, smooth.y);
-                            break;
-                        }
-                    case op_subtraction :
-                        {
-                            previous_distance = smooth_substraction(previous_distance, distance, smooth_factor);
-                            break;
-                        }
-                    }
+                    float smooth_factor = (group_op == op_blend) ? group_smoothness : input.aa_width;
+                    float2 smooth = smooth_minimum(distance, previous_distance, smooth_factor);
+                    previous_distance = smooth.x;
+                    previous_color = mix(color, previous_color, smooth.y);
                 }
                 else
                 {
                     half alpha_factor;
-                    if (fillmode == fill_outline && type == combination_end)
+                    if (outline_width > 0.f && type == end_group)
                     {
                         if (distance > input.aa_width)
-                            color.rgb = outline_color.rgb;
+                            color.rgb = cmd_color.rgb;
                         else
-                            color.rgb = mix(outline_color.rgb, color.rgb, linearstep(input.aa_width, 0.f, distance));
-                        alpha_factor = linearstep(half(input.aa_width*2+input.outline_width), half(input.aa_width+input.outline_width), half(distance));    // anti-aliasing
+                            color.rgb = mix(cmd_color.rgb, color.rgb, linearstep(input.aa_width, 0.f, distance));
+                        alpha_factor = linearstep(half(input.aa_width*2+outline_width), half(input.aa_width+outline_width), half(distance));    // anti-aliasing
+
+                        outline_width = 0.f;
+                        outline_start = -input.aa_width;
                     }
                     else
                         alpha_factor = linearstep(half(input.aa_width), 0.h, half(distance));    // anti-aliasing
@@ -505,6 +406,9 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
         }
         node_index = node.next;
     }
+
+    if (all(output == half4(input.clear_color)))
+        discard_fragment();
 
     return output;
 }
