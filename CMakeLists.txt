@@ -36,12 +36,12 @@ add_custom_target(build_lib ALL DEPENDS builder)
 find_package(glfw3 3.4 REQUIRED)
 
 add_executable(benchmark
-./tests/benchmark.c
+./tests/test.c
+./tests/sokol_app.mm
 )
 
 add_dependencies(benchmark build_lib)
 
-target_link_libraries(benchmark glfw)
 target_link_libraries(benchmark
         "-framework Metal"
         "-framework MetalKit"

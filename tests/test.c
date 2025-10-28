@@ -1,11 +1,18 @@
+#define SOKOL_METAL
+#include "sokol_app.h"
+
 #define UNUSED_VARIABLE(a) (void)(a)
 
 // ---------------------------------------------------------------------------------------------------------------------------
-int main(int argc, const char * argv[]) 
+sapp_desc sokol_main(int argc, char* argv[])
 {
     UNUSED_VARIABLE(argc);
     UNUSED_VARIABLE(argv);
 
-    return 0;
+    return (sapp_desc) 
+    {
+        .width = 1280,
+        .height = 720,
+    };
 }
 

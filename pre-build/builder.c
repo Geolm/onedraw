@@ -148,7 +148,19 @@ bool prepare_shaders(Arena *arena)
         return false;
 
     fprintf(stdout, "ok\nwritting header ");
-    if (!bin2h(LIB_FOLDER"binning.h", "binning_shader", shader, strlen(shader) + 1))
+    if (!string2h(LIB_FOLDER"binning.h", "binning_shader", shader, strlen(shader)))
+        return false;
+
+    fprintf(stdout, "ok\n");
+
+    fprintf(stdout, "opening %s ", RASTERIZER_SHADER);
+    shader = read_shader_include(arena, SHADERS_PATH, RASTERIZER_SHADER);
+
+    if (shader == NULL)
+        return false;
+
+    fprintf(stdout, "ok\nwritting header ");
+    if (!string2h(LIB_FOLDER"rasterization.h", "rasterization_shader", shader, strlen(shader)))
         return false;
 
     fprintf(stdout, "ok\n");
