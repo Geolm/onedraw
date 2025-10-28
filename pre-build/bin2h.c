@@ -48,8 +48,16 @@ bool string2h(const char* filename, const char* variable, const char* string, si
     while (index<length)
     {
         fprintf(f, "\n    \"");
-        while (string[index] != '\n' && index < length)
-            putc(string[index++], f);
+        while (index < length && string[index] != '\n')
+        {
+            char c = string[index++];
+            switch(c)
+            {
+            case '\"' : fprintf(f, "\\\"");break;
+            case '\\' : fprintf(f, "\\\\");break;
+            default:putc(c, f);
+            }
+        }
         
         fprintf(f, "\\n\"");
         index++;
