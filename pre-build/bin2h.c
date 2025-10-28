@@ -85,3 +85,29 @@ bool uint2h(const char* filename, const char* variable, const uint32_t* buffer, 
     fclose(f);
     return true;
 }
+
+//-------------------------------------------------------------------------------------------------
+bool copy_file(const char *src, const char *dst) 
+{
+    FILE *in = fopen(src, "rb");
+    if (in == NULL)
+        return false;
+
+    FILE *out = fopen(dst, "wb");
+    if (out==NULL) 
+    { 
+        fclose(in); 
+        return false;
+    }
+
+    unsigned char buf[8192];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), in)) > 0)
+        fwrite(buf, 1, n, out);
+
+    fclose(in);
+    fclose(out);
+    return true;
+}
+
+

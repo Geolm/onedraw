@@ -1,6 +1,8 @@
 #define SOKOL_METAL
 #include "sokol_app.h"
 
+#include "../lib/onedraw.h"
+
 #define UNUSED_VARIABLE(a) (void)(a)
 
 // ---------------------------------------------------------------------------------------------------------------------------

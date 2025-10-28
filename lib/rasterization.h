@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-const size_t rasterization_shader_size = 21127;
+const size_t rasterization_shader_size = 21125;
 const char* rasterization_shader =
 
     "#include <metal_stdlib>\n"
@@ -344,7 +344,7 @@ const char* rasterization_shader =
     "    }\n"
     "    else\n"
     "    {\n"
-    "        // "hard" min\n"
+    "        // hard min\n"
     "        return float2(min(a, b),  (a<b) ? 0.f : 1.f);\n"
     "    }\n"
     "}\n"

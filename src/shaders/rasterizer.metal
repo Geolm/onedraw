@@ -148,7 +148,7 @@ float2 smooth_minimum(float a, float b, float k)
     }
     else
     {
-        // "hard" min
+        // hard min
         return float2(min(a, b),  (a<b) ? 0.f : 1.f);
     }
 }

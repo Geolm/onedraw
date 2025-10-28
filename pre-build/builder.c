@@ -24,7 +24,8 @@
 #define FONT_CHAR_FIRST 33
 #define FONT_CHAR_LAST 126
 #define FONT_NUM_CHARS 95
-#define SHADERS_PATH    "../src/shaders/"
+#define SHADERS_FOLDER    "../src/shaders/"
+#define SOURCE_FOLDER   "../src/"
 #define BINNING_SHADER          "binning.metal"
 #define RASTERIZER_SHADER       "rasterizer.metal"
 #define CPU_GPU_COMMON_FILE     "common.h"
@@ -80,9 +81,7 @@ bool build_font(Arena *arena, float font_height, uint32_t atlas_width, uint32_t 
     if (result == 0)
         return false;
     else if (result < 0)
-    {
         fprintf(stdout, "warning only %d chars could fit in the atlas\n", -result);
-    }
     else fprintf(stdout, "ok\n");
 
     fprintf(stdout, "compressing atlas in BC4 : ");
@@ -142,7 +141,7 @@ bool prepare_shaders(Arena *arena)
     fprintf(stdout, "\npreparing shaders\n");
 
     fprintf(stdout, "opening %s ", BINNING_SHADER);
-    char* shader = read_shader_include(arena, SHADERS_PATH, BINNING_SHADER);
+    char* shader = read_shader_include(arena, SHADERS_FOLDER, BINNING_SHADER);
 
     if (shader == NULL)
         return false;
@@ -154,7 +153,7 @@ bool prepare_shaders(Arena *arena)
     fprintf(stdout, "ok\n");
 
     fprintf(stdout, "opening %s ", RASTERIZER_SHADER);
-    shader = read_shader_include(arena, SHADERS_PATH, RASTERIZER_SHADER);
+    shader = read_shader_include(arena, SHADERS_FOLDER, RASTERIZER_SHADER);
 
     if (shader == NULL)
         return false;
@@ -167,6 +166,35 @@ bool prepare_shaders(Arena *arena)
     return true;
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------
+bool copy_files(void)
+{
+    fprintf(stdout, "copying files");
+
+    if (!copy_file(SHADERS_FOLDER"common.h", LIB_FOLDER"common.h"))
+        return false;
+
+    fprintf(stdout, ".");
+
+    if (!copy_file(SOURCE_FOLDER"onedraw.h", LIB_FOLDER"onedraw.h"))
+        return false;
+
+    fprintf(stdout, ".");
+
+    if (!copy_file(SOURCE_FOLDER"onedraw.cpp", LIB_FOLDER"onedraw.cpp"))
+        return false;
+
+    fprintf(stdout, ".");
+
+    if (!copy_file(SOURCE_FOLDER"Metal.hpp", LIB_FOLDER"Metal.hpp"))
+        return false;
+
+    fprintf(stdout, ".");
+
+    fprintf(stdout, " ok\n");
+
+    return true;
+}
 
 // ---------------------------------------------------------------------------------------------------------------------------
 int main(int argc, const char * argv[]) 
@@ -189,6 +217,10 @@ int main(int argc, const char * argv[])
         fprintf(stdout, "failed\n");
 
     arena_reset(&arena);
+
+    success = success && copy_files();
+    if (!success)
+        fprintf(stdout, "failed\n");
 
     size_t bytes_allocated, bytes_used;
     arena_stats(&arena, &bytes_allocated, &bytes_used);

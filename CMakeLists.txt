@@ -33,9 +33,8 @@ add_custom_target(build_lib ALL DEPENDS builder)
 
 # --- Benchmark ---
 
-find_package(glfw3 3.4 REQUIRED)
-
 add_executable(benchmark
+./lib/onedraw.cpp
 ./tests/test.c
 ./tests/sokol_app.mm
 )
