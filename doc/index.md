@@ -5,10 +5,9 @@
 | [Overview](index.md) | Goals and Initial Architecture |
 | [Part 1](part1.md) | Binning commands |
 | [Part 2](part2.md) | Hierarchical binning and intrinsic tricks |
-| [Part 3](part3.md) | SDF Group, smoothmin |
-| [Part 4](part4.md) | Rasterization |
-| [Part 5](part5.md) | Font and textured quads |
-| [Part 6](part6.md) | Failed attempts and next steps |
+| [Part 3](part3.md) | Rasterization |
+| [Part 4](part4.md) | Font and textured quads |
+| [Part 5](part5.md) | Failed attempts and next steps |
 
 
 ## Goals and initial architecture

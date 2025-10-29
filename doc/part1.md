@@ -15,11 +15,39 @@ Some additional factors are also considered:
 
 ## Anti-aliasing
 
-The width of the anti-aliasing region (defined by the user in onedraw) must be taken into account during intersection testing.
+The width of the anti-aliasing region (defined by the user in ```onedraw```) must be taken into account during intersection testing.
 
 ![anti-aliasing](anti-aliasing.png)
 
 In the example above, even if the disc does not mathematically intersect the tile’s bounding box, the anti-aliasing width extends beyond it.  
 To avoid visible seams or straight edges along tile borders, the disc is still added to the tile’s linked list so that edge pixels are correctly shaded.
+We simply grow the size of the bounding box by the width of the anti-aliasing.
 
 ## Group of shapes
+
+`onedraw` supports combining multiple shapes into a **group**.  
+A group behaves like a single shape: for example, it can have a global transparency even if it contains multiple layers of shapes, or it can have an outline that applies to the entire group.
+
+Groups are defined by wrapping shapes between **begin group** and **end group** commands.  
+The end group command triggers the color output (and, if enabled, the outline).
+
+Each begin/end group command is assigned a **global bounding box** that encompasses all shapes within the group.  
+This ensures that both the begin and end commands are included whenever the group affects a tile.  
+If a group has no shapes intersecting the tile, the linked list is adjusted to skip that unused group, avoiding unnecessary processing.
+
+
+---
+
+## Smoothmin
+
+The **smoothmin** operator allows multiple shapes to blend smoothly, even when they don’t intersect.  
+The *k-factor* (as described on [Inigo Quilez’s website](https://iquilezles.org/articles/smin/)) controls how far a shape can blend with another.
+
+![smoothmin](smoothmin.png)
+
+During binning, the tile’s bounding box is expanded by this value to ensure that shapes contributing to a smooth blend are not missed.
+
+
+---
+
+[Next part](part2.md) : Hierarchical binning and intrinsic tricks
