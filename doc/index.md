@@ -22,7 +22,7 @@ I started the project with the following objectives:
 
 ## Overview
 
-To achieve high performance, **onedraw** minimizes unnecessary computations during rasterization. Since it primarily uses [signed distance functions (SDFs)](https://iquilezles.org/articles/distfunctions2d/) to render shapes—and these functions can be relatively expensive—efficient culling is essential.
+To achieve high performance, `onedraw` minimizes unnecessary computations during rasterization. Since it primarily uses [signed distance functions (SDFs)](https://iquilezles.org/articles/distfunctions2d/) to render shapes—and these functions can be relatively expensive—efficient culling is essential.
 
 The screen is divided into **16×16 pixel tiles**. A **compute shader** (explained in detail later in the documentation) builds a **linked list of draw commands per tile**.  
 When a tile is rasterized, the fragment shader has direct access to the exact set of draw commands that affect that tile—ensuring that only relevant shapes are processed.
