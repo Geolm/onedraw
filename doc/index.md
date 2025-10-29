@@ -1,4 +1,4 @@
-# onedraw : a 2d gpu driven renderer
+# onedraw — a GPU-driven 2D renderer
 
 | Section | Description |
 |---------|-------------|
@@ -11,7 +11,7 @@
 | [Part 6](part6.md) | Failed attempts and next steps |
 
 
-## Goals and Initial Architecture
+## Goals and initial architecture
 
 I started the project with the following objectives:
 
@@ -23,7 +23,7 @@ I started the project with the following objectives:
 
 ## Overview
 
-To achieve high performance, **onedraw** minimizes unnecessary computations during rasterization. Since it primarily uses [signed distance functions (SDFs)](https://iquilezles.org/articles/distfunctions2d/) to render shapes—and these functions can be relatively expensive—efficient culling and batching are essential.
+To achieve high performance, **onedraw** minimizes unnecessary computations during rasterization. Since it primarily uses [signed distance functions (SDFs)](https://iquilezles.org/articles/distfunctions2d/) to render shapes—and these functions can be relatively expensive—efficient culling is essential.
 
 The screen is divided into **16×16 pixel tiles**. A **compute shader** (explained in detail later in the documentation) builds a **linked list of draw commands per tile**.  
 When a tile is rasterized, the fragment shader has direct access to the exact set of draw commands that affect that tile—ensuring that only relevant shapes are processed.
@@ -37,3 +37,7 @@ When a tile is rasterized, the fragment shader has direct access to the exact se
 The entire linked-list generation process happens **on the GPU**.  
 If a tile contains one or more draw commands, it’s automatically added to a list of tiles to be rendered.  
 Finally, an **indirect draw call** is issued to rasterize only those active tiles—eliminating CPU overhead and allowing fully GPU-driven rendering.
+
+---
+
+[Next part](part1.md) : Binning commands
