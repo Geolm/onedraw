@@ -350,10 +350,14 @@ void od_init_screenshot_resources(struct onedraw* r)
         SAFE_RELEASE(r->screenshot.texture);
         delete[] r->screenshot.raw_bytes;
 
-        MTL::TextureDescriptor* pTextureDesc = MTL::TextureDescriptor::texture2DDescriptor(MTL::PixelFormatBGRA8Unorm_sRGB,
-                                            r->rasterizer.width, r->rasterizer.height, false);
-        pTextureDesc->setStorageMode(MTL::StorageModeShared);
+        MTL::TextureDescriptor* pTextureDesc = MTL::TextureDescriptor::alloc()->init();
+        pTextureDesc->setWidth(r->rasterizer.width);
+        pTextureDesc->setHeight(r->rasterizer.height);
+        pTextureDesc->setPixelFormat(MTL::PixelFormatBGRA8Unorm_sRGB);
+        pTextureDesc->setTextureType(MTL::TextureType2D);
+        pTextureDesc->setMipmapLevelCount(1);
         pTextureDesc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite | MTL::TextureUsageRenderTarget);
+        pTextureDesc->setStorageMode(MTL::StorageModeShared);
 
         r->screenshot = 
         {
@@ -524,7 +528,7 @@ void od_build_pso(struct onedraw* r, bool srgb_backbuffer)
         pLibrary->release();
     }
     else
-        od_log(r, "error while compiling : binning\n%s", pError->localizedDescription()->utf8String());
+        od_log(r, "error while compiling binning shader : %s", pError->localizedDescription()->utf8String());
 
     pLibrary = r->device->newLibrary( NS::String::string(rasterization_shader, NS::UTF8StringEncoding), nullptr, &pError );
     if (pLibrary != nullptr)
@@ -543,7 +547,7 @@ void od_build_pso(struct onedraw* r, bool srgb_backbuffer)
         r->rasterizer.pso = r->device->newRenderPipelineState( pDesc, &pError );
 
         if (r->rasterizer.pso == nullptr)
-            od_log(r, "%s", pError->localizedDescription()->utf8String());
+            od_log(r, "error while creating rasterizer pso : %s", pError->localizedDescription()->utf8String());
 
         pVertexFunction->release();
         pFragmentFunction->release();
@@ -551,7 +555,7 @@ void od_build_pso(struct onedraw* r, bool srgb_backbuffer)
         pLibrary->release();
     }
     else
-        od_log(r, "error while compiling : rasterization\n%s", pError->localizedDescription()->utf8String());
+        od_log(r, "error while compiling rasterization shader : %s", pError->localizedDescription()->utf8String());
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
