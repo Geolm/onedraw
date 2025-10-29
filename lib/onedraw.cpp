@@ -470,7 +470,7 @@ MTL::ComputePipelineState* create_pso(struct onedraw* r, MTL::Library* pLibrary,
 
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_build_pso(struct onedraw* r)
+void od_build_pso(struct onedraw* r, bool srgb_backbuffer)
 {
     SAFE_RELEASE(r->regions.binning_pso);
     SAFE_RELEASE(r->tiles.binning_pso);
@@ -538,7 +538,7 @@ void od_build_pso(struct onedraw* r)
         pDesc->setSupportIndirectCommandBuffers(true);
 
         MTL::RenderPipelineColorAttachmentDescriptor *pRenderbufferAttachment = pDesc->colorAttachments()->object(0);
-        pRenderbufferAttachment->setPixelFormat(MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB);
+        pRenderbufferAttachment->setPixelFormat(srgb_backbuffer ? MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormat::PixelFormatBGRA8Unorm);
         pRenderbufferAttachment->setBlendingEnabled(false);
         r->rasterizer.pso = r->device->newRenderPipelineState( pDesc, &pError );
 
@@ -817,7 +817,7 @@ struct onedraw* od_init(onedraw_def* def)
     assert(sizeof(alphabet) == default_font_size);
     r->font.desc = *((alphabet*) default_font);
 
-    od_build_pso(r);
+    od_build_pso(r, def->srgb_backbuffer);
     od_build_font(r);
     od_build_depthstencil_state(r);
     od_resize(r, def->viewport_width, def->viewport_height);

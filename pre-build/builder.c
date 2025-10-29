@@ -174,23 +174,6 @@ bool copy_files(void)
     if (!copy_file(SHADERS_FOLDER"common.h", LIB_FOLDER"common.h"))
         return false;
 
-    fprintf(stdout, ".");
-
-    if (!copy_file(SOURCE_FOLDER"onedraw.h", LIB_FOLDER"onedraw.h"))
-        return false;
-
-    fprintf(stdout, ".");
-
-    if (!copy_file(SOURCE_FOLDER"onedraw.cpp", LIB_FOLDER"onedraw.cpp"))
-        return false;
-
-    fprintf(stdout, ".");
-
-    if (!copy_file(SOURCE_FOLDER"Metal.hpp", LIB_FOLDER"Metal.hpp"))
-        return false;
-
-    fprintf(stdout, ".");
-
     fprintf(stdout, " ok\n");
 
     return true;

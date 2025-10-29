@@ -49,6 +49,7 @@ typedef struct onedraw_def
     uint32_t viewport_height;
     void (*log_func)(const char* string);
     bool allow_screenshot;
+    bool srgb_backbuffer;
 
     struct
     {

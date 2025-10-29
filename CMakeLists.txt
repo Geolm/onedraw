@@ -11,7 +11,7 @@ set(CMAKE_C_FLAGS_RELEASE "-O3 -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DDEBUG -Wall -Wextra")
 
-project(sdf2d)
+project(onedraw)
 
 # --- Header builder ---
 
@@ -33,15 +33,15 @@ add_custom_target(build_lib ALL DEPENDS builder)
 
 # --- Benchmark ---
 
-add_executable(benchmark
+add_executable(test
 ./lib/onedraw.cpp
 ./tests/test.c
 ./tests/sokol_app.mm
 )
 
-add_dependencies(benchmark build_lib)
+add_dependencies(test build_lib)
 
-target_link_libraries(benchmark
+target_link_libraries(test
         "-framework Metal"
         "-framework MetalKit"
         "-framework AppKit"
