@@ -1,10 +1,10 @@
 # onedraw
-**GPU-driven 2D renderer drop-in library**
+**GPU-driven sdf 2D renderer drop-in library**
 
 `onedraw` is designed to render everything in a single draw call, maximizing GPU efficiency for 2D graphics. More details can be found in the [documentation](doc/index.md). It relies on Apple [Metal API](https://developer.apple.com/metal/cpp/), wave instructions, and indirect draw calls, so adapting it to other graphics APIs would require significant changes (but feel free to contact me if you want to do a port).
 
 ### Screenshot
-![OneDraw Screenshot](path/to/screenshot.png)  
+![OneDraw Screenshot](path/to/screenshot.png)
 *Placeholder screenshot – replace with a real render from your tests.*
 
 
@@ -25,24 +25,6 @@
 2. Add `onedraw.cpp` to your build system.  
 3. Create your window and provide the Metal device and drawable object.  
 
-See [tests/test.c](tests/test.c) for a full example using `sokol_app.h`.
-
-### Project structure
-
-
-```C
-
-onedraw
- |
- |--src         source files that will produce the library files
- |
- |--lib         the library to be included in a project
- |
- |--pre-build   source code to generate font, shader, library
- |
- |--tests       simple test with sokol_app, built after each commit
-
-```
 
 ### Minimal example
 ```c
@@ -91,5 +73,24 @@ sapp_desc sokol_main(int argc, char* argv[])
         .cleanup_cb = cleanup
     };
 }
+
+```
+
+See [tests/minimal.c](tests/test.c) for an example testing all features  using [sokol_app.h](https://github.com/floooh/sokol/blob/master/sokol_app.h) for the window management.
+
+### Project structure
+
+
+```C
+
+onedraw
+ |
+ |--src         source files that will produce the library files
+ |
+ |--lib         the library to be included in a project
+ |
+ |--pre-build   source code to generate font, shader, library
+ |
+ |--tests       examples and unit tests
 
 ```
