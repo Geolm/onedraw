@@ -17,6 +17,8 @@
 * **Baked font** – ready-to-use text rendering (custom fonts are planned).
 * **Wide shape support** – box, blurred box, rectangle, oriented box/rectangle, triangle, triangle ring, disc, circle, ellipse, arc, sector, textured quad, oriented textured quad.
 * **Shape operations** – shapes can be grouped (boolean add), and [smooth minimum](https://iquilezles.org/articles/smin/) is supported for more organic shapes.
+* **C99 API** – although the renderer is implemented in C++ using MetalCPP, the public interface is fully C99, so it can be used in C projects. All examples are written in C.
+
 
 ### Integration
 1. Copy all files from the `/lib` folder.  
@@ -58,7 +60,6 @@ void init(void)
 {
     renderer = od_init( &(onedraw_def)
     {
-        .allow_screenshot = true,
         .metal_device = (void*)sapp_metal_get_device(),
         .preallocated_buffer = malloc(od_min_memory_size()),
         .viewport_width = (uint32_t) sapp_width(),
@@ -76,6 +77,7 @@ void frame(void)
 void cleanup(void)
 {
     od_terminate(renderer);
+    free(renderer);
 }
 
 sapp_desc sokol_main(int argc, char* argv[])
@@ -89,6 +91,5 @@ sapp_desc sokol_main(int argc, char* argv[])
         .cleanup_cb = cleanup
     };
 }
-
 
 ```

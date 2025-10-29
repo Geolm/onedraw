@@ -8,12 +8,10 @@
 
 struct onedraw* renderer;
 
-// ---------------------------------------------------------------------------------------------------------------------------
 void init(void)
 {
     renderer = od_init( &(onedraw_def)
     {
-        .allow_screenshot = true,
         .metal_device = (void*)sapp_metal_get_device(),
         .preallocated_buffer = malloc(od_min_memory_size()),
         .viewport_width = (uint32_t) sapp_width(),
@@ -21,7 +19,6 @@ void init(void)
     });
 }
 
-// ---------------------------------------------------------------------------------------------------------------------------
 void frame(void)
 {
     od_begin_frame(renderer);
@@ -29,18 +26,14 @@ void frame(void)
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }
 
-// ---------------------------------------------------------------------------------------------------------------------------
 void cleanup(void)
 {
     od_terminate(renderer);
+    free(renderer);
 }
 
-// ---------------------------------------------------------------------------------------------------------------------------
 sapp_desc sokol_main(int argc, char* argv[])
 {
-    (void)(argc);
-    (void)(argv);
-
     return (sapp_desc) 
     {
         .width = 1280,
@@ -50,4 +43,3 @@ sapp_desc sokol_main(int argc, char* argv[])
         .cleanup_cb = cleanup
     };
 }
-
