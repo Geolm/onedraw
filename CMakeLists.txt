@@ -36,17 +36,17 @@ endif()
 
 # --- Benchmark ---
 
-add_executable(test
+add_executable(minimal
 ./lib/onedraw.cpp
-./tests/test.c
+./tests/minimal.c
 ./tests/sokol_app.mm
 )
 
 if(NOT CMAKE_GENERATOR STREQUAL "Xcode")
-    add_dependencies(test build_lib)
+    add_dependencies(minimal build_lib)
 endif()
 
-target_link_libraries(test
+target_link_libraries(minimal
         "-framework Metal"
         "-framework MetalKit"
         "-framework AppKit"
