@@ -1,7 +1,7 @@
 # onedraw
 **GPU-driven 2D renderer drop-in library**
 
-`onedraw` is designed to render everything in a single draw call, maximizing GPU efficiency for 2D graphics. More details can be found in the [documentation](doc/index.md).
+`onedraw` is designed to render everything in a single draw call, maximizing GPU efficiency for 2D graphics. More details can be found in the [documentation](doc/index.md). It relies on Apple [Metal API](https://developer.apple.com/metal/cpp/), wave instructions, and indirect draw calls, so adapting it to other graphics APIs would require significant changes (but feel free to contact me if you want to do a port).
 
 ### Screenshot
 ![OneDraw Screenshot](path/to/screenshot.png)  
