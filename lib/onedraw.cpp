@@ -697,7 +697,8 @@ void od_flush(struct onedraw* r, void* drawable)
 
     dispatch_semaphore_wait(r->semaphore, DISPATCH_TIME_FOREVER);
 
-    od_bin_commands(r);
+    if (r->commands.count)
+        od_bin_commands(r);
 
     MTL::RenderPassDescriptor* renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
     MTL::RenderPassColorAttachmentDescriptor* cd = renderPassDescriptor->colorAttachments()->object(0);
@@ -707,8 +708,7 @@ void od_flush(struct onedraw* r, void* drawable)
     cd->setStoreAction(MTL::StoreActionStore);
 
     MTL::RenderCommandEncoder* render_encoder = r->command_buffer->renderCommandEncoder(renderPassDescriptor);
-
-    if (r->rasterizer.pso != nullptr && r->tiles.binning_pso != nullptr)
+    if (r->commands.count)
     {
         render_encoder->setViewport((MTL::Viewport){.originX = 0, .originY = 0, .width = (double)r->rasterizer.width, .height = (double)r->rasterizer.height});
         render_encoder->setCullMode(MTL::CullModeNone);
@@ -729,8 +729,8 @@ void od_flush(struct onedraw* r, void* drawable)
         render_encoder->useResource(r->font.texture, MTL::ResourceUsageRead);
         render_encoder->setRenderPipelineState(r->rasterizer.pso);
         render_encoder->executeCommandsInBuffer(r->tiles.indirect_cb, NS::Range(0, 1));
-        render_encoder->endEncoding();
     }
+    render_encoder->endEncoding();
 
     r->command_buffer->addCompletedHandler(^void( MTL::CommandBuffer* pCmd )
     {
