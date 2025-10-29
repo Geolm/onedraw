@@ -29,17 +29,18 @@ void init(void)
 // ---------------------------------------------------------------------------------------------------------------------------
 void frame(void)
 {
-    // od_begin_frame(renderer);
+    if (sapp_metal_get_current_drawable() == NULL)
+        return;
 
-    // od_draw_text(renderer, 0, 0, "Hello world!", 0xffffffff);
-
-    // od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
+    od_begin_frame(renderer);
+    od_draw_text(renderer, 0, 0, "Hello world!", 0xffffffff);
+    od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
 void cleanup(void)
 {
-    custom_log("oh yeah");
+    
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -55,7 +56,6 @@ sapp_desc sokol_main(int argc, char* argv[])
         .init_cb = init,
         .frame_cb = frame,
         .cleanup_cb = cleanup,
-        .logger = 
     };
 }
 
