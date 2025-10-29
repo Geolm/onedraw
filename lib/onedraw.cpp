@@ -200,6 +200,7 @@ struct onedraw
         float group_smoothness {0.f};
         sdf_operator group_op;
         float outline_width {0.f};
+        bool srgb_backbuffer;
     } rasterizer;
 
     // font
@@ -353,7 +354,7 @@ void od_init_screenshot_resources(struct onedraw* r)
         MTL::TextureDescriptor* pTextureDesc = MTL::TextureDescriptor::alloc()->init();
         pTextureDesc->setWidth(r->rasterizer.width);
         pTextureDesc->setHeight(r->rasterizer.height);
-        pTextureDesc->setPixelFormat(MTL::PixelFormatBGRA8Unorm_sRGB);
+        pTextureDesc->setPixelFormat(r->rasterizer.srgb_backbuffer ? MTL::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormatBGRA8Unorm);
         pTextureDesc->setTextureType(MTL::TextureType2D);
         pTextureDesc->setMipmapLevelCount(1);
         pTextureDesc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite | MTL::TextureUsageRenderTarget);
@@ -474,7 +475,7 @@ MTL::ComputePipelineState* create_pso(struct onedraw* r, MTL::Library* pLibrary,
 
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_build_pso(struct onedraw* r, bool srgb_backbuffer)
+void od_build_pso(struct onedraw* r)
 {
     SAFE_RELEASE(r->regions.binning_pso);
     SAFE_RELEASE(r->tiles.binning_pso);
@@ -542,7 +543,7 @@ void od_build_pso(struct onedraw* r, bool srgb_backbuffer)
         pDesc->setSupportIndirectCommandBuffers(true);
 
         MTL::RenderPipelineColorAttachmentDescriptor *pRenderbufferAttachment = pDesc->colorAttachments()->object(0);
-        pRenderbufferAttachment->setPixelFormat(srgb_backbuffer ? MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormat::PixelFormatBGRA8Unorm);
+        pRenderbufferAttachment->setPixelFormat(r->rasterizer.srgb_backbuffer ? MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormat::PixelFormatBGRA8Unorm);
         pRenderbufferAttachment->setBlendingEnabled(false);
         r->rasterizer.pso = r->device->newRenderPipelineState( pDesc, &pError );
 
@@ -789,6 +790,7 @@ struct onedraw* od_init(onedraw_def* def)
     r->device = (MTL::Device*)def->metal_device;
     r->command_queue = r->device->newCommandQueue();
     r->screenshot.allocate_resources = def->allow_screenshot;
+    r->rasterizer.srgb_backbuffer = def->srgb_backbuffer;
 
     if (r->command_queue == nullptr)
     {
@@ -821,7 +823,7 @@ struct onedraw* od_init(onedraw_def* def)
     assert(sizeof(alphabet) == default_font_size);
     r->font.desc = *((alphabet*) default_font);
 
-    od_build_pso(r, def->srgb_backbuffer);
+    od_build_pso(r);
     od_build_font(r);
     od_build_depthstencil_state(r);
     od_resize(r, def->viewport_width, def->viewport_height);
