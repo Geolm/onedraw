@@ -3,9 +3,8 @@
 
 #include <stddef.h>
 
-const size_t binning_shader_size = 31144;
-const char* binning_shader =
-
+static const size_t binning_shader_size = 31144;
+static const char binning_shader[] =
     "#include <metal_stdlib>\n"
     "#ifndef __COMMON_H__\n"
     "#define __COMMON_H__\n"
@@ -901,4 +900,5 @@ const char* binning_shader =
     "}\n"
     "\n"
 ;
-#endif
+
+#endif // __binning_shader__H__

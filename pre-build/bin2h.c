@@ -32,42 +32,57 @@ bool bin2h(const char* filename, const char* variable, const void* buffer, size_
 }
 
 //-------------------------------------------------------------------------------------------------
+#include <stdio.h>
+#include <stdbool.h>
+#include <ctype.h>
+#include <stdint.h>
+
 bool string2h(const char* filename, const char* variable, const char* string, size_t length)
 {
-    FILE *f = fopen(filename, "wt");
-    if (f == NULL)
+    FILE* f = fopen(filename, "wt");
+    if (!f)
         return false;
 
     fprintf(f, "#ifndef __%s__H__\n", variable);
     fprintf(f, "#define __%s__H__\n\n", variable);
     fprintf(f, "#include <stddef.h>\n\n");
-    fprintf(f, "const size_t %s_size = %zu;\n", variable, length);
-    fprintf(f, "const char* %s =\n", variable);
+    fprintf(f, "static const size_t %s_size = %zu;\n", variable, length);
+    fprintf(f, "static const char %s[] =\n", variable);
 
-    size_t index = 0;
-    while (index<length)
+    const unsigned char* bytes = (const unsigned char*)string;
+    size_t i = 0;
+
+    while (i < length)
     {
-        fprintf(f, "\n    \"");
-        while (index < length && string[index] != '\n')
+        fprintf(f, "    \"");
+        while (i < length && bytes[i] != '\n')
         {
-            char c = string[index++];
-            switch(c)
+            unsigned char c = bytes[i++];
+            switch (c)
             {
-            case '\"' : fprintf(f, "\\\"");break;
-            case '\\' : fprintf(f, "\\\\");break;
-            default:putc(c, f);
+                case '\"': fprintf(f, "\\\""); break;
+                case '\\': fprintf(f, "\\\\"); break;
+                case '\r': fprintf(f, "\\r"); break;
+                case '\t': fprintf(f, "\\t"); break;
+                default:
+                    if (isprint(c))
+                        putc(c, f);
+                    else
+                        fprintf(f, "\\x%02X", c);
+                    break;
             }
         }
-        
-        fprintf(f, "\\n\"");
-        index++;
+
+        fprintf(f, "\\n\"\n");
+        if (i < length && bytes[i] == '\n')
+            i++;
     }
 
-    fprintf(f, "\n;\n#endif\n");
+    fprintf(f, ";\n\n#endif // __%s__H__\n", variable);
     fclose(f);
-
     return true;
 }
+
 
 //-------------------------------------------------------------------------------------------------
 bool uint2h(const char* filename, const char* variable, const uint32_t* buffer, size_t length)

@@ -3,9 +3,8 @@
 
 #include <stddef.h>
 
-const size_t rasterization_shader_size = 21125;
-const char* rasterization_shader =
-
+static const size_t rasterization_shader_size = 21125;
+static const char rasterization_shader[] =
     "#include <metal_stdlib>\n"
     "#define RASTERIZER_SHADER\n"
     "#ifndef __COMMON_H__\n"
@@ -308,7 +307,7 @@ const char* rasterization_shader =
     "    position = float2x2(direction.x,-direction.y, direction.y, direction.x) * position;\n"
     "    position.x = abs(position.x);\n"
     "    float l = length(position) - radius;\n"
-    "	float m = length(position - aperture*clamp(dot(position,aperture),0.f,radius));\n"
+    "\tfloat m = length(position - aperture*clamp(dot(position,aperture),0.f,radius));\n"
     "    return max(l,m*sign(aperture.y*position.x - aperture.x*position.y));\n"
     "}\n"
     "\n"
@@ -609,4 +608,5 @@ const char* rasterization_shader =
     "    return output;\n"
     "}\n"
 ;
-#endif
+
+#endif // __rasterization_shader__H__
