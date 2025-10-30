@@ -99,6 +99,9 @@ onedraw
 ### Links and references
 
 [Metal API](https://developer.apple.com/metal/cpp/)
+
 [Inigo Quilez's articles](https://iquilezles.org/articles/)
+
 [Sokol libraries](https://github.com/floooh/sokol)
+
 [Satoshi font](https://www.fontshare.com/?q=Satoshi)
