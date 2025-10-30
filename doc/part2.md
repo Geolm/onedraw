@@ -29,9 +29,8 @@ To reduce this, we introduce **hierarchical binning** — pre-building a list of
 A region covers **16 × 16 tiles**, and each region keeps a list of the commands that affect it.  
 When binning individual tiles, we only consider the commands from that region’s list instead of all global commands.
 
-This sounds great, but there’s a catch:  
-When binning commands for the region in CS, if we assign one thread per region, it becomes very slow — there are relatively few regions but potentially many commands.  
-GPUs perform best when running **a large number of lightweight threads**, not a few heavy ones.
+This sounds great, but there’s a catch:
+When binning commands for the region in a compute shader, if we assign one thread per region, it becomes very slow — there are relatively few regions but potentially many commands. GPUs perform best when running **a large number of lightweight threads**, not a few heavy ones.
 
 To fix this, we **invert the process**: each thread processes a single command and adds it to the region lists it intersects.  
 However, since this happens in parallel, we lose the guaranteed **ordering of commands**, which is critical in 2D rendering.
