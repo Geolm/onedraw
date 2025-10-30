@@ -1,7 +1,7 @@
 # onedraw
 **GPU-driven sdf 2D renderer drop-in library**
 
-`onedraw` is designed to render everything in a single draw call, maximizing GPU efficiency for 2D graphics. More details can be found in the [documentation](doc/index.md). It relies on Apple [Metal API](https://developer.apple.com/metal/cpp/), wave instructions, and indirect draw calls, so adapting it to other graphics APIs would require significant changes (but feel free to contact me if you want to do a port).
+`onedraw` is designed to render everything in a single draw call, maximizing GPU efficiency for 2D graphics. More details can be found in the [documentation](doc/index.md). It relies on Apple Metal API, wave instructions, and indirect draw calls, so adapting it to other graphics APIs would require significant changes (but feel free to contact me if you want to do a port).
 
 ### Screenshot
 ![OneDraw Screenshot](path/to/screenshot.png)
@@ -16,7 +16,7 @@
 * **Lightweight and minimal** – drop-in library with minimal dependencies.
 * **Baked font** – ready-to-use text rendering (custom fonts are planned).
 * **Wide shape support** – box, blurred box, rectangle, oriented box/rectangle, triangle, triangle ring, disc, circle, ellipse, arc, sector, textured quad, oriented textured quad.
-* **Shape operations** – shapes can be grouped (boolean add), and [smooth minimum](https://iquilezles.org/articles/smin/) is supported for more organic shapes.
+* **Shape operations** – shapes can be grouped (boolean add), [smooth minimum](https://iquilezles.org/articles/smin/) is supported for more organic shapes and outline can be drawn around entire group.
 * **C99 API** – although the renderer is implemented in C++ using MetalCPP, the public interface is fully C99, so it can be used in C projects. All examples are written in C.
 
 
@@ -94,3 +94,11 @@ onedraw
  |--tests       examples and unit tests
 
 ```
+
+
+### Links and references
+
+[Metal API](https://developer.apple.com/metal/cpp/)
+[Inigo Quilez's articles](https://iquilezles.org/articles/)
+[Sokol libraries](https://github.com/floooh/sokol)
+[Satoshi font](https://www.fontshare.com/?q=Satoshi)
