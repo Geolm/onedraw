@@ -47,15 +47,6 @@ typedef struct od_quad_uv
     float br_u, br_v;   // bottom-right uv;
 } od_quad_uv;
 
-typedef struct od_texture
-{
-    const void* pixels_data;
-    uint32_t width;
-    uint32_t height;
-    uint32_t byte_per_row;
-    uintptr_t pixel_format;     // MTL::PixelFormat is uintptr_t
-} od_texture;
-
 typedef struct od_stats
 {
     uint32_t frame_index;
@@ -84,18 +75,9 @@ typedef struct onedraw_def
     struct
     {
         uint32_t width, height;
-        uintptr_t pixel_format;     // MTL::PixelFormat is uintptr_t
         uint32_t num_slices;        // Max 256
     } texture_array;
 
-    struct 
-    {
-        od_glyph* glyphs;
-        uint32_t num_glyphs;
-        uint32_t first_glyph;
-        float height_in_pixels;
-        od_texture texture;
-    } font;
 } onedraw_def;
 
 typedef uint32_t draw_color; // color is expected to be B8G8R8A8 and in sRGB color space
@@ -121,7 +103,21 @@ size_t od_min_memory_size();
 //      [viewport_height]
 //      [log_func]              pointer to the log function, can be NULL if no log required
 //      [allow_screenshot]      if true buffers are allocated for screenshot
+//      [texture_array]
+//          [width]             width of all textures in the array, if 0 (undefined) the array won't be created
+//          [height]            
+//          [num_slices]        must be < 256. each quad can use a specific slice. 
 struct onedraw* od_init(onedraw_def* def);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Uploads (or replaces) a slice of the texture array
+//      [pixel_data]            pointer to the pixel data in B8G8R8A8_srgb format
+//      [slice_index]           must be < num_slices
+//
+// warning: textures are stored in shared memory.
+//          updating a slice while it’s being sampled by the GPU may cause flickering or corruption.
+//          the user is responsible for synchronizing uploads.
+void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_index);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Sets-up the capture region for screenshots

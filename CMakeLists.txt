@@ -34,7 +34,7 @@ if(NOT CMAKE_GENERATOR STREQUAL "Xcode")
 
 endif()
 
-# --- Benchmark ---
+# --- Minimal ---
 
 add_executable(minimal
 ./lib/onedraw.cpp
@@ -47,6 +47,25 @@ if(NOT CMAKE_GENERATOR STREQUAL "Xcode")
 endif()
 
 target_link_libraries(minimal
+        "-framework Metal"
+        "-framework MetalKit"
+        "-framework AppKit"
+        "-framework Foundation"
+        "-framework QuartzCore")
+
+# --- Test ---
+
+add_executable(test
+./lib/onedraw.cpp
+./tests/test.c
+./tests/sokol_app.mm
+)
+
+if(NOT CMAKE_GENERATOR STREQUAL "Xcode")
+    add_dependencies(test build_lib)
+endif()
+
+target_link_libraries(test
         "-framework Metal"
         "-framework MetalKit"
         "-framework AppKit"

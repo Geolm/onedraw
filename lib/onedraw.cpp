@@ -193,6 +193,7 @@ struct onedraw
     {
         MTL::RenderPipelineState* pso {nullptr};
         MTL::DepthStencilState* depth_stencil_state {nullptr};
+        MTL::Texture* texture_array {nullptr};
         float4 clear_color {.x = 0.f, .y = 0.f, .z = 0.f, .w = 1.f};
         uint16_t width;
         uint16_t height;
@@ -376,6 +377,27 @@ void od_init_screenshot_resources(struct onedraw* r)
     {
         r->screenshot = {};
     }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_create_texture_array(struct onedraw* r, uint32_t width, uint32_t height, uint32_t slice_count)
+{
+    assert(slice_count < UINT8_MAX);
+    MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
+    desc->setTextureType(MTL::TextureType2DArray);
+    desc->setPixelFormat(MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB);
+    desc->setWidth(width);
+    desc->setHeight(height);
+    desc->setArrayLength(slice_count);
+    desc->setMipmapLevelCount(1);
+    desc->setUsage(MTL::TextureUsageShaderRead);
+    desc->setStorageMode(MTL::StorageModeShared);
+
+    r->rasterizer.texture_array = r->device->newTexture(desc);
+    desc->release();
+
+    if (r->rasterizer.texture_array == nullptr)
+        od_log(r, "can't create texture array (width:%u height:%u slice_count%u)", width, height, slice_count);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -828,7 +850,30 @@ struct onedraw* od_init(onedraw_def* def)
     od_build_depthstencil_state(r);
     od_resize(r, def->viewport_width, def->viewport_height);
 
+    if (def->texture_array.width != 0)
+        od_create_texture_array(r, def->texture_array.width, def->texture_array.height, def->texture_array.num_slices);
+
     return r;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_index)
+{
+    assert(slice_index<r->rasterizer.texture_array->arrayLength());
+
+    const NS::UInteger bpp = 4;   // MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB
+    const NS::UInteger bytes_per_row = r->rasterizer.texture_array->width() * bpp;
+
+    MTL::Region region = MTL::Region::Make2D(0, 0, r->rasterizer.texture_array->width(), r->rasterizer.texture_array->height());
+
+    r->rasterizer.texture_array->replaceRegion(
+        region,
+        0,  // no mipmap
+        slice_index,
+        pixel_data,
+        bytes_per_row,
+        bytes_per_row * r->rasterizer.texture_array->height()
+    );
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -951,6 +996,7 @@ void od_terminate(struct onedraw* r)
     SAFE_RELEASE(r->tiles.write_icb_pso);
     SAFE_RELEASE(r->rasterizer.pso);
     SAFE_RELEASE(r->rasterizer.depth_stencil_state);
+    SAFE_RELEASE(r->rasterizer.texture_array);
     SAFE_RELEASE(r->command_queue);
     SAFE_RELEASE(r->font.texture);
     SAFE_RELEASE(r->font.glyphs);
