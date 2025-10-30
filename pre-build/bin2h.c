@@ -1,6 +1,7 @@
 
 #include "bin2h.h"
 #include <stdio.h>
+#include <ctype.h>
 
 //-------------------------------------------------------------------------------------------------
 bool bin2h(const char* filename, const char* variable, const void* buffer, size_t length)
@@ -13,8 +14,8 @@ bool bin2h(const char* filename, const char* variable, const void* buffer, size_
     fprintf(f, "#define __%s__H__\n\n", variable);
     fprintf(f, "#include <stdint.h>\n");
     fprintf(f, "#include <stddef.h>\n\n");
-    fprintf(f, "const size_t %s_size = %zu;\n", variable, length);
-    fprintf(f, "const uint8_t %s[%zu] =\n{\n    ", variable, length);
+    fprintf(f, "static const size_t %s_size = %zu;\n", variable, length);
+    fprintf(f, "static const uint8_t %s[] =\n{\n    ", variable);
 
     const uint8_t* input = (const uint8_t*)buffer;
     size_t index = 0;
@@ -32,11 +33,6 @@ bool bin2h(const char* filename, const char* variable, const void* buffer, size_
 }
 
 //-------------------------------------------------------------------------------------------------
-#include <stdio.h>
-#include <stdbool.h>
-#include <ctype.h>
-#include <stdint.h>
-
 bool string2h(const char* filename, const char* variable, const char* string, size_t length)
 {
     FILE* f = fopen(filename, "wt");
