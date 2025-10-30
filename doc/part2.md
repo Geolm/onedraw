@@ -30,7 +30,7 @@ A region covers **16 × 16 tiles**, and each region keeps a list of the commands
 When binning individual tiles, we only consider the commands from that region’s list instead of all global commands.
 
 This sounds great, but there’s a catch:  
-if we assign one thread per region, it becomes very slow — there are relatively few regions but potentially many commands.  
+When binning commands for the region in CS, if we assign one thread per region, it becomes very slow — there are relatively few regions but potentially many commands.  
 GPUs perform best when running **a large number of lightweight threads**, not a few heavy ones.
 
 To fix this, we **invert the process**: each thread processes a single command and adds it to the region lists it intersects.  
@@ -38,13 +38,13 @@ However, since this happens in parallel, we lose the guaranteed **ordering of co
 
 ## Predicate + exclusive scan
 
-We use the classic pattern :
+To keep the order of commands, we use the classic pattern :
 
 ![predicate](predicate.png)
 
 * A **predicate compute shader** evaluates the visibility of each command (one thread per command) and writes the result — `0` or `1` — to a buffer.  
 * An **exclusive scan compute shader** then processes this buffer to build a compact list of visible command indices.  
-* Finally, another compute shader uses this list to write the corresponding commands into the output buffer.  
+* Finally, another compute shader uses this predicate and the indices lists to write the corresponding commands into the output buffer.  
   This approach allows us to keep a **thread-per-command** model while efficiently filtering out invisible ones.
 
 This process is applied for all regions.

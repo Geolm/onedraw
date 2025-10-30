@@ -31,8 +31,8 @@
 #define CPU_GPU_COMMON_FILE     "common.h"
 
 
-#define SDF2D_MAJOR_VERSION (0)
-#define SDF2D_MINOR_VERSION (2)
+#define ONEDRAW_MAJOR_VERSION (0)
+#define ONEDRAW_MINOR_VERSION (3)
 
 // ---------------------------------------------------------------------------------------------------------------------------
 void* read_file(const char* filename, size_t* file_size, Arena* arena)
@@ -187,7 +187,7 @@ int main(int argc, const char * argv[])
 
     Arena arena = {0};
 
-    fprintf(stdout, "sdf2d %u.%u library builder\n\n", SDF2D_MAJOR_VERSION, SDF2D_MINOR_VERSION);
+    fprintf(stdout, "onedraw %u.%u library builder\n\n", ONEDRAW_MAJOR_VERSION, ONEDRAW_MINOR_VERSION);
 
     bool success = build_font(&arena, 32.f, 256, 256);
     if (!success)
@@ -207,7 +207,7 @@ int main(int argc, const char * argv[])
 
     size_t bytes_allocated, bytes_used;
     arena_stats(&arena, &bytes_allocated, &bytes_used);
-    fprintf(stdout, "\npeak memory usage %zukb\n", bytes_allocated>>10);
+    fprintf(stdout, "\npeak memory usage %zukb\n\n", bytes_allocated>>10);
     arena_free(&arena);
 
     return success ? 0 : -1;

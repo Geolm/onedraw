@@ -555,7 +555,6 @@ kernel void region_bin(constant draw_cmd_arguments& input [[buffer(0)]],
 // ---------------------------------------------------------------------------------------------------------------------------
 // linked-list cleaning
 //      * detect combination with no primitive and skip it
-//      * we remove begin/end on combination with only one primitive
 // ---------------------------------------------------------------------------------------------------------------------------
 void clean_list(device tiles_data& tiles, uint16_t tile_index)
 {

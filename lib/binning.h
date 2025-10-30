@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-const size_t binning_shader_size = 31213;
+const size_t binning_shader_size = 31144;
 const char* binning_shader =
 
     "#include <metal_stdlib>\n"
@@ -751,7 +751,6 @@ const char* binning_shader =
     "// ---------------------------------------------------------------------------------------------------------------------------\n"
     "// linked-list cleaning\n"
     "//      * detect combination with no primitive and skip it\n"
-    "//      * we remove begin/end on combination with only one primitive\n"
     "// ---------------------------------------------------------------------------------------------------------------------------\n"
     "void clean_list(device tiles_data& tiles, uint16_t tile_index)\n"
     "{\n"
