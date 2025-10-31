@@ -321,7 +321,6 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                             distance = texel * input.aa_width;
                         }
                     }
-
                     break;
                 }
                 case primitive_triangle:
@@ -372,6 +371,24 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
 
                     distance = dist_alpha.x;
                     cmd_color.a *= dist_alpha.y;
+                    break;
+                }
+                case primitive_quad:
+                {
+                    float2 top_left = float2(data[0], data[1]);
+                    float2 bottom_right = float2(data[2], data[3]);
+                    float2 uv_topleft = float2(data[4], data[5]);
+                    float2 uv_bottomright = float2(data[6], data[7]);
+                    float2 t = (in.pos.xy - top_left) / (bottom_right - top_left);
+
+                    if (all(t >= 0.f && t <= 1.f))
+                    {
+                        float2 uv = mix(uv_topleft, uv_bottomright, t);
+                        constexpr sampler s(address::clamp_to_zero, filter::linear );
+                        cmd_color = input.atlas.sample(s, uv, extra);
+                        distance = 0.f;
+                    }
+
                     break;
                 }
                 default: break;

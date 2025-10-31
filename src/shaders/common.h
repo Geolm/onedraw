@@ -28,6 +28,7 @@
 #define device
 #define command_buffer void*
 #define texture_half uint64_t
+#define texture_array uint64_t
 #ifdef __cplusplus
     typedef struct alignas(8) {float x, y;} float2;
     typedef struct alignas(16) {float x, y, z, w;} float4;
@@ -38,6 +39,7 @@
 #else
 using namespace metal;
 #define texture_half texture2d<half>
+#define texture_array texture2d_array<half>
 #endif
 
 // packed on 6 bits
@@ -140,6 +142,7 @@ typedef struct draw_cmd_arguments
     constant clip_rect* clips;
     constant font_char* glyphs;
     texture_half font;
+    texture_array atlas;
     float4 clear_color;
     uint32_t num_commands;
     uint32_t max_nodes;

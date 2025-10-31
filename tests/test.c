@@ -132,7 +132,7 @@ void init(void)
         .viewport_height = (uint32_t) sapp_height(),
         .log_func = custom_log,
         .srgb_backbuffer = false,
-        .texture_array = 
+        .atlas = 
         {
             .width = TEX_SIZE,
             .height = TEX_SIZE,
@@ -231,6 +231,11 @@ void frame(void)
     od_draw_disc(renderer, cx + cosf(PI_4) * radius * .5f, cy - sinf(PI_4) * radius * .5f, radius*0.25f, miya_light_green);
     od_end_group(renderer, miya_brown);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_begin_group", miya_brown);
+
+
+    slot(15, &cx, &cy, &radius);
+    od_draw_quad(renderer, cx-radius, cy-radius, cx+radius, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 0, 0xffffffff);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_quad", miya_brown);
 
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }

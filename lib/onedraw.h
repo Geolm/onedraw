@@ -76,7 +76,7 @@ typedef struct onedraw_def
     {
         uint32_t width, height;
         uint32_t num_slices;        // Max 256
-    } texture_array;
+    } atlas;
 
 } onedraw_def;
 

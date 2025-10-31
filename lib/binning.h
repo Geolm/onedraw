@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t binning_shader_size = 31223;
+static const size_t binning_shader_size = 31323;
 static const char binning_shader[] =
     "#include <metal_stdlib>\n"
     "#ifndef __COMMON_H__\n"
@@ -36,6 +36,7 @@ static const char binning_shader[] =
     "#define device\n"
     "#define command_buffer void*\n"
     "#define texture_half uint64_t\n"
+    "#define texture_array uint64_t\n"
     "#ifdef __cplusplus\n"
     "    typedef struct alignas(8) {float x, y;} float2;\n"
     "    typedef struct alignas(16) {float x, y, z, w;} float4;\n"
@@ -46,6 +47,7 @@ static const char binning_shader[] =
     "#else\n"
     "using namespace metal;\n"
     "#define texture_half texture2d<half>\n"
+    "#define texture_array texture2d_array<half>\n"
     "#endif\n"
     "\n"
     "// packed on 6 bits\n"
@@ -148,6 +150,7 @@ static const char binning_shader[] =
     "    constant clip_rect* clips;\n"
     "    constant font_char* glyphs;\n"
     "    texture_half font;\n"
+    "    texture_array atlas;\n"
     "    float4 clear_color;\n"
     "    uint32_t num_commands;\n"
     "    uint32_t max_nodes;\n"
