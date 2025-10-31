@@ -196,7 +196,10 @@ void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_co
 //      [slide_index]           index of the texture in the array
 //      [srgb_color]            color that will multiply by the texture's fragment
 void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color);
-void od_draw_oriented_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_quad_uv uv, float angle, uint32_t slice_index, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a oriented textured quad
+void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, float height, float angle, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color);
 
 #ifdef __cplusplus
 }

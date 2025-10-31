@@ -98,8 +98,8 @@ static inline float sd_ellipse(float2 p, float2 e)
 static inline float sd_oriented_ellipse(float2 position, float2 a, float2 b, float width)
 {
     float height = length(b-a);
-    float2  axis = (b-a)/height;
-    float2  position_translated = (position-(a+b)*.5f);
+    float2 axis = (b-a)/height;
+    float2 position_translated = (position-(a+b)*.5f);
     float2 position_boxspace = float2x2(axis.x,-axis.y, axis.y, axis.x)*position_translated;
     return sd_ellipse(position_boxspace, float2(height * .5f, width * .5f));
 }
@@ -217,6 +217,7 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                        constant draw_cmd_arguments& input [[buffer(0)]],
                        device tiles_data& tiles [[buffer(1)]])
 {
+    constexpr sampler s_linear(address::clamp_to_zero, filter::linear );
     half4 output = input.culling_debug ? half4(0.f, 0.f, 1.0f, 1.0f) : half4(input.clear_color);
     uint32_t node_index = tiles.head[in.tile_index];
     if (node_index == INVALID_INDEX)
@@ -316,8 +317,7 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                         if (all(t >= 0.f && t <= 1.f))
                         {
                             float2 uv = mix(uv_topleft, uv_bottomright, t);
-                            constexpr sampler s(address::clamp_to_zero, filter::linear );
-                            half texel = 1.h - input.font.sample(s, uv).r;
+                            half texel = 1.h - input.font.sample(s_linear, uv).r;
                             distance = texel * input.aa_width;
                         }
                     }
@@ -384,13 +384,34 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                     if (all(t >= 0.f && t <= 1.f))
                     {
                         float2 uv = mix(uv_topleft, uv_bottomright, t);
-                        constexpr sampler s(address::clamp_to_zero, filter::linear );
-                        cmd_color = input.atlas.sample(s, uv, extra);
+                        cmd_color *= input.atlas.sample(s_linear, uv, extra);
                         distance = 0.f;
                     }
-
                     break;
                 }
+
+                case primitive_oriented_quad:
+                {
+                    float2 center = float2(data[0], data[1]);
+                    float2 dimensions = float2(data[2], data[3]);
+                    float2 axis = float2(data[4], data[5]);
+                    float2 uv_topleft = float2(data[6], data[7]);
+                    float2 uv_bottomright = float2(data[8], data[9]);
+
+                    float2 relative = in.pos.xy - center;
+                    float2 t = float2(dot(axis, relative), dot(skew(axis), relative));
+                    t *= dimensions;
+                    t += .5f;
+
+                    if (all(t >= 0.f && t <= 1.f))
+                    {
+                        float2 uv = mix(uv_topleft, uv_bottomright, t);
+                        cmd_color *= input.atlas.sample(s_linear, uv, extra);
+                        distance = 0.f;
+                    }
+                    break;
+                }
+
                 default: break;
                 }
 

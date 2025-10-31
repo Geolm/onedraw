@@ -650,7 +650,8 @@ void od_bin_commands(struct onedraw* r)
         args->clear_color = r->rasterizer.clear_color;
     else
     {
-        // clear color for the shader is linear
+        // clear color for the shader is linear the backbuffer is linear as we do
+        // the conversion to srgb at the end of the fragment
         args->clear_color.x = srgb_to_linear(r->rasterizer.clear_color.x);
         args->clear_color.y = srgb_to_linear(r->rasterizer.clear_color.y);
         args->clear_color.z = srgb_to_linear(r->rasterizer.clear_color.z);
@@ -1590,6 +1591,48 @@ void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
+void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, float height, float angle, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color)
+{
+    assert(slice_index < r->rasterizer.atlas->arrayLength());
+
+    if (width < HALF_PIXEL || height < HALF_PIXEL)
+        return;
+
+    vec2 center = {cx, cy};
+    vec2 axis = vec2_angle(angle);
+    vec2 dir = vec2_scale(axis, width*.5f);
+    vec2 p0 = vec2_sub(center, dir);
+    vec2 p1 = vec2_add(center, dir);
+
+    draw_command* cmd = r->commands.buffer.NewElement();
+    draw_color* color = r->commands.colors.NewElement();
+    if (cmd != nullptr && color != nullptr)
+    {
+        cmd->clip_index = LAST_CLIP_INDEX;
+        cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
+        cmd->fillmode = fill_solid;
+        cmd->type = primitive_oriented_quad;
+        cmd->extra = (uint8_t) slice_index;
+
+        *color = srgb_color;
+
+        float* data = r->commands.data_buffer.NewMultiple(10);
+        quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
+        if (data != nullptr && aabox != nullptr)
+        {
+            write_float(data, cx, cy, 1.f/width, 1.f/height, axis.x, axis.y, uv.u0, uv.v0, uv.u1, uv.v1);
+            aabb bb = aabb_from_rounded_obb(p0, p1, height, 0.f);
+            write_quantized_aabb(aabox, bb.min.x, bb.min.y, bb.max.x, bb.max.y);
+            merge_quantized_aabb(r->commands.group_aabb, aabox);
+            return;
+        }
+        r->commands.buffer.RemoveLast();
+        r->commands.colors.RemoveLast();
+    }
+    od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
 float od_text_height(struct onedraw* r)
 {
     return r->font.desc.font_height;
@@ -1622,7 +1665,7 @@ void od_set_clear_color(struct onedraw* r, draw_color srgb_color)
         r->rasterizer.clear_color.x = srgb_to_linear(r8);
         r->rasterizer.clear_color.y = srgb_to_linear(g8);
         r->rasterizer.clear_color.z = srgb_to_linear(b8);
-        r->rasterizer.clear_color.w = a8; // alpha stays linear
+        r->rasterizer.clear_color.w = a8;
     }
     else
     {

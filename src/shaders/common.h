@@ -55,6 +55,7 @@ enum command_type
     primitive_arc = 7,
     primitive_blurred_box = 8,
     primitive_quad = 9,
+    primitive_oriented_quad = 10,
     
     begin_group = 32,
     end_group = 33
