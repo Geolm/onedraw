@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
+project(onedraw)
 
 if(CMAKE_GENERATOR STREQUAL "Xcode")
     set(CMAKE_MACOSX_BUNDLE TRUE)
@@ -12,62 +13,45 @@ set(CMAKE_C_FLAGS_RELEASE "-O3 -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DDEBUG -Wall -Wextra")
 
-project(onedraw)
-
+# --- Optionally trigger pre-build ---
 if(NOT CMAKE_GENERATOR STREQUAL "Xcode")
-
-    add_executable(builder
-    ./pre-build/bc4_encoder.c
-    ./pre-build/bin2h.c
-    ./pre-build/builder.c
-    ./pre-build/shader_reader.c
-    )
-
-    add_custom_command(
-        TARGET builder
-        POST_BUILD
-        COMMAND builder
-        COMMENT "Building library ..."
-    )
-
-    add_custom_target(build_lib ALL DEPENDS builder)
-
+    add_subdirectory(pre-build)
 endif()
 
 # --- Minimal ---
-
 add_executable(minimal
-./lib/onedraw.cpp
-./tests/minimal.c
-./tests/sokol_app.mm
+    ./lib/onedraw.cpp
+    ./tests/minimal.c
+    ./tests/sokol_app.mm
 )
 
-if(NOT CMAKE_GENERATOR STREQUAL "Xcode")
+if(TARGET build_lib)
     add_dependencies(minimal build_lib)
 endif()
 
 target_link_libraries(minimal
-        "-framework Metal"
-        "-framework MetalKit"
-        "-framework AppKit"
-        "-framework Foundation"
-        "-framework QuartzCore")
-
-# --- Test ---
-
-add_executable(test
-./lib/onedraw.cpp
-./tests/test.c
-./tests/sokol_app.mm
+    "-framework Metal"
+    "-framework MetalKit"
+    "-framework AppKit"
+    "-framework Foundation"
+    "-framework QuartzCore"
 )
 
-if(NOT CMAKE_GENERATOR STREQUAL "Xcode")
+# --- Test ---
+add_executable(test
+    ./lib/onedraw.cpp
+    ./tests/test.c
+    ./tests/sokol_app.mm
+)
+
+if(TARGET build_lib)
     add_dependencies(test build_lib)
 endif()
 
 target_link_libraries(test
-        "-framework Metal"
-        "-framework MetalKit"
-        "-framework AppKit"
-        "-framework Foundation"
-        "-framework QuartzCore")
+    "-framework Metal"
+    "-framework MetalKit"
+    "-framework AppKit"
+    "-framework Foundation"
+    "-framework QuartzCore"
+)

@@ -17,15 +17,15 @@
 
 #define UNUSED_VARIABLE(a) (void)(a)
 
-#define LIB_FOLDER "../lib/"
-#define FONT_FILENAME "../fonts/Satoshi-Medium.otf"
-#define FONT_H "../lib/default_font_atlas.h"
-#define GLYPH_H "../lib/default_font.h"
+#define LIB_FOLDER "lib/"
+#define FONT_FILENAME "fonts/Satoshi-Medium.otf"
+#define FONT_H "lib/default_font_atlas.h"
+#define GLYPH_H "lib/default_font.h"
 #define FONT_CHAR_FIRST 33
 #define FONT_CHAR_LAST 126
 #define FONT_NUM_CHARS 95
-#define SHADERS_FOLDER    "../src/shaders/"
-#define SOURCE_FOLDER   "../src/"
+#define SHADERS_FOLDER    "src/shaders/"
+#define SOURCE_FOLDER   "src/"
 #define BINNING_SHADER          "binning.metal"
 #define RASTERIZER_SHADER       "rasterizer.metal"
 #define CPU_GPU_COMMON_FILE     "common.h"
