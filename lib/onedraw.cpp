@@ -436,6 +436,15 @@ void writeTGA(const char* filename, uint8_t* pixels, uint32_t width, uint32_t he
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
+static inline float srgb_to_linear(float c)
+{
+    if (c <= 0.04045f)
+        return c / 12.92f;
+    else
+        return powf((c + 0.055f) / 1.055f, 2.4f);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
 static inline uint32_t optimal_num_threads(uint32_t num_elements, uint32_t simd_group_size, uint32_t max_threads)
 {
     uint32_t rounded = (num_elements + simd_group_size - 1) / simd_group_size;
@@ -637,7 +646,17 @@ void od_bin_commands(struct onedraw* r)
 
     // fill common structures
     draw_cmd_arguments* args = r->commands.draw_arg.Map(r->stats.frame_index);
-    args->clear_color = r->rasterizer.clear_color;
+
+    if (r->rasterizer.srgb_backbuffer)
+        args->clear_color = r->rasterizer.clear_color;
+    else
+    {
+        // clear color for the shader is linear
+        args->clear_color.x = srgb_to_linear(r->rasterizer.clear_color.x);
+        args->clear_color.y = srgb_to_linear(r->rasterizer.clear_color.y);
+        args->clear_color.z = srgb_to_linear(r->rasterizer.clear_color.z);
+        args->clear_color.w = r->rasterizer.clear_color.w;
+    }
     args->aa_width = r->rasterizer.aa_width;
     args->commands_aabb = (quantized_aabb*) r->commands.aabb_buffer.GetBuffer(r->stats.frame_index)->gpuAddress();
     args->commands = (draw_command*) r->commands.buffer.GetBuffer(r->stats.frame_index)->gpuAddress();
@@ -1578,15 +1597,6 @@ float od_text_width(struct onedraw* r, const char* text)
             width += r->font.desc.glyphs['_'- r->font.desc.first_glyph].advance_x * .65f;
     }
     return width;
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-static inline float srgb_to_linear(float c)
-{
-    if (c <= 0.04045f)
-        return c / 12.92f;
-    else
-        return powf((c + 0.055f) / 1.055f, 2.4f);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

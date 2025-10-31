@@ -170,6 +170,9 @@ void frame(void)
     slot(2, &cx, &cy, &radius);
     od_draw_box(renderer, cx - radius, cy - radius*.5f, cx + radius, cy + radius*.5f, radius * 0.05f, miya_grey);
 
+    slot(3, &cx, &cy, &radius);
+    od_draw_blurred_box(renderer, cx, cy, radius*.25f, radius*.5f, radius * 0.1f, miya_black);
+
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }
 
