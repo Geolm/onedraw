@@ -6,6 +6,10 @@ if(CMAKE_GENERATOR STREQUAL "Xcode")
     set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0")
 endif()
 
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose the type of build." FORCE)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_FLAGS_DEBUG "-g -O0 -DDEBUG -Wall -Wextra ")
