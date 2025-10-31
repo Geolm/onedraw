@@ -188,6 +188,13 @@ void od_draw_box(struct onedraw* r, float x0, float y0, float x1, float y1, floa
 void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float half_width, float half_height, float roundness, draw_color srgb_color);
 void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_color);
 void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a textured quad
+//      [x0, y0, x1, y1]        min/max coordinates of the quad
+//      [uv]                    uv, must be [0; 1], currently tiling/mirror not supported 
+//      [slide_index]           index of the texture in the array
+//      [srgb_color]            color that will multiply by the texture's fragment
 void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color);
 void od_draw_oriented_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_quad_uv uv, float angle, uint32_t slice_index, draw_color srgb_color);
 

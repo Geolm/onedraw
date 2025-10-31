@@ -25,8 +25,7 @@
 
 constexpr size_t STRING_BUFFER_SIZE = 512U;
 constexpr float VEC2_SQR2 = 1.41421356237f;
-constexpr float VEC2_EPSILON = 1.19209290e-7f;
-constexpr float VEC2_EASY_EPSILON = 0.001f;
+constexpr float HALF_PIXEL = .5f;
 constexpr float VEC2_PI = 3.14159265f;
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -270,7 +269,7 @@ static inline vec2 vec2_angle(float angle) {return (vec2) {cosf(angle), sinf(ang
 static inline float vec2_normalize(vec2* v)
 {
     float norm = vec2_length(*v);
-    if (norm <= VEC2_EPSILON)
+    if (norm <= FLT_EPSILON)
         return 0.f;
 
     *v = vec2_scale(*v, 1.f / norm);
@@ -1175,7 +1174,7 @@ void od_draw_disc(struct onedraw* r, float cx, float cy, float radius, draw_colo
 //----------------------------------------------------------------------------------------------------------------------------
 void private_draw_oriented_box(struct onedraw* r, vec2 p0, vec2 p1, float width, float roundness, float thickness, enum primitive_fillmode fillmode, draw_color srgb_color)
 {
-    if (vec2_similar(p0, p1, VEC2_EASY_EPSILON))
+    if (vec2_similar(p0, p1, HALF_PIXEL))
         return;
 
     thickness *= .5f;
@@ -1228,10 +1227,10 @@ void od_draw_line(struct onedraw* r, float ax, float ay, float bx, float by, flo
 //----------------------------------------------------------------------------------------------------------------------------
 void private_draw_ellipse(struct onedraw* r, vec2 p0, vec2 p1, float width, float thickness, enum primitive_fillmode fillmode, draw_color srgb_color)
 {
-    if (vec2_similar(p0, p1, VEC2_EASY_EPSILON))
+    if (vec2_similar(p0, p1, HALF_PIXEL))
         return;
 
-    if (width <= VEC2_EASY_EPSILON)
+    if (width <= HALF_PIXEL)
         private_draw_oriented_box(r, p0, p1, 0.f, 0.f, 0.f, fill_solid, srgb_color);
     else
     {
@@ -1283,8 +1282,8 @@ void od_draw_ellipse_ring(struct onedraw* r, float ax, float ay, float bx, float
 void private_draw_triangle(struct onedraw* r, const vec2* v, float roundness, float thickness, enum primitive_fillmode fillmode, draw_color srgb_color)
 {
     // exclude invalid triangle
-    if (vec2_similar(v[0], v[1], VEC2_EASY_EPSILON) || vec2_similar(v[2], v[1], VEC2_EASY_EPSILON) || 
-        vec2_similar(v[0], v[2], VEC2_EASY_EPSILON)) return;
+    if (vec2_similar(v[0], v[1], HALF_PIXEL) || vec2_similar(v[2], v[1], HALF_PIXEL) || 
+        vec2_similar(v[0], v[2], HALF_PIXEL)) return;
 
     thickness *= .5f;
 
@@ -1331,7 +1330,7 @@ void od_draw_triangle_ring(struct onedraw* r, const float* vertices, float round
 //----------------------------------------------------------------------------------------------------------------------------
 void private_draw_pie(struct onedraw* r, vec2 center, vec2 direction, float radius, float aperture, float thickness, enum primitive_fillmode fillmode, draw_color srgb_color)
 {
-    if (aperture <= VEC2_EASY_EPSILON)
+    if (aperture <= FLT_EPSILON)
         return;
     
     aperture = float_clamp(aperture, 0.f, VEC2_PI);
