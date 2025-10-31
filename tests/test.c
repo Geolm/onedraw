@@ -164,52 +164,66 @@ void frame(void)
 
     slot(0, &cx, &cy, &radius);
     od_draw_disc(renderer, cx, cy, radius, miya_blue);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "odd_draw_text", miya_brown);
 
     slot(1, &cx, &cy, &radius);
     od_draw_ring(renderer, cx, cy, radius, radius * .1f, miya_green);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_ring", miya_brown);
 
     slot(2, &cx, &cy, &radius);
     od_draw_box(renderer, cx - radius, cy - radius*.5f, cx + radius, cy + radius*.5f, radius * 0.05f, miya_grey);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_box", miya_brown);
 
     slot(3, &cx, &cy, &radius);
     od_draw_blurred_box(renderer, cx, cy, radius*.25f, radius*.5f, radius * 0.1f, miya_black);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_blurred_box", miya_brown);
 
     slot(4, &cx, &cy, &radius);
     od_draw_oriented_rect(renderer, cx - cosf(PI_4) * radius, cy - sinf(PI_4) * radius, cx + cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
                           radius * 0.4f, 0.f, radius * 0.1f, miya_pale_blue);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_oriented_rect", miya_brown);
 
     slot(5, &cx, &cy, &radius);
     od_draw_oriented_box(renderer, cx + cosf(PI_4) * radius, cy - sinf(PI_4) * radius, cx - cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
                          radius * 0.5f, radius * 0.05f, miya_red);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_oriented_box", miya_brown);
 
     slot(6, &cx, &cy, &radius);
     od_draw_triangle(renderer, (float[]){cx, cy-radius, cx - cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
                      cx + cosf(PI_4) * radius, cy +sinf(PI_4) * radius}, radius * 0.1f, miya_dark_green);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_triangle", miya_brown);
 
     slot(7, &cx, &cy, &radius);
     od_draw_triangle_ring(renderer, (float[]){cx, cy+radius, cx - cosf(PI_4) * radius, cy - sinf(PI_4) * radius,
                           cx + cosf(PI_4) * radius, cy - sinf(PI_4) * radius}, 0.f, radius * 0.1f, miya_dark_grey);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_triangle_ring", miya_brown);
 
     slot(8, &cx, &cy, &radius);
     od_draw_ellipse(renderer, cx + cosf(PI_4) * radius, cy - sinf(PI_4) * radius, cx - cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
                     radius, miya_yellow);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_ellipse", miya_brown);
 
     slot(9, &cx, &cy, &radius);
     od_draw_ellipse_ring(renderer, cx + cosf(PI_4) * radius, cy - sinf(PI_4) * radius, cx - cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
                          radius, radius * 0.1f, miya_light_grey);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_ellipse_ring", miya_brown);
 
     slot(10, &cx, &cy, &radius);
     od_draw_sector(renderer, cx, cy, radius, 0.123f, PI_4, miya_pink);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_sector", miya_brown);
 
     slot(11, &cx, &cy, &radius);
     od_draw_sector_ring(renderer, cx, cy, radius, -0.1234f, -PI_4*2.f, radius * 0.1f, miya_dark_blue);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_sector_ring", miya_brown);
 
     slot(12, &cx, &cy, &radius);
     od_draw_arc(renderer, cx, cy, cosf(PI_4), sinf(PI_4), PI_4*0.66f, radius, radius * 0.1f, miya_red);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_arc", miya_brown);
 
     slot(13, &cx, &cy, &radius);
     od_draw_text(renderer, cx-radius, cy-radius, "Some text\nABCDEFGHILMNOPQRSTUVWYZ\n1234567890!@#$%?&*()\nSphinx of black quartz, judge my vow.\n"
                  "!\"#$%&'()*+,-./0123456789:;<=>?@\n[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~", miya_black);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_text", miya_brown);
 
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }
