@@ -140,7 +140,6 @@ void init(void)
     });
 
     od_set_clear_color(renderer, miya_white);
-//    od_set_culling_debug(renderer, true);
     fill_texture_array();
 }
 

@@ -429,7 +429,7 @@ bool intersection_tile_command(aabb tile_aabb, draw_command cmd, sdf_operator op
             float2 center = float2(data[0], data[1]);
             float2 dimensions = float2(data[2], data[3]);
             float2 axis = float2(data[4], data[5]);
-            float2 dir = axis * 2.f/dimensions.x;
+            float2 dir = axis * .5f/dimensions.x;
             float2 p0 = center + dir;
             float2 p1 = center - dir;
             intersection = intersection_aabb_obb(tile_aabb, p0, p1, 1.f/dimensions.y);
