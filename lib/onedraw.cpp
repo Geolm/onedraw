@@ -1534,9 +1534,15 @@ void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_c
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_color srgb_color)
 {
+    float left = x;
     for(const char *c = text; *c != 0; c++)
     {
-        if (*c >= r->font.desc.first_glyph && *c <= (r->font.desc.first_glyph + r->font.desc.num_glyphs))
+        if (*c == '\n')
+        {
+            y += r->font.desc.font_height;
+            x = left;
+        }
+        else if (*c >= r->font.desc.first_glyph && *c <= (r->font.desc.first_glyph + r->font.desc.num_glyphs))
         {
             od_draw_char(r, x, y, *c, srgb_color);
             uint32_t glyph_index = *c - r->font.desc.first_glyph;
