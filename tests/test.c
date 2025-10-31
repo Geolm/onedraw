@@ -225,6 +225,13 @@ void frame(void)
                  "!\"#$%&'()*+,-./0123456789:;<=>?@\n[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~", miya_black);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_text", miya_brown);
 
+    slot(14, &cx, &cy, &radius);
+    od_begin_group(renderer, true, radius * 0.25f, radius * 0.05f);
+    od_draw_disc(renderer, cx, cy, radius*0.25f, miya_light_green);
+    od_draw_disc(renderer, cx + cosf(PI_4) * radius * .5f, cy - sinf(PI_4) * radius * .5f, radius*0.25f, miya_light_green);
+    od_end_group(renderer, miya_brown);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_begin_group", miya_brown);
+
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }
 
