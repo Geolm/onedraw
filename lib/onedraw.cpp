@@ -1559,6 +1559,9 @@ void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_
 {
     assert(slice_index < r->rasterizer.atlas->arrayLength());
 
+    if (fabsf(x0 - x1) < HALF_PIXEL || fabsf(y0 - y1) < HALF_PIXEL)
+        return;
+
     draw_command* cmd = r->commands.buffer.NewElement();
     draw_color* color = r->commands.colors.NewElement();
     if (cmd != nullptr && color != nullptr)
