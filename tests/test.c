@@ -10,7 +10,6 @@ struct onedraw* renderer;
 
 #define FROM_HTML(html)   ((html&0xff)<<16) | ((html>>16)&0xff) | (html&0x00ff00) | 0xff000000
 #define TEX_SIZE (256)
-#define PI_4 (0.78539816f)
 
 // https://lospec.com/palette-list/miyazaki-16
 static const uint32_t miya_black = FROM_HTML(0x232228);
@@ -155,10 +154,14 @@ void slot(uint32_t index, float* cx, float* cy, float* radius)
     *radius = fminf(step_x, step_y) * .4f;
 }
 
+float angle = 0.78539816f;
+
 // ---------------------------------------------------------------------------------------------------------------------------
 void frame(void)
 {
     float cx, cy, radius;
+
+    angle += 0.01f;
 
     od_begin_frame(renderer);
 
@@ -179,45 +182,45 @@ void frame(void)
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_blurred_box", miya_brown);
 
     slot(4, &cx, &cy, &radius);
-    od_draw_oriented_rect(renderer, cx - cosf(PI_4) * radius, cy - sinf(PI_4) * radius, cx + cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
+    od_draw_oriented_rect(renderer, cx - cosf(angle) * radius, cy - sinf(angle) * radius, cx + cosf(angle) * radius, cy + sinf(angle) * radius,
                           radius * 0.4f, 0.f, radius * 0.1f, miya_pale_blue);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_oriented_rect", miya_brown);
 
     slot(5, &cx, &cy, &radius);
-    od_draw_oriented_box(renderer, cx + cosf(PI_4) * radius, cy - sinf(PI_4) * radius, cx - cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
+    od_draw_oriented_box(renderer, cx + cosf(angle) * radius, cy - sinf(angle) * radius, cx - cosf(angle) * radius, cy + sinf(angle) * radius,
                          radius * 0.5f, radius * 0.05f, miya_red);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_oriented_box", miya_brown);
 
     slot(6, &cx, &cy, &radius);
-    od_draw_triangle(renderer, (float[]){cx, cy-radius, cx - cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
-                     cx + cosf(PI_4) * radius, cy +sinf(PI_4) * radius}, radius * 0.1f, miya_dark_green);
+    od_draw_triangle(renderer, (float[]){cx, cy-radius*.8f, cx - cosf(angle) * radius, cy + sinf(angle) * radius,
+                     cx + cosf(angle) * radius, cy +sinf(angle) * radius}, radius * 0.1f, miya_dark_green);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_triangle", miya_brown);
 
     slot(7, &cx, &cy, &radius);
-    od_draw_triangle_ring(renderer, (float[]){cx, cy+radius, cx - cosf(PI_4) * radius, cy - sinf(PI_4) * radius,
-                          cx + cosf(PI_4) * radius, cy - sinf(PI_4) * radius}, 0.f, radius * 0.1f, miya_dark_grey);
+    od_draw_triangle_ring(renderer, (float[]){cx, cy+radius*.8f, cx - cosf(angle) * radius, cy - sinf(angle) * radius,
+                          cx + cosf(angle) * radius, cy - sinf(angle) * radius}, 0.f, radius * 0.1f, miya_dark_grey);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_triangle_ring", miya_brown);
 
     slot(8, &cx, &cy, &radius);
-    od_draw_ellipse(renderer, cx + cosf(PI_4) * radius, cy - sinf(PI_4) * radius, cx - cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
+    od_draw_ellipse(renderer, cx + cosf(angle) * radius, cy - sinf(angle) * radius, cx - cosf(angle) * radius, cy + sinf(angle) * radius,
                     radius, miya_yellow);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_ellipse", miya_brown);
 
     slot(9, &cx, &cy, &radius);
-    od_draw_ellipse_ring(renderer, cx + cosf(PI_4) * radius, cy - sinf(PI_4) * radius, cx - cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
+    od_draw_ellipse_ring(renderer, cx + cosf(angle) * radius, cy - sinf(angle) * radius, cx - cosf(angle) * radius, cy + sinf(angle) * radius,
                          radius, radius * 0.1f, miya_light_grey);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_ellipse_ring", miya_brown);
 
     slot(10, &cx, &cy, &radius);
-    od_draw_sector(renderer, cx, cy, radius, 0.123f, PI_4, miya_pink);
+    od_draw_sector(renderer, cx, cy, radius, angle, 0.78539816f, miya_pink);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_sector", miya_brown);
 
     slot(11, &cx, &cy, &radius);
-    od_draw_sector_ring(renderer, cx, cy, radius, -0.1234f, -PI_4*2.f, radius * 0.1f, miya_dark_blue);
+    od_draw_sector_ring(renderer, cx, cy, radius, -angle, 0.78539816f, radius * 0.1f, miya_dark_blue);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_sector_ring", miya_brown);
 
     slot(12, &cx, &cy, &radius);
-    od_draw_arc(renderer, cx, cy, cosf(PI_4), sinf(PI_4), PI_4*0.66f, radius, radius * 0.1f, miya_red);
+    od_draw_arc(renderer, cx, cy, cosf(angle), sinf(angle), 0.78539816f, radius, radius * 0.1f, miya_red);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_arc", miya_brown);
 
     slot(13, &cx, &cy, &radius);
@@ -228,7 +231,7 @@ void frame(void)
     slot(14, &cx, &cy, &radius);
     od_begin_group(renderer, true, radius * 0.25f, radius * 0.05f);
     od_draw_disc(renderer, cx, cy, radius*0.25f, miya_light_green);
-    od_draw_disc(renderer, cx + cosf(PI_4) * radius * .5f, cy - sinf(PI_4) * radius * .5f, radius*0.25f, miya_light_green);
+    od_draw_disc(renderer, cx + cosf(angle) * radius * .5f, cy - sinf(angle) * radius * .5f, radius*0.25f, miya_light_green);
     od_end_group(renderer, miya_brown);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_begin_group", miya_brown);
 
@@ -240,7 +243,7 @@ void frame(void)
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_quad", miya_brown);
 
     slot(16, &cx, &cy, &radius);
-    od_draw_oriented_quad(renderer, cx, cy, radius, radius*.5f, PI_4 * 0.75f, (od_quad_uv){0.f, 0.f, 1.f, 0.5f}, 2, 0xffffffff);
+    od_draw_oriented_quad(renderer, cx, cy, radius, radius*.5f, angle * 0.75f, (od_quad_uv){0.f, 0.f, 1.f, 0.5f}, 2, 0xffffffff);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_oriented_quad", miya_brown);
 
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
