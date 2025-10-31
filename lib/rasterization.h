@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t rasterization_shader_size = 21125;
+static const size_t rasterization_shader_size = 21812;
 static const char rasterization_shader[] =
     "#include <metal_stdlib>\n"
     "#define RASTERIZER_SHADER\n"
@@ -61,6 +61,7 @@ static const char rasterization_shader[] =
     "    primitive_pie = 6,\n"
     "    primitive_arc = 7,\n"
     "    primitive_blurred_box = 8,\n"
+    "    primitive_quad = 9,\n"
     "    \n"
     "    begin_group = 32,\n"
     "    end_group = 33\n"
@@ -160,6 +161,7 @@ static const char rasterization_shader[] =
     "    float2 screen_div;\n"
     "    uint32_t num_elements_per_thread;\n"
     "    bool culling_debug;\n"
+    "    bool srgb_backbuffer;\n"
     "} draw_cmd_arguments;\n"
     "\n"
     "typedef struct tiles_data\n"
@@ -353,6 +355,22 @@ static const char rasterization_shader[] =
     "{\n"
     "    half3 rgb = mix(backbuffer.rgb, color.rgb, color.a);\n"
     "    return half4(rgb, 1.h);\n"
+    "}\n"
+    "\n"
+    "// ---------------------------------------------------------------------------------------------------------------------------\n"
+    "static inline half linear_to_srgb_channel(half c) \n"
+    "{\n"
+    "    if (c <= 0.0031308h)\n"
+    "        return c * 12.92h;\n"
+    "    else\n"
+    "        return 1.055h * pow(c, 1.0h / 2.4h) - 0.055h;\n"
+    "}\n"
+    "\n"
+    "// ---------------------------------------------------------------------------------------------------------------------------\n"
+    "half4 linear_to_srgb(half4 linear_color) \n"
+    "{\n"
+    "    return half4(linear_to_srgb_channel(linear_color.r),linear_to_srgb_channel(linear_color.g),\n"
+    "                 linear_to_srgb_channel(linear_color.b),linear_color.a);\n"
     "}\n"
     "\n"
     "struct vs_out\n"
@@ -602,8 +620,8 @@ static const char rasterization_shader[] =
     "        node_index = node.next;\n"
     "    }\n"
     "\n"
-    "    if (all(output == half4(input.clear_color)))\n"
-    "        discard_fragment();\n"
+    "    if (!input.srgb_backbuffer)\n"
+    "        output = linear_to_srgb(output);\n"
     "\n"
     "    return output;\n"
     "}\n"

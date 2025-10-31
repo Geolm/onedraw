@@ -160,6 +160,22 @@ static inline half4 accumulate_color(half4 color, half4 backbuffer)
     return half4(rgb, 1.h);
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------
+static inline half linear_to_srgb_channel(half c) 
+{
+    if (c <= 0.0031308h)
+        return c * 12.92h;
+    else
+        return 1.055h * pow(c, 1.0h / 2.4h) - 0.055h;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+half4 linear_to_srgb(half4 linear_color) 
+{
+    return half4(linear_to_srgb_channel(linear_color.r),linear_to_srgb_channel(linear_color.g),
+                 linear_to_srgb_channel(linear_color.b),linear_color.a);
+}
+
 struct vs_out
 {
     float4 pos [[position]];
@@ -407,8 +423,8 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
         node_index = node.next;
     }
 
-    if (all(output == half4(input.clear_color)))
-        discard_fragment();
+    if (!input.srgb_backbuffer)
+        output = linear_to_srgb(output);
 
     return output;
 }

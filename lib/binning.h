@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t binning_shader_size = 31144;
+static const size_t binning_shader_size = 31223;
 static const char binning_shader[] =
     "#include <metal_stdlib>\n"
     "#ifndef __COMMON_H__\n"
@@ -60,6 +60,7 @@ static const char binning_shader[] =
     "    primitive_pie = 6,\n"
     "    primitive_arc = 7,\n"
     "    primitive_blurred_box = 8,\n"
+    "    primitive_quad = 9,\n"
     "    \n"
     "    begin_group = 32,\n"
     "    end_group = 33\n"
@@ -159,6 +160,7 @@ static const char binning_shader[] =
     "    float2 screen_div;\n"
     "    uint32_t num_elements_per_thread;\n"
     "    bool culling_debug;\n"
+    "    bool srgb_backbuffer;\n"
     "} draw_cmd_arguments;\n"
     "\n"
     "typedef struct tiles_data\n"
@@ -624,6 +626,7 @@ static const char binning_shader[] =
     "        case end_group:\n"
     "        case primitive_aabox :\n"
     "        case primitive_blurred_box :\n"
+    "        case primitive_quad:\n"
     "        case primitive_char : intersection = true; break;\n"
     "        default : intersection = false; break;\n"
     "    }\n"

@@ -43,8 +43,8 @@ struct onedraw;
 
 typedef struct od_quad_uv
 {
-    float tl_u, tl_v;   // top-left uv
-    float br_u, br_v;   // bottom-right uv;
+    float u0, v0;   // top-left uv
+    float u1, v1;   // bottom-right uv;
 } od_quad_uv;
 
 typedef struct od_stats
@@ -188,8 +188,8 @@ void od_draw_box(struct onedraw* r, float x0, float y0, float x1, float y1, floa
 void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float half_width, float half_height, float roundness, draw_color srgb_color);
 void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_color);
 void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_color srgb_color);
-void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y2, od_quad_uv uv, uint8_t texture_index, draw_color srgb_color);
-void od_draw_oriented_quad(struct onedraw* r, float x0, float y0, float x1, float y2, od_quad_uv uv, float angle, uint8_t texture_index, draw_color srgb_color);
+void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color);
+void od_draw_oriented_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_quad_uv uv, float angle, uint32_t slice_index, draw_color srgb_color);
 
 #ifdef __cplusplus
 }

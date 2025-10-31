@@ -429,6 +429,7 @@ bool intersection_tile_command(aabb tile_aabb, draw_command cmd, sdf_operator op
         case end_group:
         case primitive_aabox :
         case primitive_blurred_box :
+        case primitive_quad:
         case primitive_char : intersection = true; break;
         default : intersection = false; break;
     }

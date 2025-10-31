@@ -186,6 +186,7 @@ struct onedraw
         uint16_t num_width;
         uint16_t num_height;
         uint32_t count;
+        bool culling_debug;
     } tiles;
 
     // rasterizer
@@ -238,7 +239,6 @@ struct onedraw
 
     void (*custom_log)(const char* string);
     char string_buffer[STRING_BUFFER_SIZE];
-    bool m_CullingDebug {false};
 };
 
 
@@ -654,7 +654,8 @@ void od_bin_commands(struct onedraw* r)
     args->num_region_height = r->regions.num_height;
     args->num_groups = r->regions.num_groups;
     args->screen_div = (float2) {.x = 1.f / (float)r->rasterizer.width, .y = 1.f / (float) r->rasterizer.height};
-    args->culling_debug = r->m_CullingDebug;
+    args->culling_debug = r->tiles.culling_debug;
+    args->srgb_backbuffer = r->rasterizer.srgb_backbuffer;
     args->num_elements_per_thread = (r->commands.count + MAX_THREADS_PER_THREADGROUP-1) / MAX_THREADS_PER_THREADGROUP;
 
     const uint32_t simd_group_count = MAX_THREADS_PER_THREADGROUP / SIMD_GROUP_SIZE;
@@ -1528,6 +1529,38 @@ void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_co
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
+void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color)
+{
+    assert(slice_index < r->rasterizer.texture_array->arrayLength());
+
+    draw_command* cmd = r->commands.buffer.NewElement();
+    draw_color* color = r->commands.colors.NewElement();
+    if (cmd != nullptr && color != nullptr)
+    {
+        cmd->clip_index = LAST_CLIP_INDEX;
+        cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
+        cmd->fillmode = fill_solid;
+        cmd->type = primitive_quad;
+        cmd->extra = (uint8_t) slice_index;
+
+        *color = srgb_color;
+
+        float* data = r->commands.data_buffer.NewMultiple(8);
+        quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
+        if (data != nullptr && aabox != nullptr)
+        {
+            write_float(data, x0, y0, x1, y1, uv.u0, uv.v0, uv.u1, uv.v1);
+            write_quantized_aabb(aabox, x0, y0, x1, y1);
+            merge_quantized_aabb(r->commands.group_aabb, aabox);
+            return;
+        }
+        r->commands.buffer.RemoveLast();
+        r->commands.colors.RemoveLast();
+    }
+    od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
 float od_text_height(struct onedraw* r)
 {
     return r->font.desc.font_height;
@@ -1548,21 +1581,35 @@ float od_text_width(struct onedraw* r, const char* text)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
+static inline float srgb_to_linear(float c)
+{
+    if (c <= 0.04045f)
+        return c / 12.92f;
+    else
+        return powf((c + 0.055f) / 1.055f, 2.4f);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
 void od_set_clear_color(struct onedraw* r, draw_color srgb_color)
 {
+    float r8 = (float)(srgb_color & 0xFF) / 255.f;
+    float g8 = (float)((srgb_color >> 8) & 0xFF) / 255.f;
+    float b8 = (float)((srgb_color >> 16) & 0xFF) / 255.f;
+    float a8 = (float)((srgb_color >> 24) & 0xFF) / 255.f;
+
     if (r->rasterizer.srgb_backbuffer)
     {
-        r->rasterizer.clear_color.x = powf(float(srgb_color&0xff) / 255.f, 2.2f);;
-        r->rasterizer.clear_color.y = powf(float((srgb_color>>8)&0xff) / 255.f, 2.2f);
-        r->rasterizer.clear_color.z = powf(float((srgb_color>>16)&0xff) / 255.f, 2.2f);
-        r->rasterizer.clear_color.w = float((srgb_color>>24)&0xff) / 255.f;
+        r->rasterizer.clear_color.x = srgb_to_linear(r8);
+        r->rasterizer.clear_color.y = srgb_to_linear(g8);
+        r->rasterizer.clear_color.z = srgb_to_linear(b8);
+        r->rasterizer.clear_color.w = a8; // alpha stays linear
     }
     else
     {
-        r->rasterizer.clear_color.x = float(srgb_color&0xff) / 255.f;
-        r->rasterizer.clear_color.y = float((srgb_color>>8)&0xff) / 255.f;
-        r->rasterizer.clear_color.z = float((srgb_color>>16)&0xff) / 255.f;
-        r->rasterizer.clear_color.w = float((srgb_color>>24)&0xff) / 255.f;
+        r->rasterizer.clear_color.x = r8;
+        r->rasterizer.clear_color.y = g8;
+        r->rasterizer.clear_color.z = b8;
+        r->rasterizer.clear_color.w = a8;
     }
 }
 
@@ -1588,6 +1635,6 @@ void od_set_cliprect(struct onedraw* r, uint16_t min_x, uint16_t min_y, uint16_t
 //----------------------------------------------------------------------------------------------------------------------------
 void od_set_culling_debug(struct onedraw* r, bool b)
 {
-    r->m_CullingDebug = b;
+    r->tiles.culling_debug = b;
 }
 

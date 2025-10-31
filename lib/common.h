@@ -52,6 +52,7 @@ enum command_type
     primitive_pie = 6,
     primitive_arc = 7,
     primitive_blurred_box = 8,
+    primitive_quad = 9,
     
     begin_group = 32,
     end_group = 33
@@ -151,6 +152,7 @@ typedef struct draw_cmd_arguments
     float2 screen_div;
     uint32_t num_elements_per_thread;
     bool culling_debug;
+    bool srgb_backbuffer;
 } draw_cmd_arguments;
 
 typedef struct tiles_data
