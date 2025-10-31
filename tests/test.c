@@ -96,7 +96,7 @@ void make_radial(uint32_t* p, uint32_t w, uint32_t h, uint32_t a, uint32_t b)
 // ---------------------------------------------------------------------------------------------------------------------------
 void fill_texture_array(void)
 {
-    uint32_t* pixel_data = malloc(TEX_SIZE * TEX_SIZE);
+    uint32_t* pixel_data = malloc(TEX_SIZE * TEX_SIZE * sizeof(uint32_t));
 
     make_checker(pixel_data, TEX_SIZE, TEX_SIZE, miya_green, miya_yellow);
     od_upload_slice(renderer, pixel_data, 0);
@@ -144,9 +144,32 @@ void init(void)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+void slot(uint32_t index, float* cx, float* cy, float* radius)
+{
+    float step_x = sapp_widthf() / 8.f;
+    float step_y = sapp_heightf() / 4.5f;
+
+    *cx = (index%8) * step_x + step_x * .5f;
+    *cy = (index/8) * step_y + step_y * .5f;
+    *radius = fminf(step_x, step_y) * .4f;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 void frame(void)
 {
+    float cx, cy, radius;
+
     od_begin_frame(renderer);
+
+    slot(0, &cx, &cy, &radius);
+    od_draw_disc(renderer, cx, cy, radius, miya_blue);
+
+    slot(1, &cx, &cy, &radius);
+    od_draw_ring(renderer, cx, cy, radius, radius * .1f, miya_green);
+
+    slot(2, &cx, &cy, &radius);
+    od_draw_box(renderer, cx - radius, cy - radius*.5f, cx + radius, cy + radius*.5f, radius * 0.05f, miya_grey);
+
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }
 
