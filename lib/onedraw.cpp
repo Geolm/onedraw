@@ -385,7 +385,7 @@ void od_create_texture_array(struct onedraw* r, uint32_t width, uint32_t height,
     assert(slice_count < UINT8_MAX);
     MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
     desc->setTextureType(MTL::TextureType2DArray);
-    desc->setPixelFormat(MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB);
+    desc->setPixelFormat(MTL::PixelFormat::PixelFormatRGBA8Unorm_sRGB);
     desc->setWidth(width);
     desc->setHeight(height);
     desc->setArrayLength(slice_count);
@@ -861,7 +861,7 @@ void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_i
 {
     assert(slice_index<r->rasterizer.texture_array->arrayLength());
 
-    const NS::UInteger bpp = 4;   // MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB
+    const NS::UInteger bpp = 4;   // MTL::PixelFormat::PixelFormatRGBA8Unorm_sRGB
     const NS::UInteger bytes_per_row = r->rasterizer.texture_array->width() * bpp;
 
     MTL::Region region = MTL::Region::Make2D(0, 0, r->rasterizer.texture_array->width(), r->rasterizer.texture_array->height());
@@ -1550,10 +1550,20 @@ float od_text_width(struct onedraw* r, const char* text)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_set_clear_color(struct onedraw* r, draw_color srgb_color)
 {
-    r->rasterizer.clear_color.x = powf(float(srgb_color&0xff) / 255.f, 2.2f);;
-    r->rasterizer.clear_color.y = powf(float((srgb_color>>8)&0xff) / 255.f, 2.2f);
-    r->rasterizer.clear_color.z = powf(float((srgb_color>>16)&0xff) / 255.f, 2.2f);
-    r->rasterizer.clear_color.w = float((srgb_color>>24)&0xff) / 255.f;
+    if (r->rasterizer.srgb_backbuffer)
+    {
+        r->rasterizer.clear_color.x = powf(float(srgb_color&0xff) / 255.f, 2.2f);;
+        r->rasterizer.clear_color.y = powf(float((srgb_color>>8)&0xff) / 255.f, 2.2f);
+        r->rasterizer.clear_color.z = powf(float((srgb_color>>16)&0xff) / 255.f, 2.2f);
+        r->rasterizer.clear_color.w = float((srgb_color>>24)&0xff) / 255.f;
+    }
+    else
+    {
+        r->rasterizer.clear_color.x = float(srgb_color&0xff) / 255.f;
+        r->rasterizer.clear_color.y = float((srgb_color>>8)&0xff) / 255.f;
+        r->rasterizer.clear_color.z = float((srgb_color>>16)&0xff) / 255.f;
+        r->rasterizer.clear_color.w = float((srgb_color>>24)&0xff) / 255.f;
+    }
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
