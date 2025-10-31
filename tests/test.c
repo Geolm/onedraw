@@ -234,7 +234,10 @@ void frame(void)
 
 
     slot(15, &cx, &cy, &radius);
-    od_draw_quad(renderer, cx-radius, cy-radius, cx+radius, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 0, 0xffffffff);
+    od_draw_quad(renderer, cx-radius, cy-radius, cx, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 0, 0xffffffff);
+    od_draw_quad(renderer, cx, cy-radius, cx+radius, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 1, 0xffffffff);
+    od_draw_quad(renderer, cx-radius, cy, cx, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 2, 0xffffffff);
+    od_draw_quad(renderer, cx, cy, cx+radius, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 3, 0xffffffff);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_quad", miya_brown);
 
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
