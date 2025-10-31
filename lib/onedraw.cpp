@@ -186,7 +186,7 @@ struct onedraw
         uint16_t num_width;
         uint16_t num_height;
         uint32_t count;
-        bool culling_debug;
+        bool culling_debug {false};
     } tiles;
 
     // rasterizer
@@ -202,7 +202,7 @@ struct onedraw
         float group_smoothness {0.f};
         sdf_operator group_op;
         float outline_width {0.f};
-        bool srgb_backbuffer;
+        bool srgb_backbuffer {true}; 
     } rasterizer;
 
     // font
