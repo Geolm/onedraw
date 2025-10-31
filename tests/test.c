@@ -140,6 +140,7 @@ void init(void)
     });
 
     od_set_clear_color(renderer, miya_white);
+//    od_set_culling_debug(renderer, true);
     fill_texture_array();
 }
 
@@ -192,12 +193,12 @@ void frame(void)
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_oriented_box", miya_brown);
 
     slot(6, &cx, &cy, &radius);
-    od_draw_triangle(renderer, (float[]){cx, cy-radius*.8f, cx - cosf(angle) * radius, cy + sinf(angle) * radius,
+    od_draw_triangle(renderer, (float[]){cx, cy, cx - cosf(angle) * radius, cy + sinf(angle) * radius,
                      cx + cosf(angle) * radius, cy +sinf(angle) * radius}, radius * 0.1f, miya_dark_green);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_triangle", miya_brown);
 
     slot(7, &cx, &cy, &radius);
-    od_draw_triangle_ring(renderer, (float[]){cx, cy+radius*.8f, cx - cosf(angle) * radius, cy - sinf(angle) * radius,
+    od_draw_triangle_ring(renderer, (float[]){cx, cy, cx - cosf(angle) * radius, cy - sinf(angle) * radius,
                           cx + cosf(angle) * radius, cy - sinf(angle) * radius}, 0.f, radius * 0.1f, miya_dark_grey);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_triangle_ring", miya_brown);
 
