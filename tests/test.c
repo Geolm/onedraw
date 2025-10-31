@@ -147,11 +147,11 @@ void init(void)
 // ---------------------------------------------------------------------------------------------------------------------------
 void slot(uint32_t index, float* cx, float* cy, float* radius)
 {
-    float step_x = sapp_widthf() / 8.f;
-    float step_y = sapp_heightf() / 4.5f;
+    float step_x = sapp_widthf() / 6.f;
+    float step_y = sapp_heightf() / 3.375f;
 
-    *cx = (index%8) * step_x + step_x * .5f;
-    *cy = (index/8) * step_y + step_y * .5f;
+    *cx = (index%6) * step_x + step_x * .5f;
+    *cy = (index/6) * step_y + step_y * .5f;
     *radius = fminf(step_x, step_y) * .4f;
 }
 
@@ -189,6 +189,27 @@ void frame(void)
     slot(7, &cx, &cy, &radius);
     od_draw_triangle_ring(renderer, (float[]){cx, cy+radius, cx - cosf(PI_4) * radius, cy - sinf(PI_4) * radius,
                           cx + cosf(PI_4) * radius, cy - sinf(PI_4) * radius}, 0.f, radius * 0.1f, miya_dark_grey);
+
+    slot(8, &cx, &cy, &radius);
+    od_draw_ellipse(renderer, cx + cosf(PI_4) * radius, cy - sinf(PI_4) * radius, cx - cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
+                    radius, miya_yellow);
+
+    slot(9, &cx, &cy, &radius);
+    od_draw_ellipse_ring(renderer, cx + cosf(PI_4) * radius, cy - sinf(PI_4) * radius, cx - cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
+                         radius, radius * 0.1f, miya_light_grey);
+
+    slot(10, &cx, &cy, &radius);
+    od_draw_sector(renderer, cx, cy, radius, 0.123f, PI_4, miya_pink);
+
+    slot(11, &cx, &cy, &radius);
+    od_draw_sector_ring(renderer, cx, cy, radius, -0.1234f, -PI_4*2.f, radius * 0.1f, miya_dark_blue);
+
+    slot(12, &cx, &cy, &radius);
+    od_draw_arc(renderer, cx, cy, cosf(PI_4), sinf(PI_4), PI_4*0.66f, radius, radius * 0.1f, miya_red);
+
+    slot(13, &cx, &cy, &radius);
+    od_draw_text(renderer, cx-radius, cy-radius, "Some text\nABCDEFGHILMNOPQRSTUVWYZ\n1234567890!@#$%?&*()\nSphinx of black quartz, judge my vow.\n"
+                 "!\"#$%&'()*+,-./0123456789:;<=>?@\n[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~", miya_black);
 
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }
