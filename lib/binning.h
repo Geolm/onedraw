@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t binning_shader_size = 31437;
+static const size_t binning_shader_size = 31811;
 static const char binning_shader[] =
     "#include <metal_stdlib>\n"
     "#ifndef __COMMON_H__\n"
@@ -625,13 +625,23 @@ static const char binning_shader[] =
     "\n"
     "            break;\n"
     "        }\n"
+    "        case primitive_oriented_quad:\n"
+    "        {\n"
+    "            float2 center = float2(data[0], data[1]);\n"
+    "            float2 dimensions = float2(data[2], data[3]);\n"
+    "            float2 axis = float2(data[4], data[5]);\n"
+    "            float2 dir = axis * 2.f/dimensions.x;\n"
+    "            float2 p0 = center + dir;\n"
+    "            float2 p1 = center - dir;\n"
+    "            intersection = intersection_aabb_obb(tile_aabb, p0, p1, 1.f/dimensions.y);\n"
+    "            break;\n"
+    "        }\n"
     "\n"
     "        case begin_group:\n"
     "        case end_group:\n"
     "        case primitive_aabox :\n"
     "        case primitive_blurred_box :\n"
     "        case primitive_quad:\n"
-    "        case primitive_oriented_quad:   // TODO : do obb test for oriented quad\n"
     "        case primitive_char : intersection = true; break;\n"
     "        default : intersection = false; break;\n"
     "    }\n"
