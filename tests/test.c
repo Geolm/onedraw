@@ -10,6 +10,7 @@ struct onedraw* renderer;
 
 #define FROM_HTML(html)   ((html&0xff)<<16) | ((html>>16)&0xff) | (html&0x00ff00) | 0xff000000
 #define TEX_SIZE (256)
+#define PI_4 (0.78539816f)
 
 // https://lospec.com/palette-list/miyazaki-16
 static const uint32_t miya_black = FROM_HTML(0x232228);
@@ -172,6 +173,22 @@ void frame(void)
 
     slot(3, &cx, &cy, &radius);
     od_draw_blurred_box(renderer, cx, cy, radius*.25f, radius*.5f, radius * 0.1f, miya_black);
+
+    slot(4, &cx, &cy, &radius);
+    od_draw_oriented_rect(renderer, cx - cosf(PI_4) * radius, cy - sinf(PI_4) * radius, cx + cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
+                          radius * 0.4f, 0.f, radius * 0.1f, miya_pale_blue);
+
+    slot(5, &cx, &cy, &radius);
+    od_draw_oriented_box(renderer, cx + cosf(PI_4) * radius, cy - sinf(PI_4) * radius, cx - cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
+                         radius * 0.5f, radius * 0.05f, miya_red);
+
+    slot(6, &cx, &cy, &radius);
+    od_draw_triangle(renderer, (float[]){cx, cy-radius, cx - cosf(PI_4) * radius, cy + sinf(PI_4) * radius,
+                     cx + cosf(PI_4) * radius, cy +sinf(PI_4) * radius}, radius * 0.1f, miya_dark_green);
+
+    slot(7, &cx, &cy, &radius);
+    od_draw_triangle_ring(renderer, (float[]){cx, cy+radius, cx - cosf(PI_4) * radius, cy - sinf(PI_4) * radius,
+                          cx + cosf(PI_4) * radius, cy - sinf(PI_4) * radius}, 0.f, radius * 0.1f, miya_dark_grey);
 
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }
