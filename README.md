@@ -76,7 +76,7 @@ sapp_desc sokol_main(int argc, char* argv[])
 
 ```
 
-See [tests/minimal.c](tests/test.c) for an example testing all features  using [sokol_app.h](https://github.com/floooh/sokol/blob/master/sokol_app.h) for the window management.
+See [tests/test.c](tests/test.c) for an example testing all features using [sokol_app.h](https://github.com/floooh/sokol/blob/master/sokol_app.h) for the window management.
 
 ### Build
 
