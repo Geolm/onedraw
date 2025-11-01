@@ -20,9 +20,10 @@
 
 
 ### Integration
-1. Copy all files from the `/lib` folder.  
-2. Add `onedraw.cpp` to your build system.  
-3. Create your window and provide the Metal device and drawable object.  
+1. Copy all files from the `/lib` folder.
+2. Add `onedraw.cpp` to your build system.
+3. Create your window and provide the Metal device and drawable object.
+4. Link with Metal framework
 
 
 ### Minimal example

@@ -7,7 +7,10 @@
 | [Part 2](part2.md) | Hierarchical binning and intrinsic tricks |
 | [Part 3](part3.md) | Rasterization |
 | [Part 4](part4.md) | Font and textured quads |
-| [Part 5](part5.md) | Failed attempts and next steps |
+| [Part 5](part5.md) | Numbers and next steps |
+| [API](../lib/onedraw.h) | Header contains doc about the API |
+| [FAQ](faq.md) | Frequently asked questions |
+
 
 
 ## Goals and initial architecture
