@@ -169,12 +169,35 @@ void od_set_culling_debug(struct onedraw* r, bool b);
 void od_begin_group(struct onedraw* r, bool smoothblend, float smooth_value, float outline_width);
 void od_end_group(struct onedraw* r, draw_color outline_color);
 
+//-----------------------------------------------------------------------------------------------------------------------------
+// Returns the height of the font in pixels
 float od_text_height(struct onedraw* r);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Returns the width of the string [text] in pixels
 float od_text_width(struct onedraw* r, const char* text);
 
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a ring (circle)
+//      [cx, cy]        center of the disc
+//      [radius]
+//      [thickness]
 void od_draw_ring(struct onedraw* r, float cx, float cy, float radius, float thickness, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a disc
+//      [cx, cy]        center of the disc
+//      [radius]
 void od_draw_disc(struct onedraw* r, float cx, float cy, float radius, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a oriented box (square line segment)
+//      [ax, bx], [by, cy]  line coordinates
+//      [width]             width of the box
+//      [roundness]         rounded corners radius
 void od_draw_oriented_box(struct onedraw* r, float ax, float ay, float bx, float by, float width, float roundness, draw_color srgb_color);
+
+
 void od_draw_oriented_rect(struct onedraw* r, float ax, float ay, float bx, float by, float width, float roundness, float thickness, draw_color srgb_color);
 void od_draw_line(struct onedraw* r, float ax, float ay, float bx, float by, float width, draw_color srgb_color);
 void od_draw_ellipse(struct onedraw* r, float ax, float ay, float bx, float by, float width, draw_color srgb_color);
@@ -185,20 +208,32 @@ void od_draw_sector(struct onedraw* r, float cx, float cy, float radius, float s
 void od_draw_sector_ring(struct onedraw* r, float cx, float cy, float radius, float start_angle, float sweep_angle, float thickness, draw_color srgb_color);
 void od_draw_arc(struct onedraw* r, float cx, float cy, float dx, float dy, float aperture, float radius, float thickness, draw_color srgb_color);
 void od_draw_box(struct onedraw* r, float x0, float y0, float x1, float y1, float radius, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a gaussian blurred box
 void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float half_width, float half_height, float roundness, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws one character
+//      [x, y]                  top-left coordinates of the character
+//      [c]                     only [32-126] char are supported
 void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_color);
 void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a textured quad
 //      [x0, y0, x1, y1]        min/max coordinates of the quad
-//      [uv]                    uv, must be [0; 1], currently tiling/mirror not supported 
+//      [uv]                    top-left and bottom right uv, must be [0; 1], currently tiling/mirror not supported 
 //      [slide_index]           index of the texture in the array
 //      [srgb_color]            color that will multiply by the texture's fragment
 void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a oriented textured quad
+//      [cx, cy]                center of the quad
+//      [width, height]         size of the quad
+//      [angle]                 angle in radians
+//      [uv]                    top-left and bottom right uv, must be [0; 1]
 void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, float height, float angle, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color);
 
 #ifdef __cplusplus

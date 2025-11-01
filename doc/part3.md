@@ -35,6 +35,10 @@ The output color starts with the clear color, and standard **alpha blending** fu
 
 For **groups of shapes**, the selected operator (`min` or `smoothmin`) is used to accumulate distances and blend colors before contributing to the final output color.
 
+##### Intrinsics
+
+Some values are shared across the quad with the instruction `quad_broadcast` to speed up a little bit (it's visible when profiling but still quite a small optimizations).
+
 ## Signed distance functions
 
 We mainly use the the SDF from Inigo Quilez's [website.](https://iquilezles.org/articles/distfunctions2d/)
@@ -49,6 +53,15 @@ Since rendering operates at the pixel level, there’s no need to compute pixel 
 Because the alpha transition typically occurs over a very short distance (around one pixel), **linear interpolation** is used instead of `smoothstep`.  
 
 Outlines also use the anti-aliasing technique to smooth both edges — the transition to the background and the transition to the shape’s color.
+
+
+---
+
+[Next part](part4.md) : Font and textured quads
+
+
+
+
 
 
 
