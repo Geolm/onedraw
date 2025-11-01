@@ -76,24 +76,17 @@ sapp_desc sokol_main(int argc, char* argv[])
 
 ```
 
-See [tests/minimal.c](tests/test.c) for an example testing all features  using [sokol_app.h](https://github.com/floooh/sokol/blob/master/sokol_app.h) for the window management.
+See [tests/test.c](tests/test.c) for an example testing all features using [sokol_app.h](https://github.com/floooh/sokol/blob/master/sokol_app.h) for the window management.
 
-### Project structure
+### Build
 
+Follow the step to build and run the test program
 
-```C
-
-onedraw
- |
- |--src         source files that will produce the library files
- |
- |--lib         the library to be included in a project
- |
- |--pre-build   source code to generate font, shader, library
- |
- |--tests       examples and unit tests
-
-```
+* mkdir build
+* cd build
+* cmake ..
+* make
+* ./test
 
 
 ### Links and references
