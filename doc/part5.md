@@ -4,3 +4,10 @@
 
 
 ## Next steps
+
+If time permits, we'd like to work on these topics in the near future
+
+* custom font support
+* filtering support for textured quad
+* texture format support for the texture array
+* a new approach to render quadratic bezier curves without 3 degrees sdf
