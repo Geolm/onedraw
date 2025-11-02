@@ -263,7 +263,7 @@ static inline float vec2_dot(vec2 a, vec2 b) {return fmaf(a.x, b.x, a.y * b.y);}
 static inline float vec2_sq_length(vec2 v) {return vec2_dot(v, v);}
 static inline float vec2_length(vec2 v) {return sqrtf(vec2_sq_length(v));}
 static inline bool vec2_similar(vec2 a, vec2 b, float epsilon) {return (fabsf(a.x - b.x) < epsilon) && (fabsf(a.y - b.y) < epsilon);}
-static inline vec2 vec2_angle(float angle) {return (vec2) {cosf(angle), sinf(angle)};}
+static inline vec2 vec2_direction(float angle) {return (vec2) {cosf(angle), sinf(angle)};}
 
 //----------------------------------------------------------------------------------------------------------------------------
 static inline float vec2_normalize(vec2* v)
@@ -1374,7 +1374,7 @@ void od_draw_sector(struct onedraw* r, float cx, float cy, float radius, float s
 {
     vec2 center = {cx, cy};
     float aperture = sweep_angle * .5f;
-    vec2 direction = vec2_angle(start_angle + aperture);
+    vec2 direction = vec2_direction(start_angle + aperture);
     private_draw_pie(r, center, direction, radius, fabs(aperture), 0.f, fill_solid, srgb_color);
 }
 
@@ -1383,7 +1383,7 @@ void od_draw_sector_ring(struct onedraw* r, float cx, float cy, float radius, fl
 {
     vec2 center = {cx, cy};
     float aperture = sweep_angle * .5f;
-    vec2 direction = vec2_angle(start_angle + aperture);
+    vec2 direction = vec2_direction(start_angle + aperture);
     private_draw_pie(r, center, direction, radius, fabs(aperture), thickness, fill_hollow, srgb_color);
 }
 
@@ -1463,8 +1463,11 @@ void od_draw_box(struct onedraw* r, float x0, float y0, float x1, float y1, floa
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float half_width, float half_height, float roundness, draw_color srgb_color)
+void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float width, float height, float roundness, draw_color srgb_color)
 {
+    float half_width = width * .5f;
+    float half_height = height * .5f;
+
     draw_command* cmd = r->commands.buffer.NewElement();
     draw_color* color = r->commands.colors.NewElement();
     if (cmd != nullptr && color != nullptr)
@@ -1599,7 +1602,7 @@ void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, f
         return;
 
     vec2 center = {cx, cy};
-    vec2 axis = vec2_angle(angle);
+    vec2 axis = vec2_direction(angle);
     vec2 dir = vec2_scale(axis, width*.5f);
     vec2 p0 = vec2_sub(center, dir);
     vec2 p1 = vec2_add(center, dir);

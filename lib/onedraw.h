@@ -158,15 +158,24 @@ void od_get_stats(struct onedraw* r, od_stats* stats);
 void od_set_clear_color(struct onedraw* r, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Sets the clip rectangle
-//  ==> There is a limit of MAX_CLIPS
+// Sets the clip rectangle, you set a mixumum of 256 clip rects per frame
+//      [min_x, min_y, max_x, max_y]    Coordinates of the clip rect
 void od_set_cliprect(struct onedraw* r, uint16_t min_x, uint16_t min_y, uint16_t max_x, uint16_t max_y);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Outputs a blue color as the background of each tile. Mainly use to debug binning.
 void od_set_culling_debug(struct onedraw* r, bool b);
 
+//-----------------------------------------------------------------------------------------------------------------------------
+// Begins a group
+//      [smoothblend]       if true, [smooth_value] will be used for smoothmin
+//      [smooth_value]      >= 0.f
+//      [outline_width]     if equals to zero = no outline
 void od_begin_group(struct onedraw* r, bool smoothblend, float smooth_value, float outline_width);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+//  Ends a group
+//      [outline_color]     color of the outline
 void od_end_group(struct onedraw* r, draw_color outline_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
@@ -192,25 +201,86 @@ void od_draw_disc(struct onedraw* r, float cx, float cy, float radius, draw_colo
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a oriented box (square line segment)
-//      [ax, bx], [by, cy]  line coordinates
-//      [width]             width of the box
-//      [roundness]         rounded corners radius
+//      [ax, bx], [by, cy]      line coordinates
+//      [width]                 width of the box
+//      [roundness]             rounded corners radius
 void od_draw_oriented_box(struct onedraw* r, float ax, float ay, float bx, float by, float width, float roundness, draw_color srgb_color);
 
 
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a oriented rectangle
+//      [ax, bx], [by, cy]      line coordinates
+//      [width]                 width of the box
+//      [roundness]             rounded corners radius
+//      [thickness]
 void od_draw_oriented_rect(struct onedraw* r, float ax, float ay, float bx, float by, float width, float roundness, float thickness, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a line
 void od_draw_line(struct onedraw* r, float ax, float ay, float bx, float by, float width, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a oriented ellipse
+//      [ax, bx], [by, cy]      main axis of the ellipse
+//      [width]                 width of the ellipse
 void od_draw_ellipse(struct onedraw* r, float ax, float ay, float bx, float by, float width, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a oriented ellipse ring
+//      [ax, bx], [by, cy]      main axis of the ellipse
+//      [width]                 width of the ellipse
+//      [thickness]
 void od_draw_ellipse_ring(struct onedraw* r, float ax, float ay, float bx, float by, float width, float thickness, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a triangle
+//      [vertices]              pointer to 6 floats, the 3 vertices coordinates (xy)
+//      [roundness]             rounded corners radius
 void od_draw_triangle(struct onedraw* r, const float* vertices, float roundness, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a triangle
+//      [vertices]              pointer to 6 floats, the 3 vertices coordinates (xy)
+//      [roundness]             rounded corners radius
+//      [thickness]
 void od_draw_triangle_ring(struct onedraw* r, const float* vertices, float roundness, float thickness, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a sector
+//      [cx, cy]                center of the sector
+//      [radius]                rounded corners radius
+//      [start_angle]
+//      [sweep_angle]
 void od_draw_sector(struct onedraw* r, float cx, float cy, float radius, float start_angle, float sweep_angle, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a sector ring
+//      [cx, cy]                center of the sector
+//      [radius]                rounded corners radius
+//      [start_angle]
+//      [sweep_angle]
+//      [thickness]
 void od_draw_sector_ring(struct onedraw* r, float cx, float cy, float radius, float start_angle, float sweep_angle, float thickness, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a arc
+//      [cx, cy]                center of the sector
+//      [dx, dy]                direction of the arc
+//      [aperture]              
+//      [radius]
+//      [thickness]
 void od_draw_arc(struct onedraw* r, float cx, float cy, float dx, float dy, float aperture, float radius, float thickness, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a box
+//      [x0, y0, x1, y1]        min, max coordinates of the box
+//      [radius]                radius of the rounded corner, rounded corners are entirely within the rectangle’s bounds
 void od_draw_box(struct onedraw* r, float x0, float y0, float x1, float y1, float radius, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a gaussian blurred box
+//      [cx, cy]                    center of the box
+//      [width, height]             size of the box
 void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float half_width, float half_height, float roundness, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
