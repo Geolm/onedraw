@@ -106,7 +106,7 @@ size_t od_min_memory_size();
 //      [texture_array]
 //          [width]             width of all textures in the array, if 0 (undefined) the array won't be created
 //          [height]            
-//          [num_slices]        must be < 256. each quad can use a specific slice. 
+//          [num_slices]        must be <= 256. each quad can use a specific slice. 
 struct onedraw* od_init(onedraw_def* def);
 
 //-----------------------------------------------------------------------------------------------------------------------------

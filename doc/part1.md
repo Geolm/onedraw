@@ -15,7 +15,7 @@ Some additional factors are also considered:
 
 ## Anti-aliasing
 
-The width of the anti-aliasing region (defined by the user in ```onedraw```) must be taken into account during intersection testing.
+The width of the anti-aliasing region (defined by the user in `onedraw`) must be taken into account during intersection testing.
 
 ![anti-aliasing](anti-aliasing.png)
 
