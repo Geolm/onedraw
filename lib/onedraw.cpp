@@ -770,7 +770,8 @@ void od_flush(struct onedraw* r, void* drawable)
         render_encoder->useResource(r->tiles.indices, MTL::ResourceUsageRead);
         render_encoder->useResource(r->tiles.indirect_cb, MTL::ResourceUsageRead);
         render_encoder->useResource(r->font.texture, MTL::ResourceUsageRead);
-        render_encoder->useResource(r->rasterizer.atlas, MTL::ResourceUsageRead);
+        if (r->rasterizer.atlas != nullptr)
+            render_encoder->useResource(r->rasterizer.atlas, MTL::ResourceUsageRead);
         render_encoder->setRenderPipelineState(r->rasterizer.pso);
         render_encoder->executeCommandsInBuffer(r->tiles.indirect_cb, NS::Range(0, 1));
     }
