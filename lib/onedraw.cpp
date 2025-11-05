@@ -1691,7 +1691,7 @@ uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points
     {
         quadratic_bezier c = stack[--stack_index];
 
-        // splits proportionally to segment lengths, isolating the bend toward the control point
+        // splits proportionally to segment lengths
         float d0 = vec2_distance(c.c0, c.c1);
         float d1 = vec2_distance(c.c1, c.c2);
         float split = d0 / (d0 + d1);
@@ -1751,14 +1751,19 @@ uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, fl
     {
         cubic_bezier c = stack[--stack_index];
 
-        // compared to quadratic, there is no heuristic to isolate the bend as we can have two bends
-        // we could sample the curve and find the best spot but it would cost a lot cpu for very few gain
-        vec2 c01 = vec2_scale(vec2_add(c.c0, c.c1), .5f);
-        vec2 c12 = vec2_scale(vec2_add(c.c1, c.c2), .5f);
-        vec2 c23 = vec2_scale(vec2_add(c.c2, c.c3), .5f);
-        vec2 c01c12 = vec2_scale(vec2_add(c01, c12), .5f);
-        vec2 c12c23 = vec2_scale(vec2_add(c12, c23), .5f);
-        vec2 middle = vec2_scale(vec2_add(c01c12, c12c23), .5f);
+        // the halfway point along the control polygon roughly corresponds to halfway along the curve arc length
+        float d0 = vec2_distance(c.c0, c.c1);
+        float d1 = vec2_distance(c.c1, c.c2);
+        float d2 = vec2_distance(c.c2, c.c3);
+        float total = d0 + d1 + d2;
+        float split = (d0 + 0.5f * d1) / total;
+
+        vec2 c01 = vec2_lerp(c.c0, c.c1, split);
+        vec2 c12 = vec2_lerp(c.c1, c.c2, split);
+        vec2 c23 = vec2_lerp(c.c2, c.c3, split);
+        vec2 c01c12 = vec2_lerp(c01, c12, split);
+        vec2 c12c23 = vec2_lerp(c12, c23, split);
+        vec2 middle = vec2_lerp(c01c12, c12c23, split);
 
         if (is_colinear(c.c0, c.c3, middle, COLINEAR_THRESHOLD))
         {
