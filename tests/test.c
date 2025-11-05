@@ -177,7 +177,7 @@ void frame(void)
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_box", miya_brown);
 
     slot(3, &cx, &cy, &radius);
-    od_draw_blurred_box(renderer, cx, cy, radius*.25f, radius*.5f, radius * 0.1f, miya_black);
+    od_draw_blurred_box(renderer, cx, cy, radius*.5f, radius, radius * 0.1f, miya_black);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_blurred_box", miya_brown);
 
     slot(4, &cx, &cy, &radius);
