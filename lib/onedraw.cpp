@@ -29,6 +29,7 @@ constexpr float VEC2_SQR2 = 1.41421356237f;
 constexpr float HALF_PIXEL = .5f;
 constexpr float VEC2_PI = 3.14159265f;
 constexpr uint32_t TESSELATION_STACK_MAX = 1024U;
+constexpr float COLINEAR_THRESHOLD = .1f;
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // Templates
@@ -124,9 +125,10 @@ void write_float(float* buffer, float value, Args ... args)
 // private structures
 // ---------------------------------------------------------------------------------------------------------------------------
 
-typedef struct {float x, y;} vec2;
-typedef struct {vec2 min, max;} aabb;
-typedef struct bezier_curve {vec2 c0, c1, c2;} bezier_curve;
+typedef struct vec2 {float x, y;} vec2;
+typedef struct aabb {vec2 min, max;} aabb;
+typedef struct quadratic_bezier {vec2 c0, c1, c2;} quadratic_bezier;
+typedef struct cubic_bezier {vec2 c0, c1, c2, c3;} cubic_bezier;
 
 struct alphabet
 {
@@ -288,7 +290,7 @@ static inline vec2 vec2_lerp(vec2 a, vec2 b, float t)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
-static inline bool is_colinear(vec2 p0, vec2 p1, vec2 p2, float pixel_threshold)
+static inline bool is_colinear(vec2 p0, vec2 p1, vec2 p2, float COLINEAR_THRESHOLD)
 {
     vec2 v0 = vec2_sub(p1, p0);
     vec2 v1 = vec2_sub(p2, p0);
@@ -299,7 +301,7 @@ static inline bool is_colinear(vec2 p0, vec2 p1, vec2 p2, float pixel_threshold)
         return true;
 
     float squared_height = (squared_area * squared_area) / base2;
-    return squared_height <= (pixel_threshold * pixel_threshold);
+    return squared_height <= (COLINEAR_THRESHOLD * COLINEAR_THRESHOLD);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1672,10 +1674,9 @@ void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, f
 // Breaks the bezier quadratic curve into multiple capsules, using De Casteljau’s algorithm and colinear detection
 uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points, float width, draw_color srgb_color)
 {
-    bezier_curve stack[TESSELATION_STACK_MAX];
+    quadratic_bezier stack[TESSELATION_STACK_MAX];
     uint32_t stack_index = 0;
 
-    constexpr float pixel_threshold = .1f;
     const float radius = width * .5f;
     uint32_t num_capsules = 0;
 
@@ -1688,7 +1689,7 @@ uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points
 
     while (stack_index != 0)
     {
-        bezier_curve c = stack[--stack_index];
+        quadratic_bezier c = stack[--stack_index];
 
         // splits proportionally to segment lengths, isolating the bend toward the control point
         float d0 = vec2_distance(c.c0, c.c1);
@@ -1699,7 +1700,7 @@ uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points
         vec2 right = vec2_lerp(c.c1, c.c2, split);
         vec2 middle = vec2_lerp(left, right, split);
         
-        if (is_colinear(c.c0, c.c2, middle, pixel_threshold))
+        if (is_colinear(c.c0, c.c2, middle, COLINEAR_THRESHOLD))
         {
             od_draw_capsule(r, c.c0.x, c.c0.y, c.c2.x, c.c2.y, radius, srgb_color);
             num_capsules++;
@@ -1726,6 +1727,69 @@ uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points
                 return UINT32_MAX;
         }
     }
+    return num_capsules;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, float width, draw_color srgb_color)
+{
+    cubic_bezier stack[TESSELATION_STACK_MAX];
+    uint32_t stack_index = 0;
+
+    const float radius = width * .5f;
+    uint32_t num_capsules = 0;
+
+    stack[stack_index++] = 
+    {
+        .c0 = {control_points[0], control_points[1]},
+        .c1 = {control_points[2], control_points[3]},
+        .c2 = {control_points[4], control_points[5]},
+        .c3 = {control_points[6], control_points[7]}
+    };
+
+    while (stack_index != 0)
+    {
+        cubic_bezier c = stack[--stack_index];
+
+        // compared to quadratic, there is no heuristic to isolate the bend as we can have two bends
+        // we could sample the curve and find the best spot but it would cost a lot cpu for very few gain
+        vec2 c01 = vec2_scale(vec2_add(c.c0, c.c1), .5f);
+        vec2 c12 = vec2_scale(vec2_add(c.c1, c.c2), .5f);
+        vec2 c23 = vec2_scale(vec2_add(c.c2, c.c3), .5f);
+        vec2 c01c12 = vec2_scale(vec2_add(c01, c12), .5f);
+        vec2 c12c23 = vec2_scale(vec2_add(c12, c23), .5f);
+        vec2 middle = vec2_scale(vec2_add(c01c12, c12c23), .5f);
+
+        if (is_colinear(c.c0, c.c3, middle, COLINEAR_THRESHOLD))
+        {
+            od_draw_capsule(r, c.c0.x, c.c0.y, c.c2.x, c.c2.y, radius, srgb_color);
+            num_capsules++;
+        }
+        else
+        {
+            if (stack_index + 2 <= TESSELATION_STACK_MAX)
+            {
+                stack[stack_index++] =
+                {
+                    .c0 = c.c0,
+                    .c1 = c01,
+                    .c2 = c01c12,
+                    .c3 = middle
+                };
+
+                stack[stack_index++] =
+                {
+                    .c0 = middle,
+                    .c1 = c12c23,
+                    .c2 = c23,
+                    .c3 = c.c3,
+                };
+            }
+            else
+                return UINT32_MAX;
+        }
+    }
+
     return num_capsules;
 }
 

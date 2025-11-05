@@ -314,8 +314,13 @@ void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, f
 // Draws a quadratic bezier curve using adaptative tesselation
 //      [control_points]        an array of 6 floats that represent the control points coordinates (x, y)
 //      [width]
-// Returns the number of capsules used or UINT32_MAX if the tesselation fails somehow
+// Returns the number of capsules used or UINT32_MAX if the tesselation failed somehow
 uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points, float width, draw_color srgb_color);
+
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a cubic bezier curve using adaptative tesselation
+uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, float width, draw_color srgb_color);
 
 #ifdef __cplusplus
 }
