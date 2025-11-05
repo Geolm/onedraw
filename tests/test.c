@@ -160,6 +160,7 @@ const float angle = 0.78539816f;
 void frame(void)
 {
     float cx, cy, radius;
+    char string[256];
 
     od_begin_frame(renderer);
 
@@ -246,18 +247,21 @@ void frame(void)
 
     slot(17, &cx, &cy, &radius);
     float quadratic_ctrl_pts[] = {cx, cy-radius*.8f, cx-radius, cy+radius*0.8f, cx, cy+radius};
-    od_draw_quadratic_bezier(renderer, quadratic_ctrl_pts, 20.f, miya_red);
-    for(uint32_t i=0; i<4; i++)
+    uint32_t num_capsules = od_draw_quadratic_bezier(renderer, quadratic_ctrl_pts, 20.f, miya_red);
+    snprintf(string, 256, "%u capsules", num_capsules);
+    for(uint32_t i=0; i<3; i++)
         od_draw_disc(renderer, quadratic_ctrl_pts[i*2], quadratic_ctrl_pts[i*2+1], 10.f, miya_yellow);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_quadratic_bezier", miya_brown);
+    od_draw_text(renderer, cx-radius, cy+radius*1.25f, string, miya_brown);
 
     slot(18, &cx, &cy, &radius);
     float cubic_ctrl_pts[] = {cx, cy-radius*.8f, cx-radius, cy+radius*0.8f, cx, cy+radius, cx+radius*.8f, cy};
-    od_draw_cubic_bezier(renderer, cubic_ctrl_pts, 20.f, miya_light_blue);
+    num_capsules = od_draw_cubic_bezier(renderer, cubic_ctrl_pts, 20.f, miya_light_blue);
+    snprintf(string, 256, "%u capsules", num_capsules);
     for(uint32_t i=0; i<4; i++)
         od_draw_disc(renderer, cubic_ctrl_pts[i*2], cubic_ctrl_pts[i*2+1], 10.f, miya_dark_green);
-    
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_cubic_bezier", miya_brown);
+    od_draw_text(renderer, cx-radius, cy+radius*1.25f, string, miya_brown);
 
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }
