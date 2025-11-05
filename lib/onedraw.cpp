@@ -18,6 +18,7 @@
 #define SAFE_RELEASE(p) if (p!=nullptr) {p->release(); p = nullptr;}
 #define UNUSED_VARIABLE(a) (void)(a)
 #define LAST_CLIP_INDEX ((uint8_t) r->commands.cliprects_buffer.GetNumElements()-1)
+#define assert_msg(expr, msg) assert((expr) && (msg))
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // Constants
@@ -381,7 +382,7 @@ void od_init_screenshot_resources(struct onedraw* r)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_create_atlas(struct onedraw* r, uint32_t width, uint32_t height, uint32_t slice_count)
 {
-    assert(slice_count < UINT8_MAX);
+    assert_msg(slice_count < UINT8_MAX, "too many slices");
     MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
     desc->setTextureType(MTL::TextureType2DArray);
     desc->setPixelFormat(MTL::PixelFormat::PixelFormatRGBA8Unorm_sRGB);
@@ -733,8 +734,8 @@ void od_bin_commands(struct onedraw* r)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_flush(struct onedraw* r, void* drawable)
 {
-    assert((uint16_t)((CA::MetalDrawable*)drawable)->texture()->width() == r->rasterizer.width);
-    assert((uint16_t)((CA::MetalDrawable*)drawable)->texture()->height() == r->rasterizer.height);
+    assert_msg((uint16_t)((CA::MetalDrawable*)drawable)->texture()->width() == r->rasterizer.width, "drawable/renderer size mismatch");
+    assert_msg((uint16_t)((CA::MetalDrawable*)drawable)->texture()->height() == r->rasterizer.height, "drawable/renderer size mismatch");
 
     r->command_buffer = r->command_queue->commandBuffer();
 
@@ -824,10 +825,10 @@ size_t od_min_memory_size()
 //----------------------------------------------------------------------------------------------------------------------------
 struct onedraw* od_init(onedraw_def* def)
 {
-    assert(def->preallocated_buffer != nullptr);
-    assert(((uintptr_t)def->preallocated_buffer)%sizeof(uintptr_t) == 0);
+    assert_msg(def->preallocated_buffer != nullptr, "forgot to allocate memory?");
+    assert_msg(((uintptr_t)def->preallocated_buffer)%sizeof(uintptr_t) == 0, "preallocated_buffer must be aligned on sizeof(uintptr_t)");
     assert(def->metal_device != nullptr);
-    assert(((MTL::Device*)def->metal_device)->supportsFamily(MTL::GPUFamilyApple7));
+    assert_msg(((MTL::Device*)def->metal_device)->supportsFamily(MTL::GPUFamilyApple7), "onedraw supports only M1/A14 GPU and later");
 
     onedraw* r = new(def->preallocated_buffer) onedraw;
 
@@ -882,7 +883,7 @@ struct onedraw* od_init(onedraw_def* def)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_index)
 {
-    assert(slice_index<r->rasterizer.atlas->arrayLength());
+    assert_msg(slice_index<r->rasterizer.atlas->arrayLength(), "slice_index is out of bound");
 
     const NS::UInteger bpp = 4;   // MTL::PixelFormat::PixelFormatRGBA8Unorm_sRGB
     const NS::UInteger bytes_per_row = r->rasterizer.atlas->width() * bpp;
@@ -902,7 +903,8 @@ void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_i
 //----------------------------------------------------------------------------------------------------------------------------
 void od_capture_region(struct onedraw* r, uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
-    assert(x<=r->rasterizer.width && width<=r->rasterizer.width && y<=r->rasterizer.height && height<=r->rasterizer.height);
+    assert_msg(x<=r->rasterizer.width && width<=r->rasterizer.width && y<=r->rasterizer.height && height<=r->rasterizer.height,
+               "capture region cannot be bigger than the rendertarget");
     r->screenshot.region_x = x;
     r->screenshot.region_y = y;
     r->screenshot.region_width = width;
@@ -951,7 +953,7 @@ void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_begin_frame(struct onedraw* r)
 {
-    assert(r->commands.group_aabb == nullptr);
+    assert_msg(r->commands.group_aabb == nullptr, "previous frame was not ended properly with od_end_frame");
     r->stats.frame_index++;
     r->commands.buffer.Map(r->stats.frame_index);
     r->commands.colors.Map(r->stats.frame_index);
@@ -959,14 +961,12 @@ void od_begin_frame(struct onedraw* r)
     r->commands.data_buffer.Map(r->stats.frame_index);
     r->commands.cliprects_buffer.Map(r->stats.frame_index);
     od_set_cliprect(r, 0, 0, (uint16_t) r->rasterizer.width, (uint16_t) r->rasterizer.height);
-    r->commands.group_aabb = nullptr;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_end_frame(struct onedraw* r, void* drawable)
 {
-    assert(r->commands.group_aabb == nullptr);
-
+    assert_msg(r->commands.group_aabb == nullptr, "you need to call od_end_group, before od_end_frame");
     if (r->screenshot.show_region)
     {
         aabb capture_region = {.min = {(float)r->screenshot.region_x, (float)r->screenshot.region_y}};
@@ -1039,8 +1039,8 @@ void od_get_stats(struct onedraw* r, od_stats* stats)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_begin_group(struct onedraw* r, bool smoothblend, float group_smoothness, float outline_width)
 {
-    assert(r->commands.group_aabb == nullptr);
-    assert(group_smoothness >= 0.f);
+    assert_msg(r->commands.group_aabb == nullptr, "cannot call a second time od_begin_group without closing the previous group");
+    assert_msg(group_smoothness >= 0.f, "smoothness cannot be negative");
 
     draw_command* cmd = r->commands.buffer.NewElement();
     draw_color* color = r->commands.colors.NewElement();
@@ -1078,7 +1078,7 @@ void od_begin_group(struct onedraw* r, bool smoothblend, float group_smoothness,
 //----------------------------------------------------------------------------------------------------------------------------
 void od_end_group(struct onedraw* r, draw_color outline_color)
 {
-    assert(r->commands.group_aabb != nullptr);
+    assert_msg(r->commands.group_aabb != nullptr, "you have to call od_begin_group() before closing it");
 
     draw_command* cmd = r->commands.buffer.NewElement();
     draw_color* color = r->commands.colors.NewElement();
@@ -1562,7 +1562,7 @@ void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_co
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color)
 {
-    assert(slice_index < r->rasterizer.atlas->arrayLength());
+    assert_msg(slice_index < r->rasterizer.atlas->arrayLength(), "slice index out of bound");
 
     if (fabsf(x0 - x1) < HALF_PIXEL || fabsf(y0 - y1) < HALF_PIXEL)
         return;
@@ -1597,7 +1597,7 @@ void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, float height, float angle, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color)
 {
-    assert(slice_index < r->rasterizer.atlas->arrayLength());
+    assert_msg(slice_index < r->rasterizer.atlas->arrayLength(), "slice index out of bound");
 
     if (width < HALF_PIXEL || height < HALF_PIXEL)
         return;
