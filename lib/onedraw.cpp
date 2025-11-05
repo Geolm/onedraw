@@ -28,6 +28,7 @@ constexpr size_t STRING_BUFFER_SIZE = 512U;
 constexpr float VEC2_SQR2 = 1.41421356237f;
 constexpr float HALF_PIXEL = .5f;
 constexpr float VEC2_PI = 3.14159265f;
+constexpr uint32_t TESSELATION_STACK_MAX = 1024U;
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // Templates
@@ -125,6 +126,7 @@ void write_float(float* buffer, float value, Args ... args)
 
 typedef struct {float x, y;} vec2;
 typedef struct {vec2 min, max;} aabb;
+typedef struct bezier_curve {vec2 c0, c1, c2;} bezier_curve;
 
 struct alphabet
 {
@@ -265,6 +267,7 @@ static inline float vec2_sq_length(vec2 v) {return vec2_dot(v, v);}
 static inline float vec2_length(vec2 v) {return sqrtf(vec2_sq_length(v));}
 static inline bool vec2_similar(vec2 a, vec2 b, float epsilon) {return (fabsf(a.x - b.x) < epsilon) && (fabsf(a.y - b.y) < epsilon);}
 static inline vec2 vec2_direction(float angle) {return (vec2) {cosf(angle), sinf(angle)};}
+static inline float vec2_distance(vec2 a, vec2 b) {return vec2_length(vec2_sub(b, a));}
 
 //----------------------------------------------------------------------------------------------------------------------------
 static inline float vec2_normalize(vec2* v)
@@ -275,6 +278,28 @@ static inline float vec2_normalize(vec2* v)
 
     *v = vec2_scale(*v, 1.f / norm);
     return norm;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+static inline vec2 vec2_lerp(vec2 a, vec2 b, float t) 
+{
+    float one_minus_t = 1.f - t;
+    return (vec2) {.x = fmaf(a.x , one_minus_t, b.x * t), .y = fmaf(a.y , one_minus_t, b.y * t)};
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+static inline bool is_colinear(vec2 p0, vec2 p1, vec2 p2, float pixel_threshold)
+{
+    vec2 v0 = vec2_sub(p1, p0);
+    vec2 v1 = vec2_sub(p2, p0);
+    float squared_area = fabsf(v0.x * v1.y - v0.y * v1.x);
+    float base2 = vec2_dot(v0, v0);
+
+    if (base2 < FLT_EPSILON)
+        return true;
+
+    float squared_height = (squared_area * squared_area) / base2;
+    return squared_height <= (pixel_threshold * pixel_threshold);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1078,7 +1103,7 @@ void od_begin_group(struct onedraw* r, bool smoothblend, float group_smoothness,
 //----------------------------------------------------------------------------------------------------------------------------
 void od_end_group(struct onedraw* r, draw_color outline_color)
 {
-    assert_msg(r->commands.group_aabb != nullptr, "you have to call od_begin_group() before closing it");
+    assert(r->commands.group_aabb != nullptr);
 
     draw_command* cmd = r->commands.buffer.NewElement();
     draw_color* color = r->commands.colors.NewElement();
@@ -1224,6 +1249,13 @@ void od_draw_oriented_rect(struct onedraw* r, float ax, float ay, float bx, floa
 void od_draw_line(struct onedraw* r, float ax, float ay, float bx, float by, float width, draw_color srgb_color)
 {
     private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), width, 0.f, 0.f, fill_solid, srgb_color);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_draw_capsule(struct onedraw* r, float ax, float ay, float bx, float by, float radius, draw_color srgb_color)
+{
+    // capsule uses a specific sdf (see rasterizer shader) more efficient that oriented box
+    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), 0.f, radius, 0.f, fill_solid, srgb_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1634,6 +1666,67 @@ void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, f
         r->commands.colors.RemoveLast();
     }
     od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+// Breaks the bezier quadratic curve into multiple capsules, using De Casteljau’s algorithm and colinear detection
+uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points, float width, draw_color srgb_color)
+{
+    bezier_curve stack[TESSELATION_STACK_MAX];
+    uint32_t stack_index = 0;
+
+    constexpr float pixel_threshold = .1f;
+    const float radius = width * .5f;
+    uint32_t num_capsules = 0;
+
+    stack[stack_index++] = 
+    {
+        .c0 = {control_points[0], control_points[1]},
+        .c1 = {control_points[2], control_points[3]},
+        .c2 = {control_points[4], control_points[5]},
+    };
+
+    while (stack_index != 0)
+    {
+        bezier_curve c = stack[--stack_index];
+
+        // splits proportionally to segment lengths, isolating the bend toward the control point
+        float d0 = vec2_distance(c.c0, c.c1);
+        float d1 = vec2_distance(c.c1, c.c2);
+        float split =  d0 / (d0 + d1);
+
+        vec2 left = vec2_lerp( c.c0, c.c1, split);
+        vec2 right = vec2_lerp(c.c1, c.c2, split);
+        vec2 middle = vec2_lerp(left, right, split);
+        
+        if (is_colinear(c.c0, c.c2, middle, pixel_threshold))
+        {
+            od_draw_capsule(r, c.c0.x, c.c0.y, c.c2.x, c.c2.y, radius, srgb_color);
+            num_capsules++;
+        }
+        else
+        {
+            if (stack_index + 2 <= TESSELATION_STACK_MAX)
+            {
+                stack[stack_index++] =
+                {
+                    .c0 = c.c0,
+                    .c1 = left,
+                    .c2 = middle,
+                };
+
+                stack[stack_index++] =
+                {
+                    .c0 = middle,
+                    .c1 = right,
+                    .c2 = c.c2,
+                };
+            }
+            else
+                return UINT32_MAX;
+        }
+    }
+    return num_capsules;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

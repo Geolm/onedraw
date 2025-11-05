@@ -146,28 +146,26 @@ void init(void)
 // ---------------------------------------------------------------------------------------------------------------------------
 void slot(uint32_t index, float* cx, float* cy, float* radius)
 {
-    float step_x = sapp_widthf() / 6.f;
+    float step_x = sapp_widthf() / 7.f;
     float step_y = sapp_heightf() / 3.375f;
 
-    *cx = (index%6) * step_x + step_x * .5f;
-    *cy = (index/6) * step_y + step_y * .5f;
+    *cx = (index%7) * step_x + step_x * .5f;
+    *cy = (index/7) * step_y + step_y * .5f;
     *radius = fminf(step_x, step_y) * .4f;
 }
 
-float angle = 0.78539816f;
+const float angle = 0.78539816f;
 
 // ---------------------------------------------------------------------------------------------------------------------------
 void frame(void)
 {
     float cx, cy, radius;
 
-    angle += 0.01f;
-
     od_begin_frame(renderer);
 
     slot(0, &cx, &cy, &radius);
     od_draw_disc(renderer, cx, cy, radius, miya_blue);
-    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "odd_draw_text", miya_brown);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_disc", miya_brown);
 
     slot(1, &cx, &cy, &radius);
     od_draw_ring(renderer, cx, cy, radius, radius * .1f, miya_green);
@@ -246,6 +244,13 @@ void frame(void)
     od_draw_oriented_quad(renderer, cx, cy, radius, radius*.5f, angle * 0.75f, (od_quad_uv){0.f, 0.f, 1.f, 0.5f}, 2, 0xffffffff);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_oriented_quad", miya_brown);
 
+    slot(17, &cx, &cy, &radius);
+    float ctrl_pts[] = { cx, cy-radius*.8f, cx-radius, cy+radius*0.8f, cx, cy+radius};
+    od_draw_triangle(renderer, ctrl_pts, 0.f, miya_yellow);
+    od_draw_quadratic_bezier(renderer, ctrl_pts, 20.f, miya_red);
+    
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_quadratic_bezier", miya_brown);
+
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }
 
@@ -268,6 +273,7 @@ sapp_desc sokol_main(int argc, char* argv[])
         .init_cb = init,
         .frame_cb = frame,
         .cleanup_cb = cleanup,
-        .high_dpi = true
+        .high_dpi = true,
+        .window_title = "onedraw"
     };
 }

@@ -216,8 +216,12 @@ void od_draw_oriented_box(struct onedraw* r, float ax, float ay, float bx, float
 void od_draw_oriented_rect(struct onedraw* r, float ax, float ay, float bx, float by, float width, float roundness, float thickness, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Draws a line
+// Draws a line (sharp endpoints)
 void od_draw_line(struct onedraw* r, float ax, float ay, float bx, float by, float width, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a capsule (rounded endpoints)
+void od_draw_capsule(struct onedraw* r, float ax, float ay, float bx, float by, float radius, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a oriented ellipse
@@ -305,6 +309,13 @@ void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_
 //      [angle]                 angle in radians
 //      [uv]                    top-left and bottom right uv, must be [0; 1]
 void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, float height, float angle, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a quadratic bezier curve using adaptative tesselation
+//      [control_points]        an array of 6 floats that represent the control points coordinates (x, y)
+//      [width]
+// Returns the number of capsules used or UINT32_MAX if the tesselation fails somehow
+uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points, float width, draw_color srgb_color);
 
 #ifdef __cplusplus
 }
