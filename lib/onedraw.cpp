@@ -290,7 +290,7 @@ static inline vec2 vec2_lerp(vec2 a, vec2 b, float t)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
-static inline bool is_colinear(vec2 p0, vec2 p1, vec2 p2, float COLINEAR_THRESHOLD)
+static inline bool is_colinear(vec2 p0, vec2 p1, vec2 p2, float threshold)
 {
     vec2 v0 = vec2_sub(p1, p0);
     vec2 v1 = vec2_sub(p2, p0);
@@ -301,7 +301,7 @@ static inline bool is_colinear(vec2 p0, vec2 p1, vec2 p2, float COLINEAR_THRESHO
         return true;
 
     float squared_height = (squared_area * squared_area) / base2;
-    return squared_height <= (COLINEAR_THRESHOLD * COLINEAR_THRESHOLD);
+    return squared_height <= (threshold * threshold);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1694,7 +1694,7 @@ uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points
         // splits proportionally to segment lengths, isolating the bend toward the control point
         float d0 = vec2_distance(c.c0, c.c1);
         float d1 = vec2_distance(c.c1, c.c2);
-        float split =  d0 / (d0 + d1);
+        float split = d0 / (d0 + d1);
 
         vec2 left = vec2_lerp( c.c0, c.c1, split);
         vec2 right = vec2_lerp(c.c1, c.c2, split);
