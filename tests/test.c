@@ -232,7 +232,7 @@ void frame(void)
     od_draw_disc(renderer, cx, cy, radius*0.25f, miya_light_green);
     od_draw_disc(renderer, cx + cosf(angle) * radius * .5f, cy - sinf(angle) * radius * .5f, radius*0.25f, miya_light_green);
     od_end_group(renderer, miya_brown);
-    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_begin_group", miya_brown);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "smoothmin", miya_brown);
 
     slot(15, &cx, &cy, &radius);
     od_draw_quad(renderer, cx-radius, cy-radius, cx, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 0, 0x7fffffff);
@@ -262,6 +262,16 @@ void frame(void)
         od_draw_disc(renderer, cubic_ctrl_pts[i*2], cubic_ctrl_pts[i*2+1], 10.f, miya_dark_green);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_cubic_bezier", miya_brown);
     od_draw_text(renderer, cx-radius, cy+radius*1.25f, string, miya_brown);
+
+    slot(19, &cx, &cy, &radius);
+    od_begin_group(renderer, false, 0.f, 10.f);
+    od_draw_box(renderer, cx-radius, cy-radius*.25f, cx+radius, cy+radius*.25f, 0.f, miya_blue);
+    od_draw_disc(renderer, cx-radius*.5f, cy, radius*.3f, miya_dark_green);
+    od_draw_sector(renderer, cx, cy, radius, angle, 0.78539816f, miya_pink);
+    od_draw_arc(renderer, cx, cy, cosf(angle), sinf(angle), 0.78539816f, radius, radius * 0.1f, miya_red);
+    od_end_group(renderer, miya_yellow);
+
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "outline", miya_brown);
 
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }

@@ -1069,6 +1069,9 @@ void od_begin_group(struct onedraw* r, bool smoothblend, float group_smoothness,
     assert_msg(r->commands.group_aabb == nullptr, "cannot call a second time od_begin_group without closing the previous group");
     assert_msg(group_smoothness >= 0.f, "smoothness cannot be negative");
 
+    if (!smoothblend)
+        group_smoothness = 0.f;
+
     draw_command* cmd = r->commands.buffer.NewElement();
     draw_color* color = r->commands.colors.NewElement();
     if (cmd != nullptr && color != nullptr)
