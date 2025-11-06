@@ -47,6 +47,11 @@ The *k-factor* (as described on [Inigo Quilez’s website](https://iquilezles.or
 
 During binning, the tile’s bounding box is expanded by this value to ensure that shapes contributing to a smooth blend are not missed.
 
+Note : this is a very conservative way to handle smoothmin. We might revisit this with some interval arithmetic logic (see [https://www.mattkeeter.com/research/mpr/](https://www.mattkeeter.com/research/mpr/) ) but here are some quick thoughts:
+* we don't support complex tree of boolean operations, only smoothmin will benefit from interval arithmetic (min is already optimal)
+* the binning shader is already VGPR bound, so adding interval evaluation for all kind of primitives will have an impact on performances even when not using smoothmin
+* one solution to explore is an hybrid approach : interval evaluation on CPU that change the aabb tested on the GPU
+
 
 ---
 
