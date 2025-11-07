@@ -128,6 +128,18 @@ static inline float sd_oriented_ring(float2 position, float2 center, float2 dire
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+static inline bool clip_pixel(constant clip_shape& clip, float2 pos)
+{
+    switch(clip.type)
+    {
+    case clip_rect: return (pos.x < clip.rect.min_x || pos.y < clip.rect.min_y && 
+                            pos.x > clip.rect.max_x || pos.y > clip.rect.max_y);
+    case clip_disc: return (distance_squared(pos, float2(clip.disc.center_x, clip.disc.center_y)) > clip.disc.squared_radius);
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // smooth minimum : quadratic polynomial
 //
 // note : a primitive is on top of b primitive. Also it handle a anti-aliased primitive going over another primitive and keeping 
@@ -240,14 +252,14 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
         uint32_t packed_data = quad_broadcast(raw_cmd->packed_data, 0);
         uint8_t extra = packed_data & 0xFF;
 
-        constant clip_rect& clip = input.clips[(packed_data >> 8) & 0xFF];
+        constant clip_shape& clip = input.clips[(packed_data >> 8) & 0xFF];
         const uint32_t data_index = quad_broadcast(raw_cmd->data_index, 0);
         const command_type type = (command_type) ((packed_data >> 24) & 0xFF);
         const primitive_fillmode fillmode = (primitive_fillmode) ((packed_data >> 16) & 0xFF);
         half4 cmd_color = unpack_unorm4x8_srgb_to_half(input.colors[node.command_index]);
 
         // check if the pixel is in the clip rect
-        if (all(float4(in.pos.xy, clip.max_x, clip.max_y) >= float4(clip.min_x, clip.min_y, in.pos.xy)))
+        if (!clip_pixel(clip, in.pos.xy))
         {
             float distance = 10.f;
             constant float* data = &input.draw_data[data_index];

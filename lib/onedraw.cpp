@@ -17,7 +17,7 @@
 
 #define SAFE_RELEASE(p) if (p!=nullptr) {p->release(); p = nullptr;}
 #define UNUSED_VARIABLE(a) (void)(a)
-#define LAST_CLIP_INDEX ((uint8_t) r->commands.cliprects_buffer.GetNumElements()-1)
+#define LAST_CLIP_INDEX ((uint8_t) r->commands.clipshapes_buffer.GetNumElements()-1)
 #define assert_msg(expr, msg) assert((expr) && (msg))
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -156,7 +156,7 @@ struct onedraw
         DynamicBuffer<draw_color> colors;
         DynamicBuffer<quantized_aabb> aabb_buffer;
         DynamicBuffer<float> data_buffer;
-        DynamicBuffer<clip_rect> cliprects_buffer;
+        DynamicBuffer<clip_shape> clipshapes_buffer;
         uint32_t count;
         quantized_aabb* group_aabb {nullptr};
         quantized_aabb* draw_aabb {nullptr};
@@ -691,7 +691,7 @@ void od_bin_commands(struct onedraw* r)
     args->commands = (draw_command*) r->commands.buffer.GetBuffer(r->stats.frame_index)->gpuAddress();
     args->colors = (draw_color*) r->commands.colors.GetBuffer(r->stats.frame_index)->gpuAddress();
     args->draw_data = (float*) r->commands.data_buffer.GetBuffer(r->stats.frame_index)->gpuAddress();
-    args->clips = (clip_rect*) r->commands.cliprects_buffer.GetBuffer(r->stats.frame_index)->gpuAddress();
+    args->clips = (clip_shape*) r->commands.clipshapes_buffer.GetBuffer(r->stats.frame_index)->gpuAddress();
     args->glyphs = (font_char*) r->font.glyphs->gpuAddress();
     args->font = r->font.texture->gpuResourceID()._impl;
     args->atlas = r->rasterizer.atlas->gpuResourceID()._impl;
@@ -746,7 +746,7 @@ void od_bin_commands(struct onedraw* r)
     compute_encoder->useResource(r->commands.aabb_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
     compute_encoder->useResource(r->commands.buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
     compute_encoder->useResource(r->commands.data_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
-    compute_encoder->useResource(r->commands.cliprects_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
+    compute_encoder->useResource(r->commands.clipshapes_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
     compute_encoder->useResource(r->tiles.head, MTL::ResourceUsageRead|MTL::ResourceUsageWrite);
     compute_encoder->useResource(r->tiles.nodes, MTL::ResourceUsageWrite);
     compute_encoder->useResource(r->tiles.indices, MTL::ResourceUsageWrite);
@@ -793,7 +793,7 @@ void od_flush(struct onedraw* r, void* drawable)
         render_encoder->useResource(r->commands.buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
         render_encoder->useResource(r->commands.colors.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
         render_encoder->useResource(r->commands.data_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
-        render_encoder->useResource(r->commands.cliprects_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
+        render_encoder->useResource(r->commands.clipshapes_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
         render_encoder->useResource(r->tiles.head, MTL::ResourceUsageRead);
         render_encoder->useResource(r->tiles.nodes, MTL::ResourceUsageRead);
         render_encoder->useResource(r->tiles.indices, MTL::ResourceUsageRead);
@@ -876,7 +876,7 @@ struct onedraw* od_init(onedraw_def* def)
     r->commands.colors.Init(r->device, sizeof(draw_color) * MAX_COMMANDS);
     r->commands.data_buffer.Init(r->device, sizeof(float) * MAX_DRAWDATA);
     r->commands.aabb_buffer.Init(r->device, sizeof(quantized_aabb) * MAX_COMMANDS);
-    r->commands.cliprects_buffer.Init(r->device, sizeof(clip_rect) * MAX_CLIPS);
+    r->commands.clipshapes_buffer.Init(r->device, sizeof(clip_shape) * MAX_CLIPS);
     r->tiles.counters_buffer = r->device->newBuffer(sizeof(counters), MTL::ResourceStorageModePrivate);
     r->tiles.nodes = r->device->newBuffer(sizeof(tile_node) * MAX_NODES_COUNT, MTL::ResourceStorageModePrivate);
 
@@ -987,7 +987,7 @@ void od_begin_frame(struct onedraw* r)
     r->commands.colors.Map(r->stats.frame_index);
     r->commands.draw_aabb = r->commands.aabb_buffer.Map(r->stats.frame_index);
     r->commands.data_buffer.Map(r->stats.frame_index);
-    r->commands.cliprects_buffer.Map(r->stats.frame_index);
+    r->commands.clipshapes_buffer.Map(r->stats.frame_index);
     od_set_cliprect(r, 0, 0, (uint16_t) r->rasterizer.width, (uint16_t) r->rasterizer.height);
 }
 
@@ -1031,7 +1031,7 @@ void od_terminate(struct onedraw* r)
     r->commands.aabb_buffer.Terminate();
     r->commands.draw_arg.Terminate();
     r->commands.bin_output_arg.Terminate();
-    r->commands.cliprects_buffer.Terminate();
+    r->commands.clipshapes_buffer.Terminate();
     SAFE_RELEASE(r->tiles.counters_buffer);
     SAFE_RELEASE(r->tiles.binning_pso);
     SAFE_RELEASE(r->tiles.head);
@@ -1065,7 +1065,7 @@ void od_get_stats(struct onedraw* r, od_stats* stats)
     size_t gpu_mem = r->commands.aabb_buffer.GetTotalSize();
     gpu_mem += r->commands.bin_output_arg.GetTotalSize();
     gpu_mem += r->commands.buffer.GetTotalSize();
-    gpu_mem += r->commands.cliprects_buffer.GetTotalSize();
+    gpu_mem += r->commands.clipshapes_buffer.GetTotalSize();
     gpu_mem += r->commands.colors.GetTotalSize();
     gpu_mem += r->commands.data_buffer.GetTotalSize();
     gpu_mem += r->commands.draw_arg.GetTotalSize();
@@ -1867,22 +1867,52 @@ void od_set_clear_color(struct onedraw* r, draw_color srgb_color)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_set_cliprect(struct onedraw* r, uint16_t min_x, uint16_t min_y, uint16_t max_x, uint16_t max_y)
+void od_set_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y)
 {
     // avoid redundant clip rect
-    if (r->commands.cliprects_buffer.GetNumElements()>0)
+    if (r->commands.clipshapes_buffer.GetNumElements()>0)
     {
-        clip_rect* rect = r->commands.cliprects_buffer.LastElement();
+        clip_shape* clip = r->commands.clipshapes_buffer.LastElement();
 
-        if (rect->min_x == min_x && rect->min_y == min_y &&
-            rect->max_x == max_x && rect->max_y == max_y)
+        if (clip->rect.min_x == min_x && clip->rect.min_y == min_y &&
+            clip->rect.max_x == max_x && clip->rect.max_y == max_y && clip->type == clip_rect)
             return;
     }
 
-    if (r->commands.cliprects_buffer.GetNumElements() < MAX_CLIPS)
-        *r->commands.cliprects_buffer.NewElement() = (clip_rect) {.min_x = (float)min_x, .min_y = (float)min_y, .max_x = (float)max_x, .max_y = (float)max_y};
+    if (r->commands.clipshapes_buffer.GetNumElements() < MAX_CLIPS)
+    {
+        *r->commands.clipshapes_buffer.NewElement() = (clip_shape) 
+        {
+            .rect = {.min_x = min_x, .min_y = min_y, .max_x = max_x, .max_y = max_y},
+            .type = clip_rect
+        };
+    }
     else
-        od_log(r, "too many clip rectangle! maximum is %d", MAX_CLIPS);
+        od_log(r, "too many clip shapes! maximum is %d", MAX_CLIPS);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_set_clipdisc(struct onedraw* r, float cx, float cy, float radius)
+{
+    if (r->commands.clipshapes_buffer.GetNumElements()>0)
+    {
+        clip_shape* clip = r->commands.clipshapes_buffer.LastElement();
+
+        if (clip->type == clip_disc && clip->disc.center_x == cx && clip->disc.center_y == cy &&
+            clip->disc.squared_radius == (radius * radius))
+            return;
+    }
+
+    if (r->commands.clipshapes_buffer.GetNumElements() < MAX_CLIPS)
+    {
+        *r->commands.clipshapes_buffer.NewElement() = (clip_shape) 
+        {
+            .disc = {.center_x = cx, .center_y = cy, .squared_radius = radius * radius},
+            .type = clip_disc
+        };
+    }
+    else
+        od_log(r, "too many clip shapes! maximum is %d", MAX_CLIPS);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

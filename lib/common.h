@@ -109,10 +109,21 @@ typedef struct counters
     uint32_t pad[2];
 } counters;
 
-typedef struct clip_rect
+enum clip_type 
 {
-    float min_x, min_y, max_x, max_y;
-} clip_rect;
+    clip_rect = 0, 
+    clip_disc = 1
+};
+
+typedef struct clip_shape
+{
+    union 
+    {
+        struct {float min_x, min_y, max_x, max_y;} rect;
+        struct {float center_x, center_y, squared_radius;} disc;
+    };
+    enum clip_type type;
+} clip_shape;
 
 typedef struct quantized_aabb
 {
@@ -140,7 +151,7 @@ typedef struct draw_cmd_arguments
     constant uint32_t* colors;
     constant quantized_aabb* commands_aabb;
     constant float* draw_data;
-    constant clip_rect* clips;
+    constant clip_shape* clips;
     constant font_char* glyphs;
     texture_half font;
     texture_array atlas;

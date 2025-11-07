@@ -113,6 +113,20 @@ void fill_texture_array(void)
     free(pixel_data);
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------
+static inline float iq_random_float(int* seed)
+{
+    union
+    {
+        float fres;
+        unsigned int ires;
+    } float2int;
+
+    *seed *= 16807;
+
+    float2int.ires = ((((unsigned int)*seed)>>9 ) | 0x3f800000);
+    return float2int.fres - 1.0f;
+}
 
 // ---------------------------------------------------------------------------------------------------------------------------
 void custom_log(const char* string)
@@ -233,6 +247,7 @@ void frame(void)
     od_begin_group(renderer, true, radius * 0.25f, radius * 0.05f);
     od_draw_disc(renderer, cx, cy, radius*0.25f, miya_light_green);
     od_draw_disc(renderer, cx + cosf(angle) * radius * .5f, cy - sinf(angle) * radius * .5f, radius*0.25f, miya_light_green);
+    od_draw_box(renderer, cx-radius*.7f, cy-radius*.7f, cx-radius*.3f, cy+radius*.7f, 0.f, miya_yellow);
     od_end_group(renderer, miya_brown);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "smoothmin", miya_brown);
 
@@ -273,6 +288,19 @@ void frame(void)
     od_draw_arc(renderer, cx, cy, cosf(angle), sinf(angle), 0.78539816f, radius, radius * 0.1f, miya_red);
     od_end_group(renderer, miya_yellow);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "outline", miya_brown);
+
+    slot(20, &cx, &cy, &radius);
+    od_set_clipdisc(renderer, cx, cy, radius);
+    int seed = 0x12345678;
+    const uint32_t colors[] = {miya_green, miya_pale_blue, miya_yellow};
+    for(uint32_t i=0; i<100; i++)
+    {
+        float angle = iq_random_float(&seed) * 6.28f;
+        od_draw_capsule(renderer, cx, cy, cx + cosf(angle) * 1000.f, cy + sinf(angle) * 1000.f, radius * 0.1f, colors[i%3]);
+    }
+
+    od_set_cliprect(renderer, 0.f, 0.f, UINT16_MAX, UINT16_MAX);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "disc clip", miya_brown);
 
 
     od_stats stats;

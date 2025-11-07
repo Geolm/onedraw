@@ -612,7 +612,23 @@ void clean_list(device tiles_data& tiles, uint16_t tile_index)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// for each tile of the screen, we traverse the list of commands of the regiom and if the command has an impact on the tile
+static inline bool clip_tile(aabb tile, clip_shape clip)
+{
+    switch(clip.type)
+    {
+    case clip_rect:
+        return (tile.max.x < clip.rect.min_x || tile.max.y < clip.rect.min_y || 
+                tile.min.x > clip.rect.max_x || tile.min.y > clip.rect.max_y);
+    case clip_disc:
+        float2 center = float2(clip.disc.center_x, clip.disc.center_y);
+        float2 nearest_point = clamp(center, tile.min, tile.max);
+        return distance_squared(nearest_point, center) > clip.disc.squared_radius;
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// for each tile of the screen, we traverse the list of commands of the region and if the command has an impact on the tile
 // we add the command to the linked list of the tile
 // ---------------------------------------------------------------------------------------------------------------------------
 kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
@@ -652,10 +668,13 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
             continue;
 
         draw_command cmd = input.commands[cmd_index];
-        clip_rect clip = input.clips[cmd.clip_index];
+        clip_shape clip = input.clips[cmd.clip_index];
 
-        float2 tile_pos = float2(tile_xy * TILE_SIZE);
-        if (any(tile_pos>float2(clip.max_x, clip.max_y)) || any((tile_pos + TILE_SIZE)<float2(clip.min_x, clip.min_y)))
+        aabb tile_box;
+        tile_box.min = float2(tile_xy) * (float)TILE_SIZE;
+        tile_box.max = tile_box.min + (float)TILE_SIZE;
+
+        if (clip_tile(tile_box, clip))
             continue;
 
         constant float* data = &input.draw_data[cmd.data_index];
