@@ -277,6 +277,16 @@ void frame(void)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+void event(const sapp_event* event)
+{
+    switch(event->type)
+    {
+    case SAPP_EVENTTYPE_RESIZED : od_resize(renderer, event->framebuffer_width, event->framebuffer_height); break;
+    default: break;
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 void cleanup(void)
 {
     od_terminate(renderer);
@@ -295,6 +305,7 @@ sapp_desc sokol_main(int argc, char* argv[])
         .init_cb = init,
         .frame_cb = frame,
         .cleanup_cb = cleanup,
+        .event_cb = event,
         .high_dpi = true,
         .window_title = "onedraw"
     };
