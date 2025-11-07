@@ -110,6 +110,7 @@ public:
     size_t GetMaxElements() const {return m_MaxElements;}
     MTL::Buffer* GetBuffer(uint32_t currentFrameIndex) {return m_Buffers[GetIndex(currentFrameIndex)];}
     NS::UInteger GetLength() const {return m_Buffers[0]->length();}
+    size_t GetTotalSize() const {return m_Buffers[0]->allocatedSize() * DynamicBuffer::MaxInflightBuffers;}
 };
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -1061,6 +1062,26 @@ void od_get_stats(struct onedraw* r, od_stats* stats)
     stats->num_draw_cmd = r->commands.count, r->commands.buffer.GetMaxElements();
     stats->peak_num_draw_cmd = r->stats.peak_num_draw_cmd;
     stats->gpu_time_ms = r->stats.average_gpu_time * 1000.f;
+    size_t gpu_mem = r->commands.aabb_buffer.GetTotalSize();
+    gpu_mem += r->commands.bin_output_arg.GetTotalSize();
+    gpu_mem += r->commands.buffer.GetTotalSize();
+    gpu_mem += r->commands.cliprects_buffer.GetTotalSize();
+    gpu_mem += r->commands.colors.GetTotalSize();
+    gpu_mem += r->commands.data_buffer.GetTotalSize();
+    gpu_mem += r->commands.draw_arg.GetTotalSize();
+    gpu_mem += r->font.texture->allocatedSize();
+    gpu_mem += r->font.glyphs->allocatedSize();
+    gpu_mem += r->rasterizer.atlas->allocatedSize();
+    gpu_mem += r->regions.indices->allocatedSize();
+    gpu_mem += r->regions.predicate->allocatedSize();
+    gpu_mem += r->regions.scan->allocatedSize();
+    gpu_mem += (r->screenshot.texture != nullptr) ? r->screenshot.texture->allocatedSize() : 0;
+    gpu_mem += r->tiles.counters_buffer->allocatedSize();
+    gpu_mem += r->tiles.head->allocatedSize();
+    gpu_mem += r->tiles.indices->allocatedSize();
+    gpu_mem += r->tiles.indirect_arg->allocatedSize();
+    gpu_mem += r->tiles.nodes->allocatedSize();
+    stats->gpu_memory_usage = gpu_mem;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

@@ -155,6 +155,8 @@ void slot(uint32_t index, float* cx, float* cy, float* radius)
 }
 
 const float angle = 0.78539816f;
+float gpu_time_ms = 0.f;
+uint32_t num_frames = 0;
 
 // ---------------------------------------------------------------------------------------------------------------------------
 void frame(void)
@@ -270,8 +272,27 @@ void frame(void)
     od_draw_sector(renderer, cx, cy, radius, angle, 0.78539816f, miya_pink);
     od_draw_arc(renderer, cx, cy, cosf(angle), sinf(angle), 0.78539816f, radius, radius * 0.1f, miya_red);
     od_end_group(renderer, miya_yellow);
-
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "outline", miya_brown);
+
+
+    od_stats stats;
+    od_get_stats(renderer, &stats);
+    snprintf(string, 256, "GPU Memory usage : %zu kb", stats.gpu_memory_usage>>10);
+    od_draw_text(renderer, 0, sapp_heightf() - od_text_height(renderer) * 2.f, string, miya_blue);
+
+    snprintf(string, 256, "num commands : %u", stats.peak_num_draw_cmd);
+    od_draw_text(renderer, (sapp_widthf() - od_text_width(renderer, string)) * .5f,
+                 sapp_heightf() - od_text_height(renderer) * 2.f, string, miya_blue);
+
+    if (stats.gpu_time_ms != 0.f)
+    {
+        // average all gpu time to get close to the "real" value as the scene is static
+        num_frames++;
+        gpu_time_ms += stats.gpu_time_ms;
+        snprintf(string, 256, "GPU Time : %2.2f ms", gpu_time_ms / (float)(num_frames));
+        od_draw_text(renderer, sapp_widthf() - od_text_width(renderer, string),
+                    sapp_heightf() - od_text_height(renderer) * 2.f, string, miya_blue);
+    }
 
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }

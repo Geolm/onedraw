@@ -2,6 +2,15 @@
 
 ## Stats
 
+Here are the stats for the [test program](../tests/test.c) (screenshot in homepage) running on my 14-inch MacBook Pro :
+
+* Resolution: 2440p
+* 659 draw commands
+* 59,295 KB of GPU memory
+* GPU time: 1.38 ms (total)
+
+To be honest, the memory usage is a bit higher than I’d like. This is mainly due to the current use of fixed-size buffers and could be improved by allowing customization to better fit the user’s needs.
+
 
 ## Next steps
 

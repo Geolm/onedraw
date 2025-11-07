@@ -95,10 +95,8 @@ In this debug view, you can see the overlap between capsules that ensures smooth
 
 ##### Tesselation Details
 
-Tesselation is done using De Casteljau’s algorithm until we reach nearly colinear points (currently the threshold is 1/10th of a pixel).  
-
-Splits are done proportionally to segment lengths, which performs slightly better than a fixed halfway split (`t = 0.5`) but remains cheap.  
-
+Tesselation is done using De Casteljau’s algorithm until we reach nearly colinear points (currently the threshold is 1/10th of a pixel).
+Splits are done proportionally to segment lengths, which performs slightly better than a fixed halfway split (`t = 0.5`) but remains cheap.
 We currently support both **quadratic** and **cubic** Bézier curves.
 
 

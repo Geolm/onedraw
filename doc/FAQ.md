@@ -23,3 +23,7 @@ Coordinates are expressed in pixels, with the x-axis increasing to the right and
 ### Does the library cull objects?
 
 Objects outside the screen are not rasterized, but draw commands are still issued. We recommend implementing a high-level culling system if many objects fall outside the screen to avoid wasting draw calls and GPU resources. Note: There is currently no mechanism to detect redundant primitives that will be completely overwritten by an opaque primitive, but we are exploring optimizations to address this.
+
+### Does the library work on iOS?
+
+It should but it has not been tested, so one should not expect a smooth experience on iOS.

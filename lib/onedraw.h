@@ -52,6 +52,7 @@ typedef struct od_stats
     uint32_t frame_index;
     uint32_t num_draw_cmd;
     uint32_t peak_num_draw_cmd;
+    size_t gpu_memory_usage;
     float gpu_time_ms;
 } od_stats;
 
