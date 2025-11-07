@@ -331,6 +331,14 @@ void event(const sapp_event* event)
     switch(event->type)
     {
     case SAPP_EVENTTYPE_RESIZED : od_resize(renderer, event->framebuffer_width, event->framebuffer_height); break;
+    case SAPP_EVENTTYPE_KEY_DOWN : 
+    {
+        if (event->key_code == SAPP_KEYCODE_Q && event->modifiers == SAPP_MODIFIER_SUPER)
+            sapp_quit();
+        break;
+    }
+
+            
     default: break;
     }
 }
