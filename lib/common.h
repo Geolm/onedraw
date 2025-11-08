@@ -66,7 +66,7 @@ enum primitive_fillmode
     fill_solid = 0,
     fill_outline = 1,
     fill_hollow = 2,
-    fill_last = 3
+    fill_radial_gradient = 3,
 };
 
 #define COMMAND_TYPE_MASK   (0x3f)

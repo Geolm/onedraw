@@ -181,8 +181,8 @@ void frame(void)
     od_begin_frame(renderer);
 
     slot(0, &cx, &cy, &radius);
-    od_draw_disc(renderer, cx, cy, radius, miya_blue);
-    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_disc", miya_brown);
+    od_draw_disc_gradient(renderer, cx, cy, radius, miya_dark_blue, miya_light_blue);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "od_draw_disc_gradient", miya_brown);
 
     slot(1, &cx, &cy, &radius);
     od_draw_ring(renderer, cx, cy, radius, radius * .1f, miya_green);

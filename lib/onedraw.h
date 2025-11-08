@@ -93,7 +93,8 @@ extern "C" {
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Returns the number of bytes needed by the library 
-// ==> as the lib allocates gpu buffers, the total memory usage is higher than this and depends on resolution
+// ==>  as the lib allocates gpu buffers, the total memory usage is higher than this and depends on resolution
+//      use od_stats() to know the gpu memory usage
 size_t od_min_memory_size();
 
 //-----------------------------------------------------------------------------------------------------------------------------
@@ -207,6 +208,14 @@ void od_draw_ring(struct onedraw* r, float cx, float cy, float radius, float thi
 void od_draw_disc(struct onedraw* r, float cx, float cy, float radius, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
+// Draws a disc, with a radial gradient
+//      [cx, cy]        center of the disc
+//      [radius]
+//      [outter_color]  color on the edge of the disc
+//      [inner_color]   color at the center of the disc
+void od_draw_disc_gradient(struct onedraw* r, float cx, float cy, float radius, draw_color outter_color, draw_color inner_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
 // Draws a oriented box (square line segment)
 //      [ax, bx], [by, cy]      line coordinates
 //      [width]                 width of the box
@@ -299,6 +308,11 @@ void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float half_width
 //      [x, y]                  top-left coordinates of the character
 //      [c]                     only [32-126] char are supported
 void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a zero-terminated string, carriage return (\n) are taken in account
+//      [x, y]                  top-left coordinates of the string
+//      [text]                  string to be rendered
 void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------

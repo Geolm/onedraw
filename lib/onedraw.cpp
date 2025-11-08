@@ -359,6 +359,23 @@ static inline aabb aabb_from_rounded_obb(vec2 p0, vec2 p1, float width, float bo
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
+static inline float srgb_to_linear(float c)
+{
+    if (c <= 0.04045f)
+        return c / 12.92f;
+    else
+        return powf((c + 0.055f) / 1.055f, 2.4f);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+static inline float bitcast_u32_to_float(uint32_t value)
+{
+    union {float f; uint32_t u;} c;
+    c.u = value;
+    return c.f;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
 void od_log(struct onedraw* r, const char* string, ...)
 {
     if (r->custom_log != nullptr)
@@ -461,15 +478,6 @@ void writeTGA(const char* filename, uint8_t* pixels, uint32_t width, uint32_t he
         fwrite(pixels, width * height * 4, 1, f);
         fclose(f);
     }
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-static inline float srgb_to_linear(float c)
-{
-    if (c <= 0.04045f)
-        return c / 12.92f;
-    else
-        return powf((c + 0.055f) / 1.055f, 2.4f);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1174,7 +1182,8 @@ static inline float draw_cmd_aabb_bump(struct onedraw* r)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void private_draw_disc(struct onedraw* r, vec2 center, float radius, float thickness, enum primitive_fillmode fillmode, draw_color srgb_color)
+void private_draw_disc(struct onedraw* r, vec2 center, float radius, float thickness, enum primitive_fillmode fillmode,
+                       draw_color primary_color, draw_color secondary_color)
 {
     thickness *= .5f;
 
@@ -1186,9 +1195,9 @@ void private_draw_disc(struct onedraw* r, vec2 center, float radius, float thick
         cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
         cmd->fillmode = fillmode;
         cmd->type = primitive_disc;
-        *color = srgb_color;
+        *color = primary_color;
 
-        float* data = r->commands.data_buffer.NewMultiple((fillmode == fill_hollow) ? 4 : 3);
+        float* data = r->commands.data_buffer.NewMultiple((fillmode == fill_hollow || fillmode == fill_radial_gradient) ? 4 : 3);
         quantized_aabb* aabb = r->commands.aabb_buffer.NewElement();
         if (data != nullptr && aabb != nullptr)
         {
@@ -1199,6 +1208,8 @@ void private_draw_disc(struct onedraw* r, vec2 center, float radius, float thick
                 max_radius += thickness;
                 write_float(data, center.x, center.y, radius, thickness);
             }
+            else if (fillmode == fill_radial_gradient)
+                write_float(data, center.x, center.y, radius, bitcast_u32_to_float(secondary_color));
             else
                 write_float(data, center.x, center.y, radius);
 
@@ -1215,13 +1226,19 @@ void private_draw_disc(struct onedraw* r, vec2 center, float radius, float thick
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_ring(struct onedraw* r, float cx, float cy, float radius, float thickness, draw_color color)
 {
-    private_draw_disc(r, vec2_set(cx, cy), radius, thickness, fill_hollow, color);
+    private_draw_disc(r, vec2_set(cx, cy), radius, thickness, fill_hollow, color, 0);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_disc(struct onedraw* r, float cx, float cy, float radius, draw_color color)
 {
-    private_draw_disc(r, vec2_set(cx, cy), radius, 0.f, fill_solid, color);
+    private_draw_disc(r, vec2_set(cx, cy), radius, 0.f, fill_solid, color, 0);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_draw_disc_gradient(struct onedraw* r, float cx, float cy, float radius, draw_color outter_color, draw_color inner_color)
+{
+    private_draw_disc(r, vec2_set(cx, cy), radius, 0.f, fill_radial_gradient, outter_color, inner_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

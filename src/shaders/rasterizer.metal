@@ -285,6 +285,12 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                     distance = sd_disc(in.pos.xy, center, radius);
                     if (fillmode == fill_hollow)
                         distance = abs(distance) - data[3];
+                    else if (fillmode == fill_radial_gradient)
+                    {
+                        uint32_t packed_color = as_type<uint>(data[3]);
+                        half4 inner_color = unpack_unorm4x8_srgb_to_half(packed_color);
+                        cmd_color = mix(inner_color, cmd_color, linearstep(-radius, 0.f, distance));
+                    }
                     break;
                 }
                 case primitive_oriented_box :
