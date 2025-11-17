@@ -128,6 +128,14 @@ static inline float sd_oriented_ring(float2 position, float2 center, float2 dire
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+static inline float sd_segment(float2 p, float2 a, float2 b )
+{
+    float2 pa = p-a, ba = b-a;
+    float h = saturate(dot(pa,ba)/dot(ba,ba));
+    return length( pa - ba*h );
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 static inline bool clip_pixel(constant clip_shape& clip, float2 pos)
 {
     switch(clip.type)
@@ -297,7 +305,13 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                 {
                     float2 p0 = float2(data[0], data[1]);
                     float2 p1 = float2(data[2], data[3]);
+                    float width = data[4];
+
+                    if (width == 0.f)
+                        distance = sd_segment(in.pos.xy, p0, p1);
+                    else
                     distance = sd_oriented_box(in.pos.xy, p0, p1, data[4]);
+
                     if (fillmode == fill_hollow)
                         distance = abs(distance);
                     distance -= data[5];

@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t rasterization_shader_size = 24662;
+static const size_t rasterization_shader_size = 25140;
 static const char rasterization_shader[] =
     "#include <metal_stdlib>\n"
     "#define RASTERIZER_SHADER\n"
@@ -340,6 +340,14 @@ static const char rasterization_shader[] =
     "}\n"
     "\n"
     "// ---------------------------------------------------------------------------------------------------------------------------\n"
+    "static inline float sd_segment(float2 p, float2 a, float2 b )\n"
+    "{\n"
+    "    float2 pa = p-a, ba = b-a;\n"
+    "    float h = saturate(dot(pa,ba)/dot(ba,ba));\n"
+    "    return length( pa - ba*h );\n"
+    "}\n"
+    "\n"
+    "// ---------------------------------------------------------------------------------------------------------------------------\n"
     "static inline bool clip_pixel(constant clip_shape& clip, float2 pos)\n"
     "{\n"
     "    switch(clip.type)\n"
@@ -509,7 +517,13 @@ static const char rasterization_shader[] =
     "                {\n"
     "                    float2 p0 = float2(data[0], data[1]);\n"
     "                    float2 p1 = float2(data[2], data[3]);\n"
+    "                    float width = data[4];\n"
+    "\n"
+    "                    if (width == 0.f)\n"
+    "                        distance = sd_segment(in.pos.xy, p0, p1);\n"
+    "                    else\n"
     "                    distance = sd_oriented_box(in.pos.xy, p0, p1, data[4]);\n"
+    "\n"
     "                    if (fillmode == fill_hollow)\n"
     "                        distance = abs(distance);\n"
     "                    distance -= data[5];\n"
