@@ -222,12 +222,11 @@ struct onedraw
     struct
     {
         MTL::Texture* texture {nullptr};
-        uint8_t* raw_bytes {nullptr};
+        void* out_pixels {nullptr};
         uint32_t region_x, region_y;
         uint32_t region_width, region_height;
         bool show_region {false};
         bool capture_image {false};
-        bool capture_video {false};
         bool allocate_resources {false};
     } screenshot;
 
@@ -395,7 +394,6 @@ void od_init_screenshot_resources(struct onedraw* r)
     if (r->screenshot.allocate_resources)
     {
         SAFE_RELEASE(r->screenshot.texture);
-        delete[] r->screenshot.raw_bytes;
 
         MTL::TextureDescriptor* pTextureDesc = MTL::TextureDescriptor::alloc()->init();
         pTextureDesc->setWidth(r->rasterizer.width);
@@ -409,7 +407,7 @@ void od_init_screenshot_resources(struct onedraw* r)
         r->screenshot = 
         {
             .texture = r->device->newTexture(pTextureDesc),
-            .raw_bytes = new uint8_t[r->rasterizer.width * r->rasterizer.height * sizeof(uint32_t)],
+            .out_pixels = nullptr, // null because defined by the user
             .region_x = 0,
             .region_y = 0,
             .region_width = r->rasterizer.width,
@@ -456,28 +454,6 @@ void od_build_depthstencil_state(struct onedraw* r)
     r->rasterizer.depth_stencil_state = r->device->newDepthStencilState(pDsDesc);
 
     pDsDesc->release();
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-void writeTGA(const char* filename, uint8_t* pixels, uint32_t width, uint32_t height) 
-{
-    // TGA Header (18 bytes)
-    uint8_t header[18] = {};
-    header[2]  = 2; // Image type: uncompressed true-color
-    header[12] = width & 0xFF;
-    header[13] = (width >> 8) & 0xFF;
-    header[14] = height & 0xFF;
-    header[15] = (height >> 8) & 0xFF;
-    header[16] = 32; // Bits per pixel
-    header[17] = 0x20; // Image origin: top-left (bit 5)
-
-    FILE* f = fopen(filename, "wb");
-    if (f)
-    {
-        fwrite(header, sizeof(header), 1, f);
-        fwrite(pixels, width * height * 4, 1, f);
-        fclose(f);
-    }
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -814,15 +790,25 @@ void od_flush(struct onedraw* r, void* drawable)
     }
     render_encoder->endEncoding();
 
+    const bool take_screenshot = (r->screenshot.out_pixels != nullptr) && (r->screenshot.capture_image) && (r->screenshot.texture != nullptr);
+
     r->command_buffer->addCompletedHandler(^void( MTL::CommandBuffer* pCmd )
     {
         UNUSED_VARIABLE(pCmd);
         dispatch_semaphore_signal( r->semaphore );
 
         atomic_store(&r->stats.gpu_time, (float)(pCmd->GPUEndTime() - pCmd->GPUStartTime()));
+
+        if (take_screenshot)
+        {
+            MTL::Region region = MTL::Region(r->screenshot.region_x, r->screenshot.region_y,
+                                             r->screenshot.region_width, r->screenshot.region_height);
+            r->screenshot.texture->getBytes(r->screenshot.out_pixels, r->screenshot.region_width * 4, region, 0);
+            r->screenshot.capture_image = false;
+            r->screenshot.out_pixels = nullptr;
+        }
     });
 
-    bool take_screenshot = (r->screenshot.raw_bytes != nullptr) && (r->screenshot.capture_image || r->screenshot.capture_video);
     if (take_screenshot)
     {
         MTL::BlitCommandEncoder* blit = r->command_buffer->blitCommandEncoder();
@@ -834,17 +820,6 @@ void od_flush(struct onedraw* r, void* drawable)
     r->command_buffer->commit();
     r->command_buffer->waitUntilCompleted();
 
-    if (take_screenshot)
-    {
-        MTL::Region region = MTL::Region(r->screenshot.region_x, r->screenshot.region_y,
-                                         r->screenshot.region_width, r->screenshot.region_height);
-        r->screenshot.texture->getBytes(r->screenshot.raw_bytes, r->screenshot.region_width * 4, region, 0);
-
-        snprintf(r->string_buffer, STRING_BUFFER_SIZE, "screenshot_%05d.tga", r->stats.frame_index);
-        writeTGA(r->string_buffer, r->screenshot.raw_bytes, r->screenshot.region_width, r->screenshot.region_height);
-        r->screenshot.capture_image = false;
-    }
-    
     renderPassDescriptor->release();
 }
 
@@ -948,9 +923,10 @@ void od_capture_region(struct onedraw* r, uint32_t x, uint32_t y, uint32_t width
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_take_screenshot(struct onedraw* r)
+void od_take_screenshot(struct onedraw* r, void* out_pixels)
 {
     r->screenshot.capture_image = true;
+    r->screenshot.out_pixels = out_pixels;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1060,7 +1036,6 @@ void od_terminate(struct onedraw* r)
     SAFE_RELEASE(r->font.texture);
     SAFE_RELEASE(r->font.glyphs);
     SAFE_RELEASE(r->screenshot.texture);
-    delete[] r->screenshot.raw_bytes;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

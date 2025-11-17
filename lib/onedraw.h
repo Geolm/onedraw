@@ -126,8 +126,13 @@ void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_i
 void od_capture_region(struct onedraw* r, uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Writes a tga screenshot in the current folder, must be called before between begin/end frame
-void od_take_screenshot(struct onedraw* r);
+// Makes the renderer copy the framebuffer into a cpu buffer when calling od_end_frame()
+// This function must be called before between begin_frame/end_frame.
+//      [out_pixels]            buffer of size (width*height*4), must be valid until od_end_frame() is called
+// 
+// Warning : the MTK::View has to have the flag framebufferOnly = FALSE;
+//           by default GLFW the flag is set false *but* sokol_app set it to true (it's a crash in that case)
+void od_take_screenshot(struct onedraw* r, void* out_pixels);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Resizes the renderer output dimensions (call this when the window size changes)

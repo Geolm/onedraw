@@ -4110,6 +4110,7 @@ _SOKOL_PRIVATE void _sapp_macos_mtl_init(void) {
     // CAMetalDisplayLink instead of CADisplayLink!
     _sapp.macos.mtl_device = MTLCreateSystemDefaultDevice();
     _sapp.macos.view = [[_sapp_macos_view alloc] init];
+    _sapp.macos.view.framebufferOnly = FALSE;
     [_sapp.macos.view updateTrackingAreas];
     _sapp.macos.view.preferredFramesPerSecond = max_fps / _sapp.swap_interval;
     _sapp.macos.view.device = _sapp.macos.mtl_device;

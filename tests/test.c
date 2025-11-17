@@ -128,6 +128,28 @@ static inline float iq_random_float(int* seed)
     return float2int.fres - 1.0f;
 }
 
+//----------------------------------------------------------------------------------------------------------------------------
+void writeTGA(const char* filename, uint8_t* pixels, uint32_t width, uint32_t height) 
+{
+    // TGA Header (18 bytes)
+    uint8_t header[18] = {};
+    header[2]  = 2; // Image type: uncompressed true-color
+    header[12] = width & 0xFF;
+    header[13] = (width >> 8) & 0xFF;
+    header[14] = height & 0xFF;
+    header[15] = (height >> 8) & 0xFF;
+    header[16] = 32; // Bits per pixel
+    header[17] = 0x20; // Image origin: top-left (bit 5)
+
+    FILE* f = fopen(filename, "wb");
+    if (f)
+    {
+        fwrite(header, sizeof(header), 1, f);
+        fwrite(pixels, width * height * 4, 1, f);
+        fclose(f);
+    }
+}
+
 // ---------------------------------------------------------------------------------------------------------------------------
 void custom_log(const char* string)
 {
@@ -145,6 +167,7 @@ void init(void)
         .viewport_height = (uint32_t) sapp_height(),
         .log_func = custom_log,
         .srgb_backbuffer = false,
+        .allow_screenshot = true,
         .atlas = 
         {
             .width = TEX_SIZE,
@@ -322,7 +345,20 @@ void frame(void)
                     sapp_heightf() - od_text_height(renderer) * 2.f, string, miya_blue);
     }
 
+    uint8_t* pixels = NULL;
+    if (stats.frame_index == 10)
+    {
+        pixels = malloc(sapp_width() * sapp_height() * 4);
+        od_take_screenshot(renderer, pixels);
+    }
+
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
+
+    if (pixels != NULL)
+    {
+        writeTGA("screenshot.tga", pixels, sapp_width(), sapp_height());
+        free(pixels);
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
