@@ -925,6 +925,7 @@ void od_capture_region(struct onedraw* r, uint32_t x, uint32_t y, uint32_t width
 //----------------------------------------------------------------------------------------------------------------------------
 void od_take_screenshot(struct onedraw* r, void* out_pixels)
 {
+    assert_msg(r->screenshot.texture != nullptr, "set allow_screenshot to true when calling od_init()");
     r->screenshot.capture_image = true;
     r->screenshot.out_pixels = out_pixels;
 }
