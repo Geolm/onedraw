@@ -95,7 +95,7 @@ extern "C" {
 // Returns the number of bytes needed by the library 
 // ==>  as the lib allocates gpu buffers, the total memory usage is higher than this and depends on resolution
 //      use od_stats() to know the gpu memory usage
-size_t od_min_memory_size();
+size_t od_min_memory_size(void);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Initializes the library
