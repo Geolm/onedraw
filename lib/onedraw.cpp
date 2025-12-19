@@ -912,7 +912,7 @@ void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_i
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_capture_region(struct onedraw* r, uint32_t x, uint32_t y, uint32_t width, uint32_t height)
+void od_set_capture_region(struct onedraw* r, uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
     assert_msg(x<=r->rasterizer.width && width<=r->rasterizer.width && y<=r->rasterizer.height && height<=r->rasterizer.height,
                "capture region cannot be bigger than the rendertarget");
@@ -920,6 +920,13 @@ void od_capture_region(struct onedraw* r, uint32_t x, uint32_t y, uint32_t width
     r->screenshot.region_y = y;
     r->screenshot.region_width = width;
     r->screenshot.region_height = height;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_get_capture_region_dimensions(struct onedraw *r, uint32_t* width, uint32_t* height)
+{
+    *width = r->screenshot.region_width;
+    *height = r->screenshot.region_height;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

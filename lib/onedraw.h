@@ -123,7 +123,11 @@ void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_i
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Sets-up the capture region for screenshots
-void od_capture_region(struct onedraw* r, uint32_t x, uint32_t y, uint32_t width, uint32_t height);
+void od_set_capture_region(struct onedraw* r, uint32_t x, uint32_t y, uint32_t width, uint32_t height);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Gets the capture region width and height
+void od_get_capture_region_dimensions(struct onedraw *r, uint32_t* width, uint32_t* height);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Makes the renderer copy the framebuffer into a cpu buffer when calling od_end_frame()
