@@ -7,6 +7,7 @@
 
 #include "../lib/onedraw.h"
 struct onedraw* renderer;
+bool culling_debug = false;
 
 #define FROM_HTML(html)   ((html&0xff)<<16) | ((html>>16)&0xff) | (html&0x00ff00) | 0xff000000
 #define TEX_SIZE (256)
@@ -376,6 +377,13 @@ void event(const sapp_event* event)
     {
         if (event->key_code == SAPP_KEYCODE_Q && event->modifiers == SAPP_MODIFIER_SUPER)
             sapp_quit();
+
+        if (event->key_code == SAPP_KEYCODE_D && event->modifiers == SAPP_MODIFIER_SUPER)
+        {
+            culling_debug = !culling_debug;
+            od_set_culling_debug(renderer, culling_debug);
+        } 
+
         break;
     }
 
