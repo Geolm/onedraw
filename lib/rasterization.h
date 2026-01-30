@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t rasterization_shader_size = 25140;
+static const size_t rasterization_shader_size = 25584;
 static const char rasterization_shader[] =
     "#include <metal_stdlib>\n"
     "#define RASTERIZER_SHADER\n"
@@ -75,7 +75,7 @@ static const char rasterization_shader[] =
     "    fill_solid = 0,\n"
     "    fill_outline = 1,\n"
     "    fill_hollow = 2,\n"
-    "    fill_radial_gradient = 3,\n"
+    "    fill_gradient = 3,\n"
     "};\n"
     "\n"
     "#define COMMAND_TYPE_MASK   (0x3f)\n"
@@ -505,7 +505,7 @@ static const char rasterization_shader[] =
     "                    distance = sd_disc(in.pos.xy, center, radius);\n"
     "                    if (fillmode == fill_hollow)\n"
     "                        distance = abs(distance) - data[3];\n"
-    "                    else if (fillmode == fill_radial_gradient)\n"
+    "                    else if (fillmode == fill_gradient)\n"
     "                    {\n"
     "                        uint32_t packed_color = as_type<uint>(data[3]);\n"
     "                        half4 inner_color = unpack_unorm4x8_srgb_to_half(packed_color);\n"
@@ -526,6 +526,14 @@ static const char rasterization_shader[] =
     "\n"
     "                    if (fillmode == fill_hollow)\n"
     "                        distance = abs(distance);\n"
+    "                    else if (fillmode == fill_gradient)\n"
+    "                    {\n"
+    "                        uint32_t packed_color = as_type<uint>(data[6]);\n"
+    "                        half4 inner_color = unpack_unorm4x8_srgb_to_half(packed_color);\n"
+    "                        float2 pa = in.pos.xy-p0, ba = p1-p0;\n"
+    "                        float h = saturate(dot(pa,ba)/dot(ba,ba));\n"
+    "                        cmd_color = mix(inner_color, cmd_color,  h);\n"
+    "                    }\n"
     "                    distance -= data[5];\n"
     "                    break;\n"
     "                }\n"

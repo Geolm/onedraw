@@ -1180,7 +1180,7 @@ void private_draw_disc(struct onedraw* r, vec2 center, float radius, float thick
         cmd->type = primitive_disc;
         *color = primary_color;
 
-        float* data = r->commands.data_buffer.NewMultiple((fillmode == fill_hollow || fillmode == fill_radial_gradient) ? 4 : 3);
+        float* data = r->commands.data_buffer.NewMultiple((fillmode == fill_hollow || fillmode == fill_gradient) ? 4 : 3);
         quantized_aabb* aabb = r->commands.aabb_buffer.NewElement();
         if (data != nullptr && aabb != nullptr)
         {
@@ -1191,7 +1191,7 @@ void private_draw_disc(struct onedraw* r, vec2 center, float radius, float thick
                 max_radius += thickness;
                 write_float(data, center.x, center.y, radius, thickness);
             }
-            else if (fillmode == fill_radial_gradient)
+            else if (fillmode == fill_gradient)
                 write_float(data, center.x, center.y, radius, bitcast_u32_to_float(secondary_color));
             else
                 write_float(data, center.x, center.y, radius);
@@ -1221,11 +1221,12 @@ void od_draw_disc(struct onedraw* r, float cx, float cy, float radius, draw_colo
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_disc_gradient(struct onedraw* r, float cx, float cy, float radius, draw_color outter_color, draw_color inner_color)
 {
-    private_draw_disc(r, vec2_set(cx, cy), radius, 0.f, fill_radial_gradient, outter_color, inner_color);
+    private_draw_disc(r, vec2_set(cx, cy), radius, 0.f, fill_gradient, outter_color, inner_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void private_draw_oriented_box(struct onedraw* r, vec2 p0, vec2 p1, float width, float roundness, float thickness, enum primitive_fillmode fillmode, draw_color srgb_color)
+void private_draw_oriented_box(struct onedraw* r, vec2 p0, vec2 p1, float width, float roundness, float thickness,
+                               enum primitive_fillmode fillmode, draw_color primary_color, draw_color secondary_color)
 {
     if (vec2_similar(p0, p1, HALF_PIXEL))
         return;
@@ -1240,15 +1241,20 @@ void private_draw_oriented_box(struct onedraw* r, vec2 p0, vec2 p1, float width,
         cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
         cmd->fillmode = fillmode;
         cmd->type = primitive_oriented_box;
-        *color = srgb_color;
+        *color = primary_color;
 
-        float* data = r->commands.data_buffer.NewMultiple(6);
+        float* data = r->commands.data_buffer.NewMultiple((fillmode == fill_gradient) ? 7 : 6);
         quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
         if (data != nullptr && aabox != nullptr)
         {
             float roundness_thickness = (fillmode == fill_hollow) ? thickness : roundness;
             aabb bb = aabb_from_rounded_obb(p0, p1, width, roundness_thickness + draw_cmd_aabb_bump(r));
-            write_float(data, p0.x, p0.y, p1.x, p1.y, width, roundness_thickness);
+
+            if (fillmode == fill_gradient)
+                write_float(data, p0.x, p0.y, p1.x, p1.y, width, roundness_thickness, bitcast_u32_to_float(secondary_color));
+            else
+                write_float(data, p0.x, p0.y, p1.x, p1.y, width, roundness_thickness);
+
             write_quantized_aabb(aabox, bb.min.x, bb.min.y, bb.max.x, bb.max.y);
             merge_quantized_aabb(r->commands.group_aabb, aabox);
             return;
@@ -1262,26 +1268,32 @@ void private_draw_oriented_box(struct onedraw* r, vec2 p0, vec2 p1, float width,
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_oriented_box(struct onedraw* r, float ax, float ay, float bx, float by, float width, float roundness, draw_color color)
 {
-    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), width, roundness, 0.f, fill_solid, color);
+    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), width, roundness, 0.f, fill_solid, color, 0);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_oriented_rect(struct onedraw* r, float ax, float ay, float bx, float by, float width, float roundness, float thickness, draw_color color)
 {
-    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), width, roundness, thickness, fill_hollow, color);
+    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), width, roundness, thickness, fill_hollow, color, 0);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_line(struct onedraw* r, float ax, float ay, float bx, float by, float width, draw_color srgb_color)
 {
-    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), width, 0.f, 0.f, fill_solid, srgb_color);
+    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), width, 0.f, 0.f, fill_solid, srgb_color, 0);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_capsule(struct onedraw* r, float ax, float ay, float bx, float by, float radius, draw_color srgb_color)
 {
     // capsule uses a specific sdf (see rasterizer shader) more efficient that oriented box
-    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), 0.f, radius, 0.f, fill_solid, srgb_color);
+    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), 0.f, radius, 0.f, fill_solid, srgb_color, 0);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_draw_capsule_gradient(struct onedraw* r, float ax, float ay, float bx, float by, float radius, draw_color primary_color, draw_color secondary_color)
+{
+    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), 0.f, radius, 0.f, fill_gradient, primary_color, secondary_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1291,7 +1303,7 @@ void private_draw_ellipse(struct onedraw* r, vec2 p0, vec2 p1, float width, floa
         return;
 
     if (width <= HALF_PIXEL)
-        private_draw_oriented_box(r, p0, p1, 0.f, 0.f, 0.f, fill_solid, srgb_color);
+        private_draw_oriented_box(r, p0, p1, 0.f, 0.f, 0.f, fill_solid, srgb_color, 0);
     else
     {
         thickness = float_max(thickness * .5f, 0.f);

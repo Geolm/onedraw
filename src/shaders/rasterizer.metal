@@ -293,7 +293,7 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                     distance = sd_disc(in.pos.xy, center, radius);
                     if (fillmode == fill_hollow)
                         distance = abs(distance) - data[3];
-                    else if (fillmode == fill_radial_gradient)
+                    else if (fillmode == fill_gradient)
                     {
                         uint32_t packed_color = as_type<uint>(data[3]);
                         half4 inner_color = unpack_unorm4x8_srgb_to_half(packed_color);
@@ -314,6 +314,14 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
 
                     if (fillmode == fill_hollow)
                         distance = abs(distance);
+                    else if (fillmode == fill_gradient)
+                    {
+                        uint32_t packed_color = as_type<uint>(data[6]);
+                        half4 inner_color = unpack_unorm4x8_srgb_to_half(packed_color);
+                        float2 pa = in.pos.xy-p0, ba = p1-p0;
+                        float h = saturate(dot(pa,ba)/dot(ba,ba));
+                        cmd_color = mix(inner_color, cmd_color,  h);
+                    }
                     distance -= data[5];
                     break;
                 }

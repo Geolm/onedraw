@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t binning_shader_size = 32685;
+static const size_t binning_shader_size = 32678;
 static const char binning_shader[] =
     "#include <metal_stdlib>\n"
     "#ifndef __COMMON_H__\n"
@@ -74,7 +74,7 @@ static const char binning_shader[] =
     "    fill_solid = 0,\n"
     "    fill_outline = 1,\n"
     "    fill_hollow = 2,\n"
-    "    fill_radial_gradient = 3,\n"
+    "    fill_gradient = 3,\n"
     "};\n"
     "\n"
     "#define COMMAND_TYPE_MASK   (0x3f)\n"

@@ -249,6 +249,10 @@ void od_draw_line(struct onedraw* r, float ax, float ay, float bx, float by, flo
 void od_draw_capsule(struct onedraw* r, float ax, float ay, float bx, float by, float radius, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
+// Draws a capsule with a gradient
+void od_draw_capsule_gradient(struct onedraw* r, float ax, float ay, float bx, float by, float radius, draw_color primary_color, draw_color secondary_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
 // Draws a oriented ellipse
 //      [ax, bx], [by, cy]      main axis of the ellipse
 //      [width]                 width of the ellipse
