@@ -23,6 +23,8 @@ void init(void)
 
 void frame(void)
 {
+    if (renderer == NULL)
+        return;
     od_begin_frame(renderer);
     od_draw_text(renderer, 0, 0, "Hello world!", 0xffffffff);
 
@@ -32,8 +34,10 @@ void frame(void)
 
 void cleanup(void)
 {
-    od_terminate(renderer);
+    if (renderer != NULL)
+        od_terminate(renderer);
     free(renderer);
+    renderer = NULL;
 }
 
 sapp_desc sokol_main(int argc, char* argv[])

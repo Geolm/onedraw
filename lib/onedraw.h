@@ -99,16 +99,19 @@ size_t od_min_memory_size(void);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Initializes the library
+//      [def]                   must be non-NULL
 //      [preallocated_buffer]   user-allocated memory of od_min_memory_size() bytes, must be aligned on sizeof(uintptr_t)
 //      [metal_device]          pointer to (MTL::Device*) device or obj-C equivalent
-//      [viewport_width]
-//      [viewport_height]
+//      [viewport_width]        must be non-zero
+//      [viewport_height]       must be non-zero
 //      [log_func]              pointer to the log function, can be NULL if no log required
 //      [allow_screenshot]      if true buffers are allocated for screenshot
-//      [texture_array]
+//      [atlas]
 //          [width]             width of all textures in the array, if 0 (undefined) the array won't be created
-//          [height]            
-//          [num_slices]        must be <= 256. each quad can use a specific slice. 
+//          [height]
+//          [num_slices]        must be <= 256. each quad can use a specific slice.
+//
+// returns NULL on failure (invalid def, unaligned buffer, non M1/A14 GPU, zero viewport, can't create a command queue)
 struct onedraw* od_init(onedraw_def* def);
 
 //-----------------------------------------------------------------------------------------------------------------------------

@@ -840,10 +840,31 @@ size_t od_min_memory_size(void)
 //----------------------------------------------------------------------------------------------------------------------------
 struct onedraw* od_init(onedraw_def* def)
 {
-    assert_msg(def->preallocated_buffer != nullptr, "forgot to allocate memory?");
-    assert_msg(((uintptr_t)def->preallocated_buffer)%sizeof(uintptr_t) == 0, "preallocated_buffer must be aligned on sizeof(uintptr_t)");
-    assert(def->metal_device != nullptr);
-    assert_msg(((MTL::Device*)def->metal_device)->supportsFamily(MTL::GPUFamilyApple7), "onedraw supports only M1/A14 GPU and later");
+    if (def == nullptr || def->preallocated_buffer == nullptr || def->metal_device == nullptr)
+        return nullptr;
+
+    // a failure must not crash the host, return nullptr instead
+    if (((uintptr_t)def->preallocated_buffer) % sizeof(uintptr_t) != 0)
+    {
+        if (def->log_func != nullptr)
+            def->log_func("onedraw: preallocated_buffer must be aligned on sizeof(uintptr_t)");
+        return nullptr;
+    }
+
+    // release build has no assert, check the GPU family in all cases
+    if (!((MTL::Device*)def->metal_device)->supportsFamily(MTL::GPUFamilyApple7))
+    {
+        if (def->log_func != nullptr)
+            def->log_func("onedraw: requires a M1/A14 (or later) GPU, can't init");
+        return nullptr;
+    }
+
+    if (def->viewport_width == 0 || def->viewport_height == 0)
+    {
+        if (def->log_func != nullptr)
+            def->log_func("onedraw: viewport width and height must be non-zero, can't init");
+        return nullptr;
+    }
 
     onedraw* r = new(def->preallocated_buffer) onedraw;
 
@@ -856,7 +877,13 @@ struct onedraw* od_init(onedraw_def* def)
     if (r->command_queue == nullptr)
     {
         od_log(r, "can't create a command queue");
-        exit(EXIT_FAILURE);
+        SAFE_RELEASE(r->command_queue);
+        r->commands.buffer.Terminate();
+        r->commands.colors.Terminate();
+        r->commands.data_buffer.Terminate();
+        r->commands.aabb_buffer.Terminate();
+        r->commands.clipshapes_buffer.Terminate();
+        return nullptr;
     }
 
     r->commands.buffer.Init(r->device, sizeof(draw_command) * MAX_COMMANDS);
@@ -1060,6 +1087,11 @@ void od_terminate(struct onedraw* r)
     SAFE_RELEASE(r->font.texture);
     SAFE_RELEASE(r->font.glyphs);
     SAFE_RELEASE(r->screenshot.texture);
+    if (r->semaphore != nullptr)
+    {
+        dispatch_release(r->semaphore);
+        r->semaphore = nullptr;
+    }
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
