@@ -30,6 +30,8 @@ constexpr float HALF_PIXEL = .5f;
 constexpr float VEC2_PI = 3.14159265f;
 constexpr uint32_t TESSELATION_STACK_MAX = 1024U;
 constexpr float COLINEAR_THRESHOLD = .1f;
+// quantized_aabb stores tile indices on 8 bits (max 256 tiles), so the screen is limited to 256 * TILE_SIZE pixels
+constexpr uint32_t MAX_SCREEN_SIZE = (UINT8_MAX + 1U) * TILE_SIZE;   // 4096
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // Templates
@@ -702,13 +704,15 @@ void od_bin_commands(struct onedraw* r)
     compute_encoder->useResource(r->commands.aabb_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
     compute_encoder->dispatchThreads(MTL::Size(r->commands.count, 1, 1), MTL::Size(threads_for_commands, 1, 1));
 
-    uint32_t threads_per_region = (r->commands.count + args->num_elements_per_thread - 1) / args->num_elements_per_thread;
+    // must be a multiple of SIMD_GROUP_SIZE (simd_prefix_exclusive_sum requires a full simdgroup)
+    uint32_t threads_per_region = optimal_num_threads((r->commands.count + args->num_elements_per_thread - 1) / args->num_elements_per_thread,
+                                                      SIMD_GROUP_SIZE, MAX_THREADS_PER_THREADGROUP);
 
     compute_encoder->setComputePipelineState(r->regions.exclusive_scan_pso);
     compute_encoder->setBuffer(r->regions.scan, 0, 2);
     compute_encoder->setThreadgroupMemoryLength(simd_group_count * sizeof(uint16_t), 0);
     compute_encoder->setThreadgroupMemoryLength(simd_group_count * sizeof(uint16_t), 1);
-    compute_encoder->dispatchThreads(MTL::Size(threads_per_region, r->regions.count, 1), MTL::Size(min(threads_per_region, (uint32_t)MAX_THREADS_PER_THREADGROUP), 1, 1));
+    compute_encoder->dispatchThreads(MTL::Size(threads_per_region, r->regions.count, 1), MTL::Size(threads_per_region, 1, 1));
 
     // region binning
     compute_encoder->setComputePipelineState(r->regions.binning_pso);
@@ -894,6 +898,12 @@ struct onedraw* od_init(onedraw_def* def)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_index)
 {
+    if (r->rasterizer.atlas == nullptr)
+    {
+        od_log(r, "can't upload a slice, atlas is not allocated (set atlas width/height in od_init)");
+        return;
+    }
+
     assert_msg(slice_index<r->rasterizer.atlas->arrayLength(), "slice_index is out of bound");
 
     const NS::UInteger bpp = 4;   // MTL::PixelFormat::PixelFormatRGBA8Unorm_sRGB
@@ -914,8 +924,8 @@ void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_i
 //----------------------------------------------------------------------------------------------------------------------------
 void od_set_capture_region(struct onedraw* r, uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
-    assert_msg(x<=r->rasterizer.width && width<=r->rasterizer.width && y<=r->rasterizer.height && height<=r->rasterizer.height,
-               "capture region cannot be bigger than the rendertarget");
+    assert_msg(x+width <= r->rasterizer.width && y+height <= r->rasterizer.height,
+               "capture region must be inside the rendertarget");
     r->screenshot.region_x = x;
     r->screenshot.region_y = y;
     r->screenshot.region_width = width;
@@ -940,6 +950,12 @@ void od_take_screenshot(struct onedraw* r, void* out_pixels)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
 {
+    // see MAX_SCREEN_SIZE: the aabb buffer stores tile indices on 8 bits
+    if (width > MAX_SCREEN_SIZE || height > MAX_SCREEN_SIZE)
+        od_log(r, "warning: resolution clamped to %ux%u (max supported resolution)", MAX_SCREEN_SIZE, MAX_SCREEN_SIZE);
+    width = min(width, MAX_SCREEN_SIZE);
+    height = min(height, MAX_SCREEN_SIZE);
+
     od_log(r, "resizing the framebuffer to %dx%d", width, height);
     r->rasterizer.width = (uint16_t) width;
     r->rasterizer.height = (uint16_t) height;
@@ -1050,7 +1066,7 @@ void od_terminate(struct onedraw* r)
 void od_get_stats(struct onedraw* r, od_stats* stats)
 {
     stats->frame_index = r->stats.frame_index;
-    stats->num_draw_cmd = r->commands.count, r->commands.buffer.GetMaxElements();
+    stats->num_draw_cmd = r->commands.count;
     stats->peak_num_draw_cmd = r->stats.peak_num_draw_cmd;
     stats->gpu_time_ms = r->stats.average_gpu_time * 1000.f;
     size_t gpu_mem = r->commands.aabb_buffer.GetTotalSize();
@@ -1569,7 +1585,7 @@ void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float width, flo
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_color)
 {
-    if (c < r->font.desc.first_glyph || c > (r->font.desc.first_glyph + r->font.desc.num_glyphs))
+    if (c < r->font.desc.first_glyph || c >= (r->font.desc.first_glyph + r->font.desc.num_glyphs))
         return;
 
     draw_command* cmd = r->commands.buffer.NewElement();
@@ -1618,7 +1634,7 @@ void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_co
             y += r->font.desc.font_height;
             x = left;
         }
-        else if (*c >= r->font.desc.first_glyph && *c <= (r->font.desc.first_glyph + r->font.desc.num_glyphs))
+        else if (*c >= r->font.desc.first_glyph && *c < (r->font.desc.first_glyph + r->font.desc.num_glyphs))
         {
             od_draw_char(r, x, y, *c, srgb_color);
             uint32_t glyph_index = *c - r->font.desc.first_glyph;
@@ -1632,7 +1648,24 @@ void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_co
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color)
 {
+    if (r->rasterizer.atlas == nullptr)
+    {
+        od_log(r, "can't draw a quad, atlas is not allocated (set atlas width/height in od_init)");
+        return;
+    }
     assert_msg(slice_index < r->rasterizer.atlas->arrayLength(), "slice index out of bound");
+
+    // keep the corners coherent with the uv
+    if (x0 > x1)
+    {
+        swap(x0, x1);
+        swap(uv.u0, uv.u1);
+    }
+    if (y0 > y1)
+    {
+        swap(y0, y1);
+        swap(uv.v0, uv.v1);
+    }
 
     if (fabsf(x0 - x1) < HALF_PIXEL || fabsf(y0 - y1) < HALF_PIXEL)
         return;
@@ -1667,6 +1700,11 @@ void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, float height, float angle, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color)
 {
+    if (r->rasterizer.atlas == nullptr)
+    {
+        od_log(r, "can't draw an oriented quad, atlas is not allocated (set atlas width/height in od_init)");
+        return;
+    }
     assert_msg(slice_index < r->rasterizer.atlas->arrayLength(), "slice index out of bound");
 
     if (width < HALF_PIXEL || height < HALF_PIXEL)
@@ -1803,7 +1841,8 @@ uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, fl
 
         if (is_colinear(c.c0, c.c3, middle, COLINEAR_THRESHOLD))
         {
-            od_draw_capsule(r, c.c0.x, c.c0.y, c.c2.x, c.c2.y, radius, srgb_color);
+            // the geometric endpoints of a cubic are c0 and c3 (c2 is a control point)
+            od_draw_capsule(r, c.c0.x, c.c0.y, c.c3.x, c.c3.y, radius, srgb_color);
             num_capsules++;
         }
         else
@@ -1846,7 +1885,7 @@ float od_text_width(struct onedraw* r, const char* text)
     float width = 0.f;
     for(const char *c = text; *c != 0; c++)
     {
-        if (*c >= r->font.desc.first_glyph && *c <= (r->font.desc.first_glyph + r->font.desc.num_glyphs))
+        if (*c >= r->font.desc.first_glyph && *c < (r->font.desc.first_glyph + r->font.desc.num_glyphs))
             width += r->font.desc.glyphs[*c - r->font.desc.first_glyph].advance_x;
         else
             width += r->font.desc.glyphs['_'- r->font.desc.first_glyph].advance_x * .65f;

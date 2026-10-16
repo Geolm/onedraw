@@ -116,6 +116,8 @@ struct onedraw* od_init(onedraw_def* def);
 //      [pixel_data]            pointer to the pixel data in B8G8R8A8_srgb format
 //      [slice_index]           must be < num_slices
 //
+// requires the atlas to be allocated (see onedraw_def::atlas in od_init)
+//
 // warning: textures are stored in shared memory.
 //          updating a slice while it’s being sampled by the GPU may cause flickering or corruption.
 //          the user is responsible for synchronizing uploads.
@@ -140,6 +142,7 @@ void od_take_screenshot(struct onedraw* r, void* out_pixels);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Resizes the renderer output dimensions (call this when the window size changes)
+// The maximum supported resolution is 4096x4096; bigger sizes are clamped to that value
 void od_resize(struct onedraw* r, uint32_t width, uint32_t height);
 
 //-----------------------------------------------------------------------------------------------------------------------------
@@ -298,8 +301,8 @@ void od_draw_sector_ring(struct onedraw* r, float cx, float cy, float radius, fl
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a arc
 //      [cx, cy]                center of the sector
-//      [dx, dy]                direction of the arc
-//      [aperture]              
+//      [dx, dy]                direction of the arc (must be normalized)
+//      [aperture]
 //      [radius]
 //      [thickness]
 void od_draw_arc(struct onedraw* r, float cx, float cy, float dx, float dy, float aperture, float radius, float thickness, draw_color srgb_color);
@@ -330,10 +333,12 @@ void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_co
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a textured quad
-//      [x0, y0, x1, y1]        min/max coordinates of the quad
-//      [uv]                    top-left and bottom right uv, must be [0; 1], currently tiling/mirror not supported 
-//      [slide_index]           index of the texture in the array
+//      [x0, y0, x1, y1]        min/max coordinates of the quad, can be swapped (the uv is flipped accordingly)
+//      [uv]                    top-left and bottom right uv, must be [0; 1], currently tiling/mirror not supported
+//      [slice_index]           index of the texture in the array
 //      [srgb_color]            color that will multiply by the texture's fragment
+//
+// requires the atlas to be allocated (see onedraw_def::atlas in od_init)
 void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
@@ -342,6 +347,8 @@ void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_
 //      [width, height]         size of the quad
 //      [angle]                 angle in radians
 //      [uv]                    top-left and bottom right uv, must be [0; 1]
+//
+// requires the atlas to be allocated (see onedraw_def::atlas in od_init)
 void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, float height, float angle, od_quad_uv uv, uint32_t slice_index, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
