@@ -160,9 +160,11 @@ void custom_log(const char* string)
 // ---------------------------------------------------------------------------------------------------------------------------
 void init(void)
 {
+    sapp_environment env = sapp_get_environment();
+
     renderer = od_init( &(onedraw_def)
     {
-        .metal_device = (void*)sapp_metal_get_device(),
+        .metal_device = (void*)env.metal.device,
         .preallocated_buffer = malloc(od_min_memory_size()),
         .viewport_width = (uint32_t) sapp_width(),
         .viewport_height = (uint32_t) sapp_height(),
@@ -358,7 +360,8 @@ void frame(void)
         od_take_screenshot(renderer, pixels);
     }
 
-    od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
+    sapp_swapchain sc = sapp_acquire_swapchain();
+    od_end_frame(renderer, (void*)sc.metal.current_drawable);
 
     if (pixels != NULL)
     {

@@ -628,12 +628,12 @@ void od_build_font(struct onedraw* r)
         const od_glyph& glyph = r->font.desc.glyphs[i];
         cpu_buffer[i] = 
         {
-            .width = float(glyph.x1 - glyph.x0),
-            .height = float(glyph.y1 - glyph.y0),
             .uv_topleft = {.x = float(glyph.x0) / float(r->font.desc.texture_width), 
                            .y = float(glyph.y0) / float(r->font.desc.texture_height)},
             .uv_bottomright = {.x = float(glyph.x1) / float(r->font.desc.texture_width),
-                               .y = float(glyph.y1) / float(r->font.desc.texture_height)}
+                               .y = float(glyph.y1) / float(r->font.desc.texture_height)},
+            .width = float(glyph.x1 - glyph.x0),
+            .height = float(glyph.y1 - glyph.y0)
         };
     }
     r->font.glyphs = r->device->newBuffer(cpu_buffer, sizeof(cpu_buffer), MTL::ResourceStorageModeShared);
