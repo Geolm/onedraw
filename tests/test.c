@@ -97,6 +97,9 @@ void make_radial(uint32_t* p, uint32_t w, uint32_t h, uint32_t a, uint32_t b)
 // ---------------------------------------------------------------------------------------------------------------------------
 void fill_texture_array(void)
 {
+    if (renderer == NULL)
+        return;
+
     uint32_t* pixel_data = malloc(TEX_SIZE * TEX_SIZE * sizeof(uint32_t));
 
     make_checker(pixel_data, TEX_SIZE, TEX_SIZE, miya_green, miya_yellow);
@@ -179,6 +182,9 @@ void init(void)
         }
     });
 
+    if (renderer == NULL)
+        return;
+
     // scale the built-in font with the display scale so text matches the high-dpi framebuffer (2.0 on retina)
     od_set_font_scale(renderer, sapp_dpi_scale());
 
@@ -204,6 +210,9 @@ uint32_t num_frames = 0;
 // ---------------------------------------------------------------------------------------------------------------------------
 void frame(void)
 {
+    if (renderer == NULL)
+        return;
+
     float cx, cy, radius;
     char string[256];
 
@@ -376,6 +385,9 @@ void frame(void)
 // ---------------------------------------------------------------------------------------------------------------------------
 void event(const sapp_event* event)
 {
+    if (renderer == NULL)
+        return;
+
     switch(event->type)
     {
     case SAPP_EVENTTYPE_RESIZED : 
@@ -405,8 +417,10 @@ void event(const sapp_event* event)
 // ---------------------------------------------------------------------------------------------------------------------------
 void cleanup(void)
 {
-    od_terminate(renderer);
+    if (renderer != NULL)
+        od_terminate(renderer);
     free(renderer);
+    renderer = NULL;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
