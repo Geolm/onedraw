@@ -179,6 +179,9 @@ void init(void)
         }
     });
 
+    // scale the built-in font with the display scale so text matches the high-dpi framebuffer (2.0 on retina)
+    od_set_font_scale(renderer, sapp_dpi_scale());
+
     od_set_clear_color(renderer, miya_white);
     fill_texture_array();
 }
@@ -375,7 +378,11 @@ void event(const sapp_event* event)
 {
     switch(event->type)
     {
-    case SAPP_EVENTTYPE_RESIZED : od_resize(renderer, event->framebuffer_width, event->framebuffer_height); break;
+    case SAPP_EVENTTYPE_RESIZED : 
+        od_resize(renderer, event->framebuffer_width, event->framebuffer_height);
+        // the scale factor can change when the window is moved between displays of different scale
+        od_set_font_scale(renderer, sapp_dpi_scale());
+        break;
     case SAPP_EVENTTYPE_KEY_DOWN : 
     {
         if (event->key_code == SAPP_KEYCODE_Q && event->modifiers == SAPP_MODIFIER_SUPER)

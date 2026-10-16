@@ -9,6 +9,8 @@ When `onedraw` is initialized, both the atlas texture and glyph data are uploade
 
 At runtime, when calling `od_draw_char()`, a draw command is pushed using a quad adjusted to the glyph metrics and the character index. In the fragment shader, the UV coordinates are computed and used to sample the atlas texture.
 
+The atlas is baked at 1x resolution, so on a high-dpi display (e.g. a retina screen) the text would appear smaller relative to the rest of the scene. `od_set_font_scale()` applies a scale factor to the glyph size, bearings and advances, and the `od_text_height()`/`od_text_width()` measurements. Pass `sapp_dpi_scale()` (2.0 on a retina display) and update it when the window is resized, since the scale can change when the window is moved between displays.
+
 We plan to extend the API to let users provide their own fonts. As for SDF fonts, we’re not opposed to them, but there’s currently no widely accepted standard (for instance, `stb_truetype` only exports distance values, which can introduce artifacts).  
 Simplicity is a core design goal of this project, and we want to avoid forcing users to rely on specific atlas generation tools.
 

@@ -218,6 +218,7 @@ struct onedraw
         MTL::Texture* texture {nullptr};
         MTL::Buffer* glyphs {nullptr};
         alphabet desc;
+        float scale {1.f};
     } font;
 
     // screenshot service
@@ -605,6 +606,9 @@ void od_build_pso(struct onedraw* r)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
+static void od_upload_font_glyphs(struct onedraw* r);
+
+//----------------------------------------------------------------------------------------------------------------------------
 void od_build_font(struct onedraw* r)
 {
     MTL::TextureDescriptor* pTextureDesc = MTL::TextureDescriptor::alloc()->init();
@@ -623,7 +627,15 @@ void od_build_font(struct onedraw* r)
         0, default_font_atlas, (r->font.desc.texture_width/4) * 8);
     pTextureDesc->release();
 
+    od_upload_font_glyphs(r);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+static void od_upload_font_glyphs(struct onedraw* r)
+{
     // fill the glyph description to be upload on the gpu
+    // note: the glyph size is scaled by the font scale so text matches the
+    //       (possibly high-dpi) framebuffer resolution, the uv's are untouched
     font_char cpu_buffer[MAX_GLYPHS];
     for(uint32_t i=0; i<r->font.desc.num_glyphs; i++)
     {
@@ -634,10 +646,11 @@ void od_build_font(struct onedraw* r)
                            .y = float(glyph.y0) / float(r->font.desc.texture_height)},
             .uv_bottomright = {.x = float(glyph.x1) / float(r->font.desc.texture_width),
                                .y = float(glyph.y1) / float(r->font.desc.texture_height)},
-            .width = float(glyph.x1 - glyph.x0),
-            .height = float(glyph.y1 - glyph.y0)
+            .width = float(glyph.x1 - glyph.x0) * r->font.scale,
+            .height = float(glyph.y1 - glyph.y0) * r->font.scale
         };
     }
+    SAFE_RELEASE(r->font.glyphs);
     r->font.glyphs = r->device->newBuffer(cpu_buffer, sizeof(cpu_buffer), MTL::ResourceStorageModeShared);
 }
 
@@ -1602,11 +1615,12 @@ void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_c
 
         *color = srgb_color;
 
+        const float scale = r->font.scale;
         const od_glyph& glyph = r->font.desc.glyphs[glyph_index];
-        x += glyph.bearing_x;
-        y += glyph.bearing_y + r->font.desc.font_height;
-        float glyph_width = float(glyph.x1 - glyph.x0);
-        float glyph_height = float(glyph.y1 - glyph.y0);
+        x += glyph.bearing_x * scale;
+        y += (glyph.bearing_y + r->font.desc.font_height) * scale;
+        float glyph_width = float(glyph.x1 - glyph.x0) * scale;
+        float glyph_height = float(glyph.y1 - glyph.y0) * scale;
 
         float* data = r->commands.data_buffer.NewMultiple(2);
         quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
@@ -1627,21 +1641,22 @@ void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_c
 void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_color srgb_color)
 {
     float left = x;
+    const float scale = r->font.scale;
     for(const char *c = text; *c != 0; c++)
     {
         if (*c == '\n')
         {
-            y += r->font.desc.font_height;
+            y += r->font.desc.font_height * scale;
             x = left;
         }
         else if (*c >= r->font.desc.first_glyph && *c < (r->font.desc.first_glyph + r->font.desc.num_glyphs))
         {
             od_draw_char(r, x, y, *c, srgb_color);
             uint32_t glyph_index = *c - r->font.desc.first_glyph;
-            x += r->font.desc.glyphs[glyph_index].advance_x;
+            x += r->font.desc.glyphs[glyph_index].advance_x * scale;
         }
         else
-            x += r->font.desc.glyphs['_'- r->font.desc.first_glyph].advance_x * .65f;
+            x += r->font.desc.glyphs['_'- r->font.desc.first_glyph].advance_x * .65f * scale;
     }
 }
 
@@ -1876,21 +1891,32 @@ uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, fl
 //----------------------------------------------------------------------------------------------------------------------------
 float od_text_height(struct onedraw* r)
 {
-    return r->font.desc.font_height;
+    return r->font.desc.font_height * r->font.scale;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 float od_text_width(struct onedraw* r, const char* text)
 {
     float width = 0.f;
+    const float scale = r->font.scale;
     for(const char *c = text; *c != 0; c++)
     {
         if (*c >= r->font.desc.first_glyph && *c < (r->font.desc.first_glyph + r->font.desc.num_glyphs))
-            width += r->font.desc.glyphs[*c - r->font.desc.first_glyph].advance_x;
+            width += r->font.desc.glyphs[*c - r->font.desc.first_glyph].advance_x * scale;
         else
-            width += r->font.desc.glyphs['_'- r->font.desc.first_glyph].advance_x * .65f;
+            width += r->font.desc.glyphs['_'- r->font.desc.first_glyph].advance_x * .65f * scale;
     }
     return width;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_set_font_scale(struct onedraw* r, float scale)
+{
+    if (r->font.scale != scale)
+    {
+        r->font.scale = scale;
+        od_upload_font_glyphs(r);
+    }
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

@@ -199,12 +199,22 @@ void od_begin_group(struct onedraw* r, bool smoothblend, float smooth_value, flo
 void od_end_group(struct onedraw* r, draw_color outline_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Returns the height of the font in pixels
+// Returns the height of the font in pixels (already includes the font scale)
 float od_text_height(struct onedraw* r);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Returns the width of the string [text] in pixels
+// Returns the width of the string [text] in pixels (already includes the font scale)
 float od_text_width(struct onedraw* r, const char* text);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Sets the scale factor applied to the built-in font (glyphs, bearings and advances)
+//      [scale]     scale factor, 1.0 = the native size of the baked atlas (32px)
+//
+// The built-in font atlas is baked at 1x resolution, on a high-dpi display (e.g. a retina screen)
+// the text will appear smaller relative to the rest of the scene unless the scale is set to
+// the framebuffer scale. Pass sapp_dpi_scale() and update it when the window is resized
+// (moving the window between screens of different scale changes it).
+void od_set_font_scale(struct onedraw* r, float scale);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a ring (circle)
