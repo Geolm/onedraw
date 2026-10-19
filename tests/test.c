@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 
 #define SOKOL_METAL
 #include "sokol_app.h"
@@ -8,6 +9,7 @@
 #include "../lib/onedraw.h"
 struct onedraw* renderer;
 bool culling_debug = false;
+bool exit_after_100_frames = false;
 
 #define FROM_HTML(html)   ((html&0xff)<<16) | ((html>>16)&0xff) | (html&0x00ff00) | 0xff000000
 #define TEX_SIZE (256)
@@ -380,6 +382,9 @@ void frame(void)
         writeTGA("screenshot.tga", pixels, sapp_width(), sapp_height());
         free(pixels);
     }
+
+    if (exit_after_100_frames && stats.frame_index == 100)
+        sapp_quit();
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -426,6 +431,9 @@ void cleanup(void)
 // ---------------------------------------------------------------------------------------------------------------------------
 sapp_desc sokol_main(int argc, char* argv[])
 {
+    if (argc>1 && strstr(argv[1], "--autoexit"))
+        exit_after_100_frames = true;
+
     (void) argc;
     (void) argv;
     return (sapp_desc) 
