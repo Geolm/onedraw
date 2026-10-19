@@ -20,6 +20,10 @@ We support up to :
 
 Coordinates are expressed in pixels, with the x-axis increasing to the right and the y-axis increasing downward.
 
+![Coordinate system](coordinates.svg)
+
+The origin `(0, 0)` is the **top-left** corner of the back buffer. There is no internal transform — a shape drawn at `(10, 10)` appears 10 pixels from the left and 10 pixels from the top.
+
 ### Does the library cull objects?
 
 Objects outside the screen are not rasterized, but draw commands are still issued. We recommend implementing a high-level culling system if many objects fall outside the screen to avoid wasting draw calls and GPU resources. Note: There is currently no mechanism to detect redundant primitives that will be completely overwritten by an opaque primitive, but we are exploring optimizations to address this.

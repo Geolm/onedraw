@@ -4,12 +4,19 @@
 
 Binning is the process that generates the **per-tile linked lists** of draw commands.  
 It works by performing intersection tests between each draw command and the bounding box of every tile.  
-Classic intersection methods are used, such as the **Separating Axis Theorem (SAT)** for oriented shapes and **distance-to-center** checks for circular ones.
+Classic intersection methods are used:
 
-Some additional factors are also considered:
-* anti-aliasing  
-* groups of shapes  
-* smoothmin  
+* **oriented boxes / lines / capsules** → Separating Axis Theorem (SAT)
+* **discs** → distance-to-nearest-point (plus a “ring” test for hollow ones)
+* **pies / arcs** → disc test + a ray / angular slab test
+* **triangles** → SAT on the three edges, plus an all-vertices-inside shortcut
+* **ellipses** → the tile is mapped into the ellipse’s local space, then treated as a circle
+
+A few extra factors are also folded into the test:
+
+* anti-aliasing
+* groups of shapes
+* smoothmin
 
 ---
 
@@ -20,8 +27,10 @@ The width of the anti-aliasing region (defined by the user in `onedraw`) must be
 ![anti-aliasing](anti-aliasing.png)
 
 In the example above, even if the disc does not mathematically intersect the tile’s bounding box, the anti-aliasing width extends beyond it.  
-To avoid visible seams or straight edges along tile borders, the disc is still added to the tile’s linked list so that edge pixels are correctly shaded.
+To avoid visible seams or straight edges along tile borders, the disc is still added to the tile’s linked list so that edge pixels are correctly shaded.  
 We simply grow the size of the bounding box by the width of the anti-aliasing.
+
+---
 
 ## Group of shapes
 
@@ -35,6 +44,11 @@ Each begin/end group command is assigned a **global bounding box** that encompas
 This ensures that both the begin and end commands are included whenever the group affects a tile.  
 If a group has no shapes intersecting the tile, the linked list is adjusted to skip that unused group, avoiding unnecessary processing.
 
+![Shape groups](group.svg)
+
+On the CPU side, `od_begin_group()` reserves one slot in the quantized-AABB buffer; every shape drawn while the group is open is merged into it, and `od_end_group()` copies that accumulated box to the end command. On the GPU, the `tile_bin` kernel walks the (reverse-order) list, tracks the current group’s extra margin, and `clean_list()` finally removes any `begin`/`end` pair that wraps zero primitives for a given tile.
+
+![Empty groups are cleaned per tile](group-empty.svg)
 
 ---
 
@@ -51,7 +65,6 @@ Note : this is a very conservative way to handle smoothmin. We might revisit thi
 * we don't support complex tree of boolean operations, only smoothmin will benefit from interval arithmetic (min is already optimal)
 * the binning shader is already VGPR bound, so adding interval evaluation for all kind of primitives will have an impact on performances even when not using smoothmin
 * one solution to explore is an hybrid approach : interval evaluation on CPU that change the aabb tested on the GPU
-
 
 ---
 
