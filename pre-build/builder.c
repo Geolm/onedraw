@@ -18,9 +18,15 @@
 #define UNUSED_VARIABLE(a) (void)(a)
 
 #define LIB_FOLDER "lib/"
-#define FONT_FILENAME "fonts/Satoshi-Medium.otf"
+#define FONT_FILENAME "fonts/Satoshi-Bold.otf"
+#define FONT_HEIGHT_STANDARD (24.0f)
+#define FONT_HEIGHT_HIGHDPI  (48.0f)
+#define ATLAS_SIZE_STANDARD  (256)
+#define ATLAS_SIZE_HIGHDPI   (512)
 #define FONT_H "lib/default_font_atlas.h"
 #define GLYPH_H "lib/default_font.h"
+#define FONT_H_HIGHDPI "lib/default_font_atlas_highdpi.h"
+#define GLYPH_H_HIGHDPI "lib/default_font_highdpi.h"
 #define FONT_CHAR_FIRST 33
 #define FONT_CHAR_LAST 126
 #define FONT_NUM_CHARS 95
@@ -52,7 +58,7 @@ void* read_file(const char* filename, size_t* file_size, Arena* arena)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-bool build_font(Arena *arena, float font_height, uint32_t atlas_width, uint32_t atlas_height)
+bool build_font(Arena *arena, float font_height, uint32_t atlas_width, uint32_t atlas_height, const char* font_h, const char* glyph_h, const char* atlas_var, const char* glyph_var)
 {
     if ((atlas_width%4) != 0 || (atlas_height%4) != 0)
     {
@@ -94,9 +100,9 @@ bool build_font(Arena *arena, float font_height, uint32_t atlas_width, uint32_t 
 
     bc4_encode(atlas_pixels, compressed_atlas, atlas_width, atlas_height);
 
-    fprintf(stdout, "ok\nwritting %s : ", FONT_H);
+    fprintf(stdout, "ok\nwritting %s : ", font_h);
 
-    if (!bin2h(FONT_H, "default_font_atlas", compressed_atlas, bc4_image_size))
+    if (!bin2h(font_h, atlas_var, compressed_atlas, bc4_image_size))
         return false;
 
     fprintf(stdout, "ok\nfilling glyphs structure : ");
@@ -126,9 +132,9 @@ bool build_font(Arena *arena, float font_height, uint32_t atlas_width, uint32_t 
         };
     }
 
-    fprintf(stdout, "ok\nwritting %s : ", GLYPH_H);
+    fprintf(stdout, "ok\nwritting %s : ", glyph_h);
 
-    if (!bin2h(GLYPH_H, "default_font", font, sizeof(struct alphabet)))
+    if (!bin2h(glyph_h, glyph_var, font, sizeof(struct alphabet)))
         return false;
 
     fprintf(stdout, "ok\n");
@@ -189,7 +195,15 @@ int main(int argc, const char * argv[])
 
     fprintf(stdout, "onedraw %u.%u library builder\n\n", ONEDRAW_MAJOR_VERSION, ONEDRAW_MINOR_VERSION);
 
-    bool success = build_font(&arena, 32.f, 256, 256);
+    bool success = build_font(&arena, FONT_HEIGHT_STANDARD, ATLAS_SIZE_STANDARD, ATLAS_SIZE_STANDARD,
+                              FONT_H, GLYPH_H, "default_font_atlas", "default_font");
+    if (!success)
+        fprintf(stdout, "failed\n");
+
+    arena_reset(&arena);
+
+    success = success && build_font(&arena, FONT_HEIGHT_HIGHDPI, ATLAS_SIZE_HIGHDPI, ATLAS_SIZE_HIGHDPI,
+                                    FONT_H_HIGHDPI, GLYPH_H_HIGHDPI, "default_font_atlas_highdpi", "default_font_highdpi");
     if (!success)
         fprintf(stdout, "failed\n");
 

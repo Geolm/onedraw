@@ -7,6 +7,8 @@
 #include "common.h"
 #include "default_font.h"
 #include "default_font_atlas.h"
+#include "default_font_highdpi.h"
+#include "default_font_atlas_highdpi.h"
 #include "binning.h"
 #include "rasterization.h"
 #include <stdatomic.h>
@@ -219,6 +221,7 @@ struct onedraw
         MTL::Buffer* glyphs {nullptr};
         alphabet desc;
         float scale {1.f};
+        bool high_dpi {false};
     } font;
 
     // screenshot service
@@ -621,10 +624,12 @@ void od_build_font(struct onedraw* r)
     pTextureDesc->setStorageMode(MTL::StorageModeShared);
 
     r->font.texture = r->device->newTexture(pTextureDesc);
+
+    const uint8_t* atlas_pixels = r->font.high_dpi ? default_font_atlas_highdpi : default_font_atlas;
     r->font.texture->replaceRegion( MTL::Region(
         0, 0, 0,
         r->font.desc.texture_width, r->font.desc.texture_height, 1 ),
-        0, default_font_atlas, (r->font.desc.texture_width/4) * 8);
+        0, atlas_pixels, (r->font.desc.texture_width/4) * 8);
     pTextureDesc->release();
 
     od_upload_font_glyphs(r);
@@ -921,8 +926,18 @@ struct onedraw* od_init(onedraw_def* def)
     r->stats.accumulated_gpu_time = 0.f;
     atomic_store(&r->stats.gpu_time, 0.f);
 
-    assert(sizeof(alphabet) == default_font_size);
-    r->font.desc = *((alphabet*) default_font);
+    r->font.high_dpi = def->high_dpi;
+
+    if (r->font.high_dpi)
+    {
+        assert(sizeof(alphabet) == default_font_highdpi_size);
+        r->font.desc = *((alphabet*) default_font_highdpi);
+    }
+    else
+    {
+        assert(sizeof(alphabet) == default_font_size);
+        r->font.desc = *((alphabet*) default_font);
+    }
 
     od_build_pso(r);
     od_build_font(r);

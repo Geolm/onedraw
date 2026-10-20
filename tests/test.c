@@ -176,6 +176,7 @@ void init(void)
         .log_func = custom_log,
         .srgb_backbuffer = false,
         .allow_screenshot = true,
+        .high_dpi = sapp_high_dpi(),
         .atlas = 
         {
             .width = TEX_SIZE,
@@ -186,9 +187,6 @@ void init(void)
 
     if (renderer == NULL)
         return;
-
-    // scale the built-in font with the display scale so text matches the high-dpi framebuffer (2.0 on retina)
-    od_set_font_scale(renderer, sapp_dpi_scale());
 
     od_set_clear_color(renderer, miya_white);
     fill_texture_array();
@@ -279,8 +277,10 @@ void frame(void)
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "arc", miya_brown);
 
     slot(13, &cx, &cy, &radius);
+    od_set_cliprect(renderer, cx - radius, cy - radius, cx + radius, cy + radius);
     od_draw_text(renderer, cx-radius, cy-radius, "Some text\nABCDEFGHILMNO\nPQRSTUVWYZ\n1234567890!@#$%?&*()\nSphinx of black\n quartz, judge my vow.\n"
                  "!\"#$%&'()*+,-./01234\n56789:;<=>?@\n[\\]^_`abcdefghijklmnop\nqrstuvwxyz{|}~", miya_black);
+    od_set_cliprect(renderer, 0.f, 0.f, UINT16_MAX, UINT16_MAX);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "text", miya_brown);
 
     slot(14, &cx, &cy, &radius);
@@ -397,8 +397,6 @@ void event(const sapp_event* event)
     {
     case SAPP_EVENTTYPE_RESIZED : 
         od_resize(renderer, event->framebuffer_width, event->framebuffer_height);
-        // the scale factor can change when the window is moved between displays of different scale
-        od_set_font_scale(renderer, sapp_dpi_scale());
         break;
     case SAPP_EVENTTYPE_KEY_DOWN : 
     {
