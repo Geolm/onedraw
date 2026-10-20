@@ -2,6 +2,7 @@
 
 ## Rasterization shaders
 
+![Tile rasterization](rasterize.svg)
 
 #### Vertex shader
 
@@ -9,7 +10,7 @@ The previous compute shaders produce an array of tile indices.
 An **indirect draw call** then uses this data to determine how many instances to render.  
 Each instance corresponds to one tile and is drawn as a **triangle strip** with four vertices.  
 
-In the vertex shader, the tile index is fetched from the array using the **instinstance_id**. 
+In the vertex shader, the tile index is fetched from the array using the **instance_id**. 
 
 ```C
 uint16_t tile_index = tile_indices[instance_id];
@@ -25,8 +26,7 @@ screen_pos += float2(tile_x, tile_y);
 screen_pos *= TILE_SIZE;
 ```
 
-
-We also pass the tile index to each vertex and specify **no interpolation** so the value remains constant across the entire tile.
+We also pass the tile index to each vertex and specify **no interpolation** (`[[flat]]`) so the value remains constant across the entire tile.
 
 #### Fragment shader
 
@@ -70,6 +70,11 @@ However, two main issues were never properly resolved:
 We eventually switched (reluctantly!) to a tesselation-based scheme, which brought one major advantage:  
 if we use a cheap primitive to tesselate the curve, then with hierarchical binning we can limit evaluation to just a few SDFs per tile per curve.
 
+![Bézier tesselation](bezier.svg)
+
+![Bézier binning](bezier-tiles.svg)
+
+The numbers make the win concrete: the whole curve is a single draw command of capsules, but binning scatters it so each tile keeps only the capsules that reach it (1–3 here). A fragment shader then evaluates just a few SDFs per tile instead of every capsule of the curve — this is the payoff that makes tesselation affordable.
 
 ##### First Attempt: Biarcs
 
@@ -95,20 +100,14 @@ In this debug view, you can see the overlap between capsules that ensures smooth
 
 ##### Tesselation Details
 
-Tesselation is done using De Casteljau’s algorithm until we reach nearly colinear points (currently the threshold is 1/10th of a pixel).
+Tesselation is done on the **CPU** using De Casteljau’s algorithm until we reach nearly colinear points (currently the threshold is 1/10th of a pixel).
 Splits are done proportionally to segment lengths, which performs slightly better than a fixed halfway split (`t = 0.5`) but remains cheap.
-We currently support both **quadratic** and **cubic** Bézier curves.
+The recursion happens on a fixed-size stack (1024 deep) and returns `UINT32_MAX` if a pathological curve overflows it.
+We currently support both **quadratic** and **cubic** Bézier curves; each emitted capsule is a normal `od_draw_capsule()` call, so it flows through the same binning and rasterization path as every other primitive.
 
 
 ---
 
 
 [Next part](part4.md) : Font and textured quads
-
-
-
-
-
-
-
 
