@@ -4,6 +4,7 @@
 #include "bin2h.h"
 #include "bc4_encoder.h"
 #include "../src/font.h"
+#include "../lib/onedraw.h"
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
@@ -37,9 +38,6 @@
 #define RASTERIZER_SHADER       "rasterizer.metal"
 #define CPU_GPU_COMMON_FILE     "common.h"
 
-
-#define ONEDRAW_MAJOR_VERSION (0)
-#define ONEDRAW_MINOR_VERSION (3)
 
 // ---------------------------------------------------------------------------------------------------------------------------
 static bool file_exists(const char* path)
