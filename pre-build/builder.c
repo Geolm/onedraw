@@ -3,7 +3,7 @@
 #include <errno.h>
 #include "bin2h.h"
 #include "bc4_encoder.h"
-#include "../src/font.h"
+#include "../src/shaders/common.h"
 #include "../lib/onedraw.h"
 
 #define STB_RECT_PACK_IMPLEMENTATION

@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t binning_shader_size = 32678;
+static const size_t binning_shader_size = 33091;
 static const char binning_shader[] =
     "#include <metal_stdlib>\n"
     "#ifndef __COMMON_H__\n"
@@ -152,6 +152,24 @@ static const char binning_shader[] =
     "    float width;\n"
     "    float height;\n"
     "} font_char;\n"
+    "\n"
+    "// cpu font description, the pre-build baker serializes this layout into the default_font headers\n"
+    "typedef struct glyph\n"
+    "{\n"
+    "    uint16_t x0, y0, x1, y1;\n"
+    "    float bearing_x, bearing_y;\n"
+    "    float advance_x;\n"
+    "} glyph;\n"
+    "\n"
+    "typedef struct alphabet\n"
+    "{\n"
+    "    glyph glyphs[MAX_GLYPHS];\n"
+    "    float font_height;\n"
+    "    uint16_t num_glyphs;\n"
+    "    uint16_t first_glyph;\n"
+    "    uint16_t texture_width;\n"
+    "    uint16_t texture_height;\n"
+    "} alphabet;\n"
     "\n"
     "typedef struct draw_cmd_arguments\n"
     "{\n"

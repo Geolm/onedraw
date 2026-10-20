@@ -145,6 +145,24 @@ typedef struct font_char
     float height;
 } font_char;
 
+// cpu font description, the pre-build baker serializes this layout into the default_font headers
+typedef struct glyph
+{
+    uint16_t x0, y0, x1, y1;
+    float bearing_x, bearing_y;
+    float advance_x;
+} glyph;
+
+typedef struct alphabet
+{
+    glyph glyphs[MAX_GLYPHS];
+    float font_height;
+    uint16_t num_glyphs;
+    uint16_t first_glyph;
+    uint16_t texture_width;
+    uint16_t texture_height;
+} alphabet;
+
 typedef struct draw_cmd_arguments
 {
     constant draw_command* commands;
