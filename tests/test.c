@@ -475,6 +475,14 @@ void frame(void)
                                cx + radius * 0.25f, cy + radius * 1.05f, cx + radius * 0.7f, cy + radius * 0.8f};
         od_draw_dashed_cubic_bezier(renderer, bezier_ctrl, 6.f, round, miya_light_blue);
 
+        // the box family : sharp box, rounded box, oriented box (translucent, group wrapped)
+        od_draw_dashed_box(renderer, cx - radius * 0.70f, cy + radius * 1.05f, cx - radius * 0.34f, cy + radius * 1.38f,
+                           0.f, 5.f, flat, miya_dark_green);
+        od_draw_dashed_box(renderer, cx - radius * 0.30f, cy + radius * 1.05f, cx + radius * 0.02f, cy + radius * 1.38f,
+                           radius * 0.05f, 5.f, round, miya_pink);
+        od_draw_dashed_oriented_box(renderer, cx + radius * 0.24f, cy + radius * 1.05f, cx + radius * 0.70f, cy + radius * 1.38f,
+                                    radius * 0.16f, radius * 0.08f, 5.f, ants, 0x800000FF);
+
         // overflows the command budget, must return UINT32_MAX without emitting a partial shape
         od_dash_style big = {1.f, 1.f, 0.f, true};
         float big_ctrl[] = {cx, cy, cx + 70000.f, cy - 40000.f, cx + 140000.f, cy + 40000.f, cx + 200000.f, cy};
@@ -482,7 +490,6 @@ void frame(void)
         snprintf(string, 256, "dashed : %s", (budget == UINT32_MAX) ? "ok" : "error");
     }
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, string, miya_brown);
-
 
     od_stats stats;
     od_get_stats(renderer, &stats);

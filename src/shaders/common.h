@@ -69,11 +69,6 @@ enum primitive_fillmode
     fill_gradient = 3,
 };
 
-#define COMMAND_TYPE_MASK   (0x3f)
-#define PRIMITIVE_FILLMODE_MASK (0xC0)
-#define PRIMITIVE_FILLMODE_SHIFT (6)
-
-
 enum sdf_operator
 {
     op_overwrite = 0,

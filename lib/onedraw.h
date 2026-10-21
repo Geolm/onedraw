@@ -415,6 +415,25 @@ uint32_t od_draw_dashed_line(struct onedraw* r, float ax, float ay, float bx, fl
 uint32_t od_draw_dashed_ring(struct onedraw* r, float cx, float cy, float radius, float thickness, od_dash_style style, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
+// Draws the dashed outline of a box
+//      [x0, y0, x1, y1]        min, max coordinates of the box (can be swapped)
+//      [radius]                radius of the rounded corners, 0 for sharp corners
+//      [thickness]             width of the dashes
+//      [style]                 dash style, see od_dash_style
+uint32_t od_draw_dashed_box(struct onedraw* r, float x0, float y0, float x1, float y1, float radius, float thickness,
+                            od_dash_style style, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws the dashed outline of an oriented box
+//      [ax, ay], [bx, by]      main axis of the box
+//      [width]                 width of the box
+//      [roundness]             radius of the rounded corners
+//      [thickness]             width of the dashes
+//      [style]                 dash style, see od_dash_style
+uint32_t od_draw_dashed_oriented_box(struct onedraw* r, float ax, float ay, float bx, float by, float width, float roundness,
+                                     float thickness, od_dash_style style, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
 // Draws a dashed oriented ellipse ring
 //      [ax, ay], [bx, by]      main axis of the ellipse
 //      [width]                 width of the ellipse

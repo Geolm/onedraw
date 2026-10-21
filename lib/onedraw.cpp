@@ -1903,6 +1903,7 @@ uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, fl
 
 constexpr float FULL_TURN = VEC2_PI * 2.f;
 constexpr uint32_t DASH_SAMPLES = 512U;    // circle/ellipse sampling, the chord error stays < 0.1px on a 4096px screen
+constexpr uint32_t DASH_CORNER_SAMPLES = DASH_SAMPLES / 4U;    // box corner sampling, the same density per swept angle
 constexpr float DASH_EPSILON = 0.01f;      // distance below which a "zero length" dash is not emitted
 
 enum dash_path_kind
@@ -1912,7 +1913,8 @@ enum dash_path_kind
     path_circle,
     path_ellipse,
     path_quadratic,
-    path_cubic
+    path_cubic,
+    path_box
 };
 
 typedef struct dash_path
@@ -1926,6 +1928,7 @@ typedef struct dash_path
     uint32_t remaining;                 // segments left to emit (ignored by the beziers, gated on the tesselation stack)
     uint32_t index;                     // triangle : current edge, circle/ellipse : current sample
     bool  failed;                       // tesselation stack overflow
+    bool  turns_after;                 // the path turns a corner at the current [point], a dash spanning it is split in two
 
     vec2  a, b;                         // line
     vec2  vertices[3];                  // triangle
@@ -1941,7 +1944,7 @@ typedef struct dash_path
         quadratic_bezier quad[TESSELATION_STACK_MAX];
         cubic_bezier     cubic[TESSELATION_STACK_MAX];
     };
-    uint32_t stack_index;
+    uint32_t stack_index;                  // bezier : tesselation stack depth, box : samples consumed in the current corner
 } dash_path;
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1949,6 +1952,63 @@ static inline vec2 dash_ellipse_point(dash_path* p, float t)
 {
     vec2 local = vec2_set(p->semi_axes.x * cosf(t), p->semi_axes.y * sinf(t));
     return vec2_add(p->center, vec2_add(vec2_scale(p->axis, local.x), vec2_scale(vec2_skew(p->axis), local.y)));
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+// The box lives in its local frame : x along [axis], y along the skew, relative to [center], so the same path
+// serves the axis-aligned box (axis = (1, 0)) and the oriented box. [a]/[b] are the local min/max corners.
+static inline vec2 dash_box_point(dash_path* p, vec2 local)
+{
+    return vec2_add(p->center, vec2_add(vec2_scale(p->axis, local.x), vec2_scale(vec2_skew(p->axis), local.y)));
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+// The box is 8 pieces : 0 top edge, 1 top-right corner, 2 right edge, 3 bottom-right corner, 4 bottom edge,
+// 5 bottom-left corner, 6 left edge, 7 top-left corner
+static inline float dash_box_piece_length(dash_path* p, uint32_t piece)
+{
+    float w = p->b.x - p->a.x, h = p->b.y - p->a.y;
+    return (piece & 1) ? (VEC2_PI * .5f * p->radius) : (((piece & 2) == 0) ? (w - 2.f * p->radius) : (h - 2.f * p->radius));
+}
+
+static inline vec2 dash_box_edge_point(dash_path* p, uint32_t edge, bool end)
+{
+    float x0 = p->a.x, y0 = p->a.y, x1 = p->b.x, y1 = p->b.y, r = p->radius;
+
+    switch (edge)    // 0 top, 1 right, 2 bottom, 3 left
+    {
+    case 0:
+        return end ? vec2_set(x1 - r, y0) : vec2_set(x0 + r, y0);
+    case 1:
+        return end ? vec2_set(x1, y1 - r) : vec2_set(x1, y0 + r);
+    case 2:
+        return end ? vec2_set(x0 + r, y1) : vec2_set(x1 - r, y1);
+    default:
+        return end ? vec2_set(x0, y0 + r) : vec2_set(x0, y1 - r);
+    }
+}
+
+static inline vec2 dash_box_corner_center(dash_path* p, uint32_t corner)
+{
+    float x0 = p->a.x, y0 = p->a.y, x1 = p->b.x, y1 = p->b.y, r = p->radius;
+
+    switch (corner)    // 0 top-right, 1 bottom-right, 2 bottom-left, 3 top-left
+    {
+    case 0:
+        return vec2_set(x1 - r, y0 + r);
+    case 1:
+        return vec2_set(x1 - r, y1 - r);
+    case 2:
+        return vec2_set(x0 + r, y1 - r);
+    default:
+        return vec2_set(x0 + r, y0 + r);
+    }
+}
+
+// A corner sweeps a quarter turn, corner 0 starts at -90 degrees (top edge end) and the sweep is clockwise
+static inline float dash_box_corner_angle(uint32_t corner, bool end)
+{
+    return -VEC2_PI * .5f + (corner + (end ? 1U : 0U)) * VEC2_PI * .5f;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2036,6 +2096,53 @@ static void dash_path_start_at(dash_path* p, float arc)
         break;
     }
 
+    case path_box:
+    {
+        float u = arc;
+        uint32_t piece = 7;
+        for (uint32_t i = 0; i < 8; i++)
+        {
+            float piece_length = dash_box_piece_length(p, i);
+            if (u < piece_length || i == 7)
+            {
+                piece = i;
+                break;
+            }
+            u -= piece_length;
+        }
+
+        p->index = piece;
+        if ((piece & 1) == 0)    // edge
+        {
+            float piece_length = dash_box_piece_length(p, piece);
+            vec2 from = dash_box_edge_point(p, piece / 2, false);
+            vec2 local = (u <= 0.f || piece_length <= 0.f) ? from : vec2_lerp(from, dash_box_edge_point(p, piece / 2, true), u / piece_length);
+            p->start = dash_box_point(p, local);
+            p->point = p->start;
+            p->stack_index = 0;
+            // arm the corner that follows this edge : its first sample increments from the corner start angle,
+            // so a walk that starts on the edge is correct no matter what [angle] held before the start
+            p->angle = dash_box_corner_angle(piece / 2, false);
+        }
+        else    // corner
+        {
+            float piece_length = dash_box_piece_length(p, piece);
+            float t = (u <= 0.f || piece_length <= 0.f) ? 0.f : u / piece_length;
+            if (t >= 1.f)
+                t = 1.f - 1.f / (float)DASH_CORNER_SAMPLES;    // the last sample is left for the walk
+
+            uint32_t corner = piece / 2;
+            p->angle = dash_box_corner_angle(corner, false) + t * VEC2_PI * .5f;
+            vec2 local = vec2_add(dash_box_corner_center(p, corner), vec2_scale(vec2_direction(p->angle), p->radius));
+            p->start = dash_box_point(p, local);
+            p->point = p->start;
+            p->stack_index = (uint32_t)(t * (float)DASH_CORNER_SAMPLES);
+        }
+
+        p->remaining = 4U + 4U * DASH_CORNER_SAMPLES + 1U - p->stack_index;
+        break;
+    }
+
     case path_quadratic:
     case path_cubic:
     {
@@ -2060,6 +2167,16 @@ static void dash_path_start_at(dash_path* p, float arc)
 static bool dash_path_next_segment(dash_path* p, vec2* p0, vec2* p1, float* length)
 {
     *p0 = p->point;
+
+    // the beziers don't use [remaining] (their tesselation stack gates the walk), every other kind walks exactly
+    // [remaining] segments
+    if (p->kind != path_quadratic && p->kind != path_cubic)
+    {
+        if (p->remaining == 0)
+            return false;
+        p->remaining--;
+    }
+
     // a closed path ends with a final segment back to its start, so the walk covers exactly one lap
     const bool final_segment = p->closed && (p->remaining == 1);
 
@@ -2067,28 +2184,21 @@ static bool dash_path_next_segment(dash_path* p, vec2* p0, vec2* p1, float* leng
     {
     case path_line:
     {
-        if (p->remaining == 0)
-            return false;
-        p->remaining--;
         *p1 = p->b;
+        p->turns_after = false;
         break;
     }
 
     case path_triangle:
     {
-        if (p->remaining == 0)
-            return false;
-        p->remaining--;
         *p1 = final_segment ? p->start : p->vertices[(p->index + 1) % 3];
         p->index = (p->index + 1) % 3;
+        p->turns_after = true;    // each edge ends at a vertex
         break;
     }
 
     case path_circle:
     {
-        if (p->remaining == 0)
-            return false;
-        p->remaining--;
         if (final_segment)
             *p1 = p->start;
         else
@@ -2096,17 +2206,50 @@ static bool dash_path_next_segment(dash_path* p, vec2* p0, vec2* p1, float* leng
             p->angle += FULL_TURN / (float)DASH_SAMPLES;
             *p1 = vec2_add(p->center, vec2_scale(vec2_direction(p->angle), p->radius));
         }
+        p->turns_after = false;    // smooth arc
         break;
     }
 
     case path_ellipse:
     {
-        if (p->remaining == 0)
-            return false;
-        p->remaining--;
         uint32_t next = (p->index + 1) % DASH_SAMPLES;
         *p1 = final_segment ? p->start : dash_ellipse_point(p, next * FULL_TURN / (float)DASH_SAMPLES);
         p->index = next;
+        p->turns_after = false;    // smooth arc
+        break;
+    }
+
+    case path_box:
+    {
+        if (final_segment)
+        {
+            *p1 = p->start;
+            p->turns_after = true;    // a box corner is just a vertex when the radius is 0
+            break;
+        }
+
+        if ((p->index & 1) == 0)    // edge : a single chord to the piece end
+        {
+            *p1 = dash_box_point(p, dash_box_edge_point(p, p->index / 2, true));
+            p->index = (p->index + 1) & 7;
+            p->turns_after = true;    // every piece end is a path corner, a zero length edge still turns 90 degrees there
+        }
+        else    // corner : one sampled chord, the last one lands exactly on the corner end
+        {
+            uint32_t corner = p->index / 2;
+            p->stack_index++;
+            if (p->stack_index >= DASH_CORNER_SAMPLES)
+            {
+                p->angle = dash_box_corner_angle(corner, true);
+                p->stack_index = 0;
+                p->index = (p->index + 1) & 7;
+            }
+            else
+                p->angle += VEC2_PI * .5f / (float)DASH_CORNER_SAMPLES;
+
+            *p1 = dash_box_point(p, vec2_add(dash_box_corner_center(p, corner), vec2_scale(vec2_direction(p->angle), p->radius)));
+            p->turns_after = true;    // every sample : a dash must follow the corner arc, never cut it with a chord
+        }
         break;
     }
 
@@ -2114,6 +2257,7 @@ static bool dash_path_next_segment(dash_path* p, vec2* p0, vec2* p1, float* leng
     {
         // re-runs the solid curve De Casteljau tesselation, but the halves are popped in reverse order so the segments
         // come out in curve order, required to place the dashes along the path
+        p->turns_after = false;    // a smooth curve
         bool leaf = false;
         while (p->stack_index > 0 && !leaf)
         {
@@ -2153,6 +2297,7 @@ static bool dash_path_next_segment(dash_path* p, vec2* p0, vec2* p1, float* leng
 
     case path_cubic:
     {
+        p->turns_after = false;    // a smooth curve
         bool leaf = false;
         while (p->stack_index > 0 && !leaf)
         {
@@ -2207,6 +2352,7 @@ typedef struct dash_emitter
     struct onedraw* r;
     bool  closed;
     bool  failed;                       // the command budget ran out (shouldn't happen, it's checked up front)
+    bool  dry_run;                      // count the primitives without emitting them (budget check)
     od_dash_style style;
     float dash_length;                  // the pattern is rescaled for closed paths
     float period;
@@ -2229,22 +2375,31 @@ static bool has_space_for_dash_commands(struct onedraw* r, uint32_t num_commands
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-static bool dash_emitter_emit(dash_emitter* e)
+static bool dash_solid_segment(struct onedraw* r, vec2 a, vec2 b, float width, bool round_caps, draw_color color)
 {
-    // each dash is one command : a capsule for round ends, a line for flat ends (both use the exact oriented box culling)
-    if (!has_space_for_dash_commands(e->r, 1, 6))
-    {
-        e->failed = true;
+    // one command : a capsule for round ends, a line for flat ends (both use the exact oriented box culling)
+    if (!has_space_for_dash_commands(r, 1, 6))
         return false;
+
+    if (round_caps)
+        od_draw_capsule(r, a.x, a.y, b.x, b.y, width * .5f, color);
+    else
+        od_draw_line(r, a.x, a.y, b.x, b.y, width, color);
+    return true;
+}
+
+static void dash_emitter_emit(dash_emitter* e)
+{
+    if (e->dry_run)
+    {
+        e->num_commands++;
+        return;
     }
 
-    if (e->style.round_caps)
-        od_draw_capsule(e->r, e->dash_start.x, e->dash_start.y, e->point.x, e->point.y, e->width * .5f, e->color);
+    if (!dash_solid_segment(e->r, e->dash_start, e->point, e->width, e->style.round_caps, e->color))
+        e->failed = true;
     else
-        od_draw_line(e->r, e->dash_start.x, e->dash_start.y, e->point.x, e->point.y, e->width, e->color);
-
-    e->num_commands++;
-    return true;
+        e->num_commands++;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2266,16 +2421,41 @@ static void dash_emitter_boundary(dash_emitter* e)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// Walks one path segment, emitting the dashes it contains, the dash/gap phase carries across segments so a dash
-// spanning a corner becomes two capsules sharing the corner point (round caps give a round join for free)
-static void dash_emitter_segment(dash_emitter* e, vec2 p0, vec2 p1, float length)
+// The path leaves the dash's straight line at the current point (a box corner, a triangle vertex) : a dash in
+// progress is emitted up to that point, its remainder starts there and continues along the new direction, so a
+// dash is never drawn as a straight chord cutting across a corner. [in_dash]/[phase] are preserved, the pattern
+// rhythm is unchanged : the dash becomes a chain of primitives sharing the split points (round caps give a
+// smooth join, flat caps a sharp one).
+//
+// The corner samples are sub half pixel chords, and the oriented box primitive silently rejects endpoints closer
+// than half a pixel : a dash piece therefore accumulates across the samples and is only emitted once it is long
+// enough to actually be drawn (the same half pixel guard), so the corner renders as a smooth arc of short
+// pieces instead of a blank corner (and a zero radius corner emits at most one piece per dash)
+static void dash_emitter_kink(dash_emitter* e)
+{
+    if (e->in_dash && e->phase < e->dash_length && !vec2_similar(e->dash_start, e->point, HALF_PIXEL))
+    {
+        dash_emitter_emit(e);
+        e->dash_start = e->point;
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+// Walks one path segment, emitting the dashes it contains, the dash/gap phase carries across segments. When the
+// path turns a corner after the segment, a dash in progress is split at the corner (dash_emitter_kink), the
+// split also applies to zero length segments (a sharp box corner is a zero length 90 degree turn)
+static void dash_emitter_segment(dash_emitter* e, vec2 p0, vec2 p1, float length, bool turns_after)
 {
     if (e->failed)
         return;
 
     e->point = p0;
     if (length <= 0.f)
+    {
+        if (turns_after)
+            dash_emitter_kink(e);
         return;
+    }
 
     vec2 dir = vec2_scale(vec2_sub(p1, p0), 1.f / length);
     float u = 0.f;
@@ -2307,6 +2487,8 @@ static void dash_emitter_segment(dash_emitter* e, vec2 p0, vec2 p1, float length
     }
 
     e->point = p1;
+    if (turns_after)
+        dash_emitter_kink(e);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2331,6 +2513,7 @@ static void dash_emitter_init(dash_emitter* e, struct onedraw* r, bool closed, v
     e->r = r;
     e->closed = closed;
     e->failed = false;
+    e->dry_run = false;
     e->style = style;
     e->dash_length = style.dash_length;
     e->period = period;
@@ -2384,6 +2567,45 @@ static uint32_t dash_path_solid(struct onedraw* r, dash_path* path, float width,
         return 1;
     }
 
+    case path_box:
+    {
+        // there is no solid rounded box outline primitive : walk the 8 pieces (4 edges + 4 sampled corner arcs)
+        // emitting a line/capsule per piece, wrapped in a group when translucent so the shared endpoints aren't
+        // double blended. Degenerate pieces are skipped (the oriented box primitive would reject them anyway),
+        // so a zero radius corner costs nothing and a sharp box is its 4 edges only
+        bool rounded = path->radius > 0.f;
+        uint32_t num = 4U + (rounded ? 4U * DASH_CORNER_SAMPLES : 0U);
+        bool wrap_group = (((color >> 24) & 0xFF) < 0xFF) && (r->commands.group_aabb == nullptr);
+
+        if (!has_space_for_dash_commands(r, num + (wrap_group ? 2U : 0U), num * 6U + (wrap_group ? 3U : 0U)))
+            return UINT32_MAX;
+
+        if (wrap_group)
+            od_begin_group(r, false, 0.f, 0.f);
+
+        uint32_t emitted = 0;
+        vec2 a, b;
+        float segment_length;
+        dash_path_start_at(path, 0.f);
+        while (dash_path_next_segment(path, &a, &b, &segment_length))
+        {
+            if (vec2_similar(a, b, HALF_PIXEL))
+                continue;    // degenerate, the primitive would reject it
+
+            if (!dash_solid_segment(r, a, b, width, style.round_caps, color))
+            {
+                if (wrap_group)
+                    od_end_group(r, 0);
+                return UINT32_MAX;
+            }
+            emitted++;
+        }
+
+        if (wrap_group)
+            od_end_group(r, 0);
+        return emitted;
+    }
+
     case path_quadratic:
         return od_draw_quadratic_bezier(r, (const float*) path->control, width, color);
 
@@ -2391,6 +2613,31 @@ static uint32_t dash_path_solid(struct onedraw* r, dash_path* path, float width,
         return od_draw_cubic_bezier(r, (const float*) path->control, width, color);
     }
     return 0;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+// Walks the tesselation to measure the path length, the beziers have no closed form length
+static float dash_path_measure(dash_path* p)
+{
+    vec2 a, b;
+    float length = 0.f;
+    float segment_length;
+    while (dash_path_next_segment(p, &a, &b, &segment_length))
+        length += segment_length;
+    return length;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+// Walks the whole path through the emitter (the caller must have placed the path cursor with dash_path_start_at),
+// in dry_run mode the primitives are only counted
+static void dash_path_walk(dash_path* path, dash_emitter* e)
+{
+    vec2 a, b;
+    float length;
+    while (dash_path_next_segment(path, &a, &b, &length))
+        dash_emitter_segment(e, a, b, length, path->turns_after);
+
+    dash_emitter_end(e);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2425,31 +2672,34 @@ static uint32_t dash_path_draw(struct onedraw* r, dash_path* path, float width, 
             walk_start += period;
     }
 
-    // a dash uses one command, one color, 6 data floats and one aabb, check the capacity up front so the function
-    // never emits a partial shape (+4 : upper bound on the number of dashes the pattern can hold)
-    uint32_t num_dashes = (uint32_t) (path->perimeter / period) + 4U;
-
     // a translucent color is wrapped in a group, so the overlapping dash ends aren't double blended
     // (a caller already in a group composites everything in its group, no wrap needed)
     bool wrap_group = (((color >> 24) & 0xFF) < 0xFF) && (r->commands.group_aabb == nullptr);
 
-    if (!has_space_for_dash_commands(r, num_dashes + (wrap_group ? 2U : 0U), num_dashes * 6U + (wrap_group ? 3U : 0U)))
+    // a dash uses one command, one color, 6 data floats and one aabb, but a dash that spans a box corner is split
+    // into a capsule per corner sample : count the exact number of primitives with a dry run walk, check the
+    // capacity up front, then re-walk to emit, so the function never emits a partial shape
+    dash_path_start_at(path, walk_start);
+
+    dash_emitter e;
+    dash_emitter_init(&e, r, path->closed, path->point, style, period, width, color);
+    e.dry_run = true;
+    dash_path_walk(path, &e);
+
+    if (path->failed)
+        return UINT32_MAX;    // the tesselation stack overflowed, nothing was emitted
+
+    uint32_t num_commands = e.num_commands;
+    if (!has_space_for_dash_commands(r, num_commands + (wrap_group ? 2U : 0U), num_commands * 6U + (wrap_group ? 3U : 0U)))
         return UINT32_MAX;
 
     if (wrap_group)
         od_begin_group(r, false, 0.f, 0.f);
 
+    // the real emission, the same deterministic walk
     dash_path_start_at(path, walk_start);
-
-    dash_emitter e;
     dash_emitter_init(&e, r, path->closed, path->point, style, period, width, color);
-
-    vec2 a, b;
-    float length;
-    while (dash_path_next_segment(path, &a, &b, &length))
-        dash_emitter_segment(&e, a, b, length);
-
-    dash_emitter_end(&e);
+    dash_path_walk(path, &e);
 
     if (wrap_group)
         od_end_group(r, 0);
@@ -2487,6 +2737,55 @@ uint32_t od_draw_dashed_ring(struct onedraw* r, float cx, float cy, float radius
     path.center = vec2_set(cx, cy);
     path.radius = radius;
     path.perimeter = FULL_TURN * radius;
+
+    return dash_path_draw(r, &path, thickness, style, srgb_color);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+uint32_t od_draw_dashed_box(struct onedraw* r, float x0, float y0, float x1, float y1, float radius, float thickness,
+                            od_dash_style style, draw_color srgb_color)
+{
+    vec2 lo = vec2_set(fminf(x0, x1), fminf(y0, y1));
+    vec2 hi = vec2_set(fmaxf(x0, x1), fmaxf(y0, y1));
+    float w = hi.x - lo.x, h = hi.y - lo.y;
+
+    if (w <= 0.f || h <= 0.f)
+        return 0;
+
+    dash_path path = {};
+    path.kind = path_box;
+    path.closed = true;
+    vec2 center = vec2_scale(vec2_add(lo, hi), .5f);
+    path.a = vec2_sub(lo, center);
+    path.b = vec2_sub(hi, center);
+    path.center = center;
+    path.axis = vec2_set(1.f, 0.f);
+    path.radius = fminf(radius, fminf(w, h) * .5f);
+    path.perimeter = 2.f * (w + h) - 8.f * path.radius + FULL_TURN * path.radius;
+
+    return dash_path_draw(r, &path, thickness, style, srgb_color);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+uint32_t od_draw_dashed_oriented_box(struct onedraw* r, float ax, float ay, float bx, float by, float width, float roundness,
+                                     float thickness, od_dash_style style, draw_color srgb_color)
+{
+    vec2 a = vec2_set(ax, ay), b = vec2_set(bx, by);
+    float length = vec2_distance(a, b);
+
+    if (length <= 0.f || width <= 0.f)
+        return 0;
+
+    dash_path path = {};
+    path.kind = path_box;
+    path.closed = true;
+    vec2 center = vec2_scale(vec2_add(a, b), .5f);
+    path.a = vec2_set(-length * .5f, -width * .5f);
+    path.b = vec2_set(length * .5f, width * .5f);
+    path.center = center;
+    path.axis = vec2_scale(vec2_sub(b, a), 1.f / length);
+    path.radius = fminf(roundness, fminf(length, width) * .5f);
+    path.perimeter = 2.f * (length + width) - 8.f * path.radius + FULL_TURN * path.radius;
 
     return dash_path_draw(r, &path, thickness, style, srgb_color);
 }
@@ -2559,12 +2858,7 @@ uint32_t od_draw_dashed_quadratic_bezier(struct onedraw* r, const float* control
 
     // the path length requires the tesselation, run it once to measure it before checking the budget
     dash_path_start_at(&path, 0.f);
-    float length = 0.f;
-    vec2 a, b;
-    float segment_length;
-    while (dash_path_next_segment(&path, &a, &b, &segment_length))
-        length += segment_length;
-    path.perimeter = length;
+    path.perimeter = dash_path_measure(&path);
 
     if (path.failed)
         return UINT32_MAX;    // nothing was emitted
@@ -2584,12 +2878,7 @@ uint32_t od_draw_dashed_cubic_bezier(struct onedraw* r, const float* control_poi
 
     // the path length requires the tesselation, run it once to measure it before checking the budget
     dash_path_start_at(&path, 0.f);
-    float length = 0.f;
-    vec2 a, b;
-    float segment_length;
-    while (dash_path_next_segment(&path, &a, &b, &segment_length))
-        length += segment_length;
-    path.perimeter = length;
+    path.perimeter = dash_path_measure(&path);
 
     if (path.failed)
         return UINT32_MAX;    // nothing was emitted
