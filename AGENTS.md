@@ -10,6 +10,7 @@ Don't modify this file.
 - Style: `//` comments, Allman braces, 4 spaces, no tabs. Preserve existing conventions; don't reformat unrelated code.
 - Avoid needless abstractions/macros. Factor duplicated blocks >50 lines.
 - Line length: 160 chars. Separators: 127 chars (`// ----`).
+- Prefer designated initializers for struct initialization. Use compound literals with designated initializers when appropriate and when they improve readability.
 
 
 ## Code Quality

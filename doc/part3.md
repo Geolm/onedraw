@@ -70,14 +70,6 @@ The numbers make the win concrete: the whole curve is a single draw command of c
 
 Tessellation is done on the **CPU** with De Casteljau's algorithm until points are nearly colinear (the current threshold is 1/10th of a pixel). Splits are proportional to segment length, which performs slightly better than a fixed halfway split (`t = 0.5`) while remaining cheap. The recursion runs on a fixed-size stack (1024 deep) and returns `UINT32_MAX` if a pathological curve overflows it. We support both **quadratic** and **cubic** Bézier curves; each emitted capsule is a normal `od_draw_capsule()` call, so it flows through the same binning and rasterization path as every other primitive.
 
-Quadratic curve, tessellated from biarcs (left) to capsules (right):
-
-![Bézier curve rendered as capsules](bezier_biarcs.png)
-
-Cubic curve, same tessellation path:
-
-![Cubic Bézier rendered as capsules](bezier_capsules.png)
-
 ---
 
 [Next part](part4.md) : Font and textured quads
