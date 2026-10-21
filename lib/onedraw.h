@@ -37,7 +37,7 @@
 
 #define ONEDRAW_MAJOR_VERSION   (1)
 #define ONEDRAW_MINOR_VERSION   (2)
-#define ONEDRAW_PATCH           (2)
+#define ONEDRAW_PATCH           (3)
 
 //----------------------------------------------------------------------------------------------------------------------------
 // Structures
@@ -59,6 +59,14 @@ typedef struct od_stats
     size_t gpu_memory_usage;
     float gpu_time_ms;
 } od_stats;
+
+typedef struct od_dash_style
+{
+    float dash_length;   // length of a dash, in pixels, measured along the path
+    float gap_length;    // length of the gap between two dashes, in pixels
+    float offset;        // phase of the pattern, in pixels, along the path (e.g. for marching ants, can be negative)
+    bool  round_caps;    // true = round (capsule) dash ends, false = flat dash ends
+} od_dash_style;
 
 typedef struct onedraw_def
 {
@@ -382,6 +390,59 @@ uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a cubic bezier curve using adaptative tesselation
 uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, float width, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Dashed shapes : the dash pattern is cut on the CPU into small capsules (round_caps = true) or lines (round_caps = false)
+// that are emitted along the path, so the shaders don't need any dashed shape support.
+//
+// Returns the number of commands emitted, or UINT32_MAX if the tesselation failed or there isn't enough room in the
+// command buffers (in that case nothing is drawn). A zero [width], a zero [dash_length], or a degenerate shape
+// (zero length/radius) returns 0. A zero [gap_length] draws the whole solid shape instead.
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a dashed line
+//      [ax, ay], [bx, by]      line coordinates
+//      [width]                 width of the dashes
+//      [style]                 dash style, see od_dash_style
+uint32_t od_draw_dashed_line(struct onedraw* r, float ax, float ay, float bx, float by, float width, od_dash_style style, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a dashed ring (circle)
+//      [cx, cy]                center of the ring
+//      [radius]                radius of the ring (the dashes are centered on it)
+//      [thickness]             width of the dashes
+//      [style]                 dash style, see od_dash_style
+uint32_t od_draw_dashed_ring(struct onedraw* r, float cx, float cy, float radius, float thickness, od_dash_style style, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a dashed oriented ellipse ring
+//      [ax, ay], [bx, by]      main axis of the ellipse
+//      [width]                 width of the ellipse
+//      [thickness]             width of the dashes
+//      [style]                 dash style, see od_dash_style
+uint32_t od_draw_dashed_ellipse_ring(struct onedraw* r, float ax, float ay, float bx, float by, float width, float thickness,
+                                      od_dash_style style, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a dashed triangle ring
+//      [vertices]              pointer to 6 floats, the 3 vertices coordinates (xy)
+//      [thickness]             width of the dashes
+//      [style]                 dash style, see od_dash_style
+uint32_t od_draw_dashed_triangle_ring(struct onedraw* r, const float* vertices, float thickness, od_dash_style style, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a dashed quadratic bezier curve using adaptative tesselation
+//      [control_points]        an array of 6 floats that represent the control points coordinates (x, y)
+//      [width]                 width of the dashes
+//      [style]                 dash style, see od_dash_style
+uint32_t od_draw_dashed_quadratic_bezier(struct onedraw* r, const float* control_points, float width, od_dash_style style, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a dashed cubic bezier curve using adaptative tesselation
+//      [control_points]        an array of 8 floats that represent the control points coordinates (x, y)
+//      [width]                 width of the dashes
+//      [style]                 dash style, see od_dash_style
+uint32_t od_draw_dashed_cubic_bezier(struct onedraw* r, const float* control_points, float width, od_dash_style style, draw_color srgb_color);
 
 #ifdef __cplusplus
 }

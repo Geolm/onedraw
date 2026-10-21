@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define SOKOL_METAL
 #include "sokol_app.h"
@@ -206,12 +207,15 @@ void slot(uint32_t index, float* cx, float* cy, float* radius)
 const float angle = 0.78539816f;
 float gpu_time_ms = 0.f;
 uint32_t num_frames = 0;
+uint32_t frame_count = 0;
 
 // ---------------------------------------------------------------------------------------------------------------------------
 void frame(void)
 {
     if (renderer == NULL)
         return;
+
+    frame_count++;
 
     float cx, cy, radius;
     char string[256];
@@ -348,6 +352,32 @@ void frame(void)
     od_draw_capsule_gradient(renderer, cx - cosf(angle) * radius, cy - sinf(angle) * radius, cx + cosf(angle) * radius, cy + sinf(angle) * radius,
                              radius * 0.1f, miya_pale_blue, miya_red);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "capsule_gradient", miya_brown);
+
+    slot(22, &cx, &cy, &radius);
+    {
+        od_dash_style round = {10.f, 10.f, 0.f, true};
+        od_dash_style flat = {10.f, 10.f, 5.f, false};
+        od_dash_style ants = {10.f, 10.f, (float) frame_count * 0.5f, true};    // marching ants, overlapping dashes, no double blend
+
+        od_draw_dashed_line(renderer, cx - radius * 0.7f, cy - radius * 0.55f, cx + radius * 0.7f, cy - radius * 0.55f, 6.f, round, miya_red);
+        od_draw_dashed_line(renderer, cx - radius * 0.7f, cy - radius * 0.25f, cx + radius * 0.7f, cy - radius * 0.25f, 6.f, flat, miya_blue);
+        od_draw_dashed_ring(renderer, cx - radius * 0.45f, cy + radius * 0.15f, radius * 0.3f, 5.f, ants, 0x800000FF);
+        od_draw_dashed_triangle_ring(renderer, (float[]){cx + radius * 0.15f, cy + radius * 0.05f, cx - radius * 0.05f, cy + radius * 0.25f,
+                                                         cx + radius * 0.35f, cy + radius * 0.25f}, 5.f, round, miya_green);
+        od_draw_dashed_ellipse_ring(renderer, cx + radius * 0.35f, cy + radius * 0.15f, cx + radius * 0.75f, cy + radius * 0.15f,
+                                    radius * 0.25f, 5.f, flat, miya_pink);
+
+        float bezier_ctrl[] = {cx - radius * 0.7f, cy + radius * 0.8f, cx - radius * 0.3f, cy + radius * 0.55f,
+                               cx + radius * 0.25f, cy + radius * 1.05f, cx + radius * 0.7f, cy + radius * 0.8f};
+        od_draw_dashed_cubic_bezier(renderer, bezier_ctrl, 6.f, round, miya_light_blue);
+
+        // overflows the command budget, must return UINT32_MAX without emitting a partial shape
+        od_dash_style big = {1.f, 1.f, 0.f, true};
+        float big_ctrl[] = {cx, cy, cx + 70000.f, cy - 40000.f, cx + 140000.f, cy + 40000.f, cx + 200000.f, cy};
+        uint32_t budget = od_draw_dashed_cubic_bezier(renderer, big_ctrl, 4.f, big, miya_grey);
+        snprintf(string, 256, "dashed : %s", (budget == UINT32_MAX) ? "ok" : "error");
+    }
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, string, miya_brown);
 
 
     od_stats stats;
