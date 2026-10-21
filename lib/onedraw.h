@@ -35,8 +35,9 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#define ONEDRAW_MAJOR_VERSION (1)
-#define ONEDRAW_MINOR_VERSION (2)
+#define ONEDRAW_MAJOR_VERSION   (1)
+#define ONEDRAW_MINOR_VERSION   (2)
+#define ONEDRAW_PATCH           (2)
 
 //----------------------------------------------------------------------------------------------------------------------------
 // Structures
@@ -58,13 +59,6 @@ typedef struct od_stats
     size_t gpu_memory_usage;
     float gpu_time_ms;
 } od_stats;
-
-typedef struct od_glyph
-{
-    uint16_t x0, y0, x1, y1;
-    float bearing_x, bearing_y;
-    float advance_x;
-} od_glyph;
 
 typedef struct onedraw_def
 {

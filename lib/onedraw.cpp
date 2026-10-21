@@ -135,15 +135,9 @@ typedef struct aabb {vec2 min, max;} aabb;
 typedef struct quadratic_bezier {vec2 c0, c1, c2;} quadratic_bezier;
 typedef struct cubic_bezier {vec2 c0, c1, c2, c3;} cubic_bezier;
 
-struct alphabet
-{
-    od_glyph glyphs[MAX_GLYPHS];
-    float font_height;
-    uint16_t num_glyphs;
-    uint16_t first_glyph;
-    uint16_t texture_width;
-    uint16_t texture_height;
-};
+// the pre-build baker serializes struct alphabet into the default_font headers, fail at compile time if the layout drifted
+static_assert(sizeof(alphabet) == default_font_size, "baked font layout mismatch");
+static_assert(sizeof(alphabet) == default_font_highdpi_size, "baked font layout mismatch");
 
 struct onedraw
 {
@@ -644,7 +638,7 @@ static void od_upload_font_glyphs(struct onedraw* r)
     font_char cpu_buffer[MAX_GLYPHS];
     for(uint32_t i=0; i<r->font.desc.num_glyphs; i++)
     {
-        const od_glyph& glyph = r->font.desc.glyphs[i];
+        const glyph& glyph = r->font.desc.glyphs[i];
         cpu_buffer[i] = 
         {
             .uv_topleft = {.x = float(glyph.x0) / float(r->font.desc.texture_width), 
@@ -929,15 +923,9 @@ struct onedraw* od_init(onedraw_def* def)
     r->font.high_dpi = def->high_dpi;
 
     if (r->font.high_dpi)
-    {
-        assert(sizeof(alphabet) == default_font_highdpi_size);
         r->font.desc = *((alphabet*) default_font_highdpi);
-    }
     else
-    {
-        assert(sizeof(alphabet) == default_font_size);
         r->font.desc = *((alphabet*) default_font);
-    }
 
     od_build_pso(r);
     od_build_font(r);
@@ -1642,7 +1630,7 @@ void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_c
     *color = srgb_color;
 
     const float scale = r->font.scale;
-    const od_glyph& glyph = r->font.desc.glyphs[glyph_index];
+    const glyph& glyph = r->font.desc.glyphs[glyph_index];
     x += glyph.bearing_x * scale;
     y += (glyph.bearing_y + r->font.desc.font_height) * scale;
     float glyph_width = float(glyph.x1 - glyph.x0) * scale;

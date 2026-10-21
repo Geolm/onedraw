@@ -45,7 +45,7 @@ You can't modify this file.
 - Config: `cmake -B build -S . -DCMAKE_BUILD_TYPE=Release`
 - Build: `cmake --build build`
 - Clean: `rm -rf build/`
-- Test: `./build/unit_tests`
+- Test: `./build/test --autoexit`
 - Every bug fix requires a regression test. Adding new tests is allowed.
 - Never modify/weaken tests to make them pass.
 - Verify tests actually run before claiming success.
