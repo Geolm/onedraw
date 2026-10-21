@@ -182,12 +182,18 @@ void od_get_stats(struct onedraw* r, od_stats* stats);
 void od_set_clear_color(struct onedraw* r, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Sets the clip rectangle, you set a mixumum of 256 clip shapes per frame
+// Sets the clip rectangle, the clip edge is anti-aliased. You can set a maximum of 256 clip shapes per frame.
 //      [min_x, min_y, max_x, max_y]    Coordinates of the clip rect
 void od_set_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Sets the clip disc, you set a mixumum of 256 clip shapes per frame
+// Sets a rounded clip rectangle, the clip edge is anti-aliased. You can set a maximum of 256 clip shapes per frame.
+//      [min_x, min_y, max_x, max_y]    Coordinates of the clip rect
+//      [radius]                        Radius of the rounded corners, clamped to half of the smaller side
+void od_set_cliprect_rounded(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Sets the clip disc, the clip edge is anti-aliased. You can set a maximum of 256 clip shapes per frame.
 //      [cx, cy]        center of the disc
 //      [radius]        radius of the disc
 void od_set_clipdisc(struct onedraw* r, float cx, float cy, float radius);

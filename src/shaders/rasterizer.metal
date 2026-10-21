@@ -136,15 +136,26 @@ static inline float sd_segment(float2 p, float2 a, float2 b )
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-static inline bool clip_pixel(constant clip_shape& clip, float2 pos)
+// returns a signed distance to the clip shape, calibrated so the box-filter coverage of a
+// pixel whose center is at signed distance `d` from the edge equals `saturate(0.5 - d)`
+// (pixel-aligned edges stay crisp, edges get a 1px anti-aliased fringe)
+static inline float clip_distance(constant clip_shape& clip, float2 pos, float aa_width)
 {
+    float sdf;
     switch(clip.type)
     {
-    case clip_rect: return (pos.x < clip.rect.min_x || pos.y < clip.rect.min_y && 
-                            pos.x > clip.rect.max_x || pos.y > clip.rect.max_y);
-    case clip_disc: return (distance_squared(pos, float2(clip.disc.center_x, clip.disc.center_y)) > clip.disc.squared_radius);
+    case clip_rect:
+    {
+        float2 center = float2(clip.rect.center_x, clip.rect.center_y);
+        float2 half_extents = float2(clip.rect.half_x, clip.rect.half_y);
+        sdf = sd_aabox(pos, center, half_extents, clip.rect.radius);
+        break;
     }
-    return false;
+    case clip_disc:
+        sdf = sd_disc(pos, float2(clip.disc.center_x, clip.disc.center_y), clip.disc.radius);
+        break;
+    }
+    return aa_width * (sdf + 0.5f);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -266,236 +277,238 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
         const primitive_fillmode fillmode = (primitive_fillmode) ((packed_data >> 16) & 0xFF);
         half4 cmd_color = unpack_unorm4x8_srgb_to_half(input.colors[node.command_index]);
 
-        // check if the pixel is in the clip rect
-        if (!clip_pixel(clip, in.pos.xy))
-        {
-            float distance = 10.f;
-            constant float* data = &input.draw_data[data_index];
+        constant float* data = &input.draw_data[data_index];
+        float distance = 10.f;
 
-            if (type == begin_group)
+        if (type == begin_group)
+        {
+            previous_color = 0.h;
+            previous_distance = 100000000.f;
+            group_smoothness = data[0];
+            grouping = true;
+            group_op = (sdf_operator) extra;
+            outline_width = data[1];
+            outline_start = -outline_width - input.aa_width;
+        }
+        else
+        {
+            switch(type)
             {
-                previous_color = 0.h;
-                previous_distance = 100000000.f;
-                group_smoothness = data[0];
-                grouping = true;
-                group_op = (sdf_operator) extra;
-                outline_width = data[1];
-                outline_start = -outline_width - input.aa_width;
+            case primitive_disc :
+            {
+                float2 center = float2(data[0], data[1]);
+                float radius = data[2];
+                distance = sd_disc(in.pos.xy, center, radius);
+                if (fillmode == fill_hollow)
+                    distance = abs(distance) - data[3];
+                else if (fillmode == fill_gradient)
+                {
+                    uint32_t packed_color = as_type<uint>(data[3]);
+                    half4 inner_color = unpack_unorm4x8_srgb_to_half(packed_color);
+                    cmd_color = mix(inner_color, cmd_color, linearstep(-radius, 0.f, distance));
+                }
+                break;
+            }
+            case primitive_oriented_box :
+            {
+                float2 p0 = float2(data[0], data[1]);
+                float2 p1 = float2(data[2], data[3]);
+                float width = data[4];
+
+                if (width == 0.f)
+                    distance = sd_segment(in.pos.xy, p0, p1);
+                else
+                distance = sd_oriented_box(in.pos.xy, p0, p1, data[4]);
+
+                if (fillmode == fill_hollow)
+                    distance = abs(distance);
+                else if (fillmode == fill_gradient)
+                {
+                    uint32_t packed_color = as_type<uint>(data[6]);
+                    half4 inner_color = unpack_unorm4x8_srgb_to_half(packed_color);
+                    float2 pa = in.pos.xy-p0, ba = p1-p0;
+                    float h = saturate(dot(pa,ba)/dot(ba,ba));
+                    cmd_color = mix(inner_color, cmd_color,  h);
+                }
+                distance -= data[5];
+                break;
+            }
+            case primitive_ellipse :
+            {
+                float2 p0 = float2(data[0], data[1]);
+                float2 p1 = float2(data[2], data[3]);
+                distance = sd_oriented_ellipse(in.pos.xy, p0, p1, data[4]);
+                if (fillmode == fill_hollow)
+                    distance = abs(distance) - data[5];
+                break;
+            }
+            case primitive_aabox:
+            {
+                float2 center = float2(data[0], data[1]);
+                float2 half_extents = float2(data[2], data[3]);
+                float radius = data[4];
+                distance = sd_aabox(in.pos.xy, center, half_extents, radius);
+                break;
+            }
+            case primitive_char:
+            {
+                uint glyph_index = extra;
+                if (glyph_index<MAX_GLYPHS)
+                {
+                    float2 top_left = float2(data[0], data[1]);
+                    constant font_char& g = input.glyphs[glyph_index];
+                    float2 uv_topleft = g.uv_topleft;
+                    float2 uv_bottomright = g.uv_bottomright;
+                    float2 char_size = float2(g.width, g.height);
+                    float2 t = (in.pos.xy - top_left) / char_size.xy;
+
+                    if (all(t >= 0.f && t <= 1.f))
+                    {
+                        float2 uv = mix(uv_topleft, uv_bottomright, t);
+                        half texel = 1.h - input.font.sample(s_linear, uv).r;
+                        distance = texel * input.aa_width;
+                    }
+                }
+                break;
+            }
+            case primitive_triangle:
+            {
+                float2 p0 = float2(data[0], data[1]);
+                float2 p1 = float2(data[2], data[3]);
+                float2 p2 = float2(data[4], data[5]);
+                distance = sd_triangle(in.pos.xy, p0, p1, p2);
+                
+                if (fillmode == fill_hollow)
+                    distance = abs(distance);
+                    
+                distance -= data[6];
+                break;
+            }
+            case primitive_pie:
+            {
+                float2 center = float2(data[0], data[1]);
+                float radius = data[2];
+                float2 direction = float2(data[3], data[4]);
+                float2 aperture = float2(data[5], data[6]);
+
+                distance = sd_oriented_pie(in.pos.xy, center, direction, aperture, radius);
+                if (fillmode == fill_hollow)
+                    distance = abs(distance) - data[7];
+                break;
+            }
+            case primitive_arc:
+            {
+                float2 center = float2(data[0], data[1]);
+                float radius = data[2];
+                float2 direction = float2(data[3], data[4]);
+                float2 aperture = float2(data[5], data[6]);
+                float thickness = data[7];
+
+                distance = sd_oriented_ring(in.pos.xy, center, direction, aperture, radius, thickness);
+                if (fillmode == fill_hollow)
+                    distance = abs(distance) - data[7];
+                break;
+            }
+            case primitive_blurred_box:
+            {
+                float2 center = float2(data[0], data[1]);
+                float2 size = float2(data[2], data[3]);
+                float roundness = data[4];
+
+                float2 dist_alpha = sd_gaussian_box(in.pos.xy, center, size, roundness);
+
+                distance = dist_alpha.x;
+                cmd_color.a *= dist_alpha.y;
+                break;
+            }
+            case primitive_quad:
+            {
+                float2 top_left = float2(data[0], data[1]);
+                float2 bottom_right = float2(data[2], data[3]);
+                float2 uv_topleft = float2(data[4], data[5]);
+                float2 uv_bottomright = float2(data[6], data[7]);
+                float2 t = (in.pos.xy - top_left) / (bottom_right - top_left);
+
+                if (all(t >= 0.f && t <= 1.f))
+                {
+                    float2 uv = mix(uv_topleft, uv_bottomright, t);
+                    cmd_color *= input.atlas.sample(s_linear, uv, extra);
+                    distance = 0.f;
+                }
+                break;
+            }
+
+            case primitive_oriented_quad:
+            {
+                float2 center = float2(data[0], data[1]);
+                float2 dimensions = float2(data[2], data[3]);
+                float2 axis = float2(data[4], data[5]);
+                float2 uv_topleft = float2(data[6], data[7]);
+                float2 uv_bottomright = float2(data[8], data[9]);
+
+                float2 relative = in.pos.xy - center;
+                float2 t = float2(dot(axis, relative), dot(skew(axis), relative));
+                t *= dimensions;
+                t += .5f;
+
+                if (all(t >= 0.f && t <= 1.f))
+                {
+                    float2 uv = mix(uv_topleft, uv_bottomright, t);
+                    cmd_color *= input.atlas.sample(s_linear, uv, extra);
+                    distance = 0.f;
+                }
+                break;
+            }
+
+            default: break;
+            }
+
+            half4 color;
+            if (type == end_group)
+            {
+                grouping = false;
+                color = previous_color;
+                distance = previous_distance;
+                group_op = op_overwrite;
             }
             else
             {
-                switch(type)
-                {
-                case primitive_disc :
-                {
-                    float2 center = float2(data[0], data[1]);
-                    float radius = data[2];
-                    distance = sd_disc(in.pos.xy, center, radius);
-                    if (fillmode == fill_hollow)
-                        distance = abs(distance) - data[3];
-                    else if (fillmode == fill_gradient)
-                    {
-                        uint32_t packed_color = as_type<uint>(data[3]);
-                        half4 inner_color = unpack_unorm4x8_srgb_to_half(packed_color);
-                        cmd_color = mix(inner_color, cmd_color, linearstep(-radius, 0.f, distance));
-                    }
-                    break;
-                }
-                case primitive_oriented_box :
-                {
-                    float2 p0 = float2(data[0], data[1]);
-                    float2 p1 = float2(data[2], data[3]);
-                    float width = data[4];
+                color = cmd_color;
+            }
 
-                    if (width == 0.f)
-                        distance = sd_segment(in.pos.xy, p0, p1);
+            // intersect with the clip shape : anti-aliased clip edge (box-filter calibrated, see clip_distance).
+            // end_group is skipped : its accumulated SDF was already clipped member by member, and re-clipping
+            // it with the clip current at end_group would be wrong if the clip changed inside the group
+            if (type != end_group)
+                distance = max(distance, clip_distance(clip, in.pos.xy, input.aa_width));
+
+            // blend distance / color and skip writing output
+            if (grouping)
+            {
+                float smooth_factor = (group_op == op_blend) ? group_smoothness : input.aa_width;
+                float2 smooth = smooth_minimum(distance, previous_distance, smooth_factor);
+                previous_distance = smooth.x;
+                previous_color = mix(color, previous_color, smooth.y);
+            }
+            else
+            {
+                half alpha_factor;
+                if (outline_width > 0.f && type == end_group)
+                {
+                    if (distance > input.aa_width)
+                        color.rgb = cmd_color.rgb;
                     else
-                    distance = sd_oriented_box(in.pos.xy, p0, p1, data[4]);
+                        color.rgb = mix(cmd_color.rgb, color.rgb, linearstep(input.aa_width, 0.f, distance));
+                    alpha_factor = linearstep(half(input.aa_width*2+outline_width), half(input.aa_width+outline_width), half(distance));    // anti-aliasing
 
-                    if (fillmode == fill_hollow)
-                        distance = abs(distance);
-                    else if (fillmode == fill_gradient)
-                    {
-                        uint32_t packed_color = as_type<uint>(data[6]);
-                        half4 inner_color = unpack_unorm4x8_srgb_to_half(packed_color);
-                        float2 pa = in.pos.xy-p0, ba = p1-p0;
-                        float h = saturate(dot(pa,ba)/dot(ba,ba));
-                        cmd_color = mix(inner_color, cmd_color,  h);
-                    }
-                    distance -= data[5];
-                    break;
-                }
-                case primitive_ellipse :
-                {
-                    float2 p0 = float2(data[0], data[1]);
-                    float2 p1 = float2(data[2], data[3]);
-                    distance = sd_oriented_ellipse(in.pos.xy, p0, p1, data[4]);
-                    if (fillmode == fill_hollow)
-                        distance = abs(distance) - data[5];
-                    break;
-                }
-                case primitive_aabox:
-                {
-                    float2 center = float2(data[0], data[1]);
-                    float2 half_extents = float2(data[2], data[3]);
-                    float radius = data[4];
-                    distance = sd_aabox(in.pos.xy, center, half_extents, radius);
-                    break;
-                }
-                case primitive_char:
-                {
-                    uint glyph_index = extra;
-                    if (glyph_index<MAX_GLYPHS)
-                    {
-                        float2 top_left = float2(data[0], data[1]);
-                        constant font_char& g = input.glyphs[glyph_index];
-                        float2 uv_topleft = g.uv_topleft;
-                        float2 uv_bottomright = g.uv_bottomright;
-                        float2 char_size = float2(g.width, g.height);
-                        float2 t = (in.pos.xy - top_left) / char_size.xy;
-
-                        if (all(t >= 0.f && t <= 1.f))
-                        {
-                            float2 uv = mix(uv_topleft, uv_bottomright, t);
-                            half texel = 1.h - input.font.sample(s_linear, uv).r;
-                            distance = texel * input.aa_width;
-                        }
-                    }
-                    break;
-                }
-                case primitive_triangle:
-                {
-                    float2 p0 = float2(data[0], data[1]);
-                    float2 p1 = float2(data[2], data[3]);
-                    float2 p2 = float2(data[4], data[5]);
-                    distance = sd_triangle(in.pos.xy, p0, p1, p2);
-                    
-                    if (fillmode == fill_hollow)
-                        distance = abs(distance);
-                        
-                    distance -= data[6];
-                    break;
-                }
-                case primitive_pie:
-                {
-                    float2 center = float2(data[0], data[1]);
-                    float radius = data[2];
-                    float2 direction = float2(data[3], data[4]);
-                    float2 aperture = float2(data[5], data[6]);
-
-                    distance = sd_oriented_pie(in.pos.xy, center, direction, aperture, radius);
-                    if (fillmode == fill_hollow)
-                        distance = abs(distance) - data[7];
-                    break;
-                }
-                case primitive_arc:
-                {
-                    float2 center = float2(data[0], data[1]);
-                    float radius = data[2];
-                    float2 direction = float2(data[3], data[4]);
-                    float2 aperture = float2(data[5], data[6]);
-                    float thickness = data[7];
-
-                    distance = sd_oriented_ring(in.pos.xy, center, direction, aperture, radius, thickness);
-                    if (fillmode == fill_hollow)
-                        distance = abs(distance) - data[7];
-                    break;
-                }
-                case primitive_blurred_box:
-                {
-                    float2 center = float2(data[0], data[1]);
-                    float2 size = float2(data[2], data[3]);
-                    float roundness = data[4];
-
-                    float2 dist_alpha = sd_gaussian_box(in.pos.xy, center, size, roundness);
-
-                    distance = dist_alpha.x;
-                    cmd_color.a *= dist_alpha.y;
-                    break;
-                }
-                case primitive_quad:
-                {
-                    float2 top_left = float2(data[0], data[1]);
-                    float2 bottom_right = float2(data[2], data[3]);
-                    float2 uv_topleft = float2(data[4], data[5]);
-                    float2 uv_bottomright = float2(data[6], data[7]);
-                    float2 t = (in.pos.xy - top_left) / (bottom_right - top_left);
-
-                    if (all(t >= 0.f && t <= 1.f))
-                    {
-                        float2 uv = mix(uv_topleft, uv_bottomright, t);
-                        cmd_color *= input.atlas.sample(s_linear, uv, extra);
-                        distance = 0.f;
-                    }
-                    break;
-                }
-
-                case primitive_oriented_quad:
-                {
-                    float2 center = float2(data[0], data[1]);
-                    float2 dimensions = float2(data[2], data[3]);
-                    float2 axis = float2(data[4], data[5]);
-                    float2 uv_topleft = float2(data[6], data[7]);
-                    float2 uv_bottomright = float2(data[8], data[9]);
-
-                    float2 relative = in.pos.xy - center;
-                    float2 t = float2(dot(axis, relative), dot(skew(axis), relative));
-                    t *= dimensions;
-                    t += .5f;
-
-                    if (all(t >= 0.f && t <= 1.f))
-                    {
-                        float2 uv = mix(uv_topleft, uv_bottomright, t);
-                        cmd_color *= input.atlas.sample(s_linear, uv, extra);
-                        distance = 0.f;
-                    }
-                    break;
-                }
-
-                default: break;
-                }
-
-                half4 color;
-                if (type == end_group)
-                {
-                    grouping = false;
-                    color = previous_color;
-                    distance = previous_distance;
-                    group_op = op_overwrite;
+                    outline_width = 0.f;
+                    outline_start = -input.aa_width;
                 }
                 else
-                {
-                    color = cmd_color;
-                }
+                    alpha_factor = linearstep(half(input.aa_width), 0.h, half(distance));    // anti-aliasing
 
-                // blend distance / color and skip writing output
-                if (grouping)
-                {
-                    float smooth_factor = (group_op == op_blend) ? group_smoothness : input.aa_width;
-                    float2 smooth = smooth_minimum(distance, previous_distance, smooth_factor);
-                    previous_distance = smooth.x;
-                    previous_color = mix(color, previous_color, smooth.y);
-                }
-                else
-                {
-                    half alpha_factor;
-                    if (outline_width > 0.f && type == end_group)
-                    {
-                        if (distance > input.aa_width)
-                            color.rgb = cmd_color.rgb;
-                        else
-                            color.rgb = mix(cmd_color.rgb, color.rgb, linearstep(input.aa_width, 0.f, distance));
-                        alpha_factor = linearstep(half(input.aa_width*2+outline_width), half(input.aa_width+outline_width), half(distance));    // anti-aliasing
-
-                        outline_width = 0.f;
-                        outline_start = -input.aa_width;
-                    }
-                    else
-                        alpha_factor = linearstep(half(input.aa_width), 0.h, half(distance));    // anti-aliasing
-
-                    color.a *= alpha_factor;
-                    output = accumulate_color(color, output);
-                }
+                color.a *= alpha_factor;
+                output = accumulate_color(color, output);
             }
         }
         node_index = node.next;

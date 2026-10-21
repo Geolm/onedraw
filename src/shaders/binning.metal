@@ -612,17 +612,26 @@ void clean_list(device tiles_data& tiles, uint16_t tile_index)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// conservative cull : drops tiles that are entirely outside the clip.
+// the clip rect culling uses the bounding rect (not shrunk by the corner radius) and the
+// 1px anti-aliased fringe only makes the rejection looser, so the same bounds are correct
 static inline bool clip_tile(aabb tile, clip_shape clip)
 {
     switch(clip.type)
     {
     case clip_rect:
-        return (tile.max.x < clip.rect.min_x || tile.max.y < clip.rect.min_y || 
-                tile.min.x > clip.rect.max_x || tile.min.y > clip.rect.max_y);
+    {
+        float2 rect_min = float2(clip.rect.center_x, clip.rect.center_y) - float2(clip.rect.half_x, clip.rect.half_y);
+        float2 rect_max = float2(clip.rect.center_x, clip.rect.center_y) + float2(clip.rect.half_x, clip.rect.half_y);
+        return (tile.max.x < rect_min.x || tile.max.y < rect_min.y ||
+                tile.min.x > rect_max.x || tile.min.y > rect_max.y);
+    }
     case clip_disc:
+    {
         float2 center = float2(clip.disc.center_x, clip.disc.center_y);
         float2 nearest_point = clamp(center, tile.min, tile.max);
-        return distance_squared(nearest_point, center) > clip.disc.squared_radius;
+        return distance_squared(nearest_point, center) > square(clip.disc.radius);
+    }
     }
     return false;
 }

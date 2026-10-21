@@ -292,11 +292,13 @@ void frame(void)
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "smoothmin", miya_brown);
 
     slot(15, &cx, &cy, &radius);
+    od_set_cliprect_rounded(renderer, cx - radius*.5f, cy - radius*.5f, cx + radius*.5f, cy + radius*.5f, radius*.25f);
     od_draw_quad(renderer, cx-radius, cy-radius, cx, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 0, 0x7fffffff);
     od_draw_quad(renderer, cx, cy-radius, cx+radius, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 1, 0xffffffff);
     od_draw_quad(renderer, cx-radius, cy, cx, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 2, 0xffffffff);
     od_draw_quad(renderer, cx, cy, cx+radius, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 3, 0xffffffff);
-    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "quad", miya_brown);
+    od_set_cliprect(renderer, 0.f, 0.f, UINT16_MAX, UINT16_MAX);
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "quad\nrounded clip", miya_brown);
 
     slot(16, &cx, &cy, &radius);
     od_draw_oriented_quad(renderer, cx, cy, radius, radius*.5f, angle * 0.75f, (od_quad_uv){0.f, 0.f, 1.f, 0.5f}, 2, 0xffffffff);

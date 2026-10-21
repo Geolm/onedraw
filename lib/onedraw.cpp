@@ -1954,52 +1954,84 @@ void od_set_clear_color(struct onedraw* r, draw_color srgb_color)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_set_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y)
+static void push_clip_shape(struct onedraw* r, clip_shape clip)
 {
-    // avoid redundant clip rect
-    if (r->commands.clipshapes_buffer.GetNumElements()>0)
-    {
-        clip_shape* clip = r->commands.clipshapes_buffer.LastElement();
-
-        if (clip->rect.min_x == min_x && clip->rect.min_y == min_y &&
-            clip->rect.max_x == max_x && clip->rect.max_y == max_y && clip->type == clip_rect)
-            return;
-    }
-
     if (r->commands.clipshapes_buffer.GetNumElements() < MAX_CLIPS)
-    {
-        *r->commands.clipshapes_buffer.NewElement() = (clip_shape) 
-        {
-            .rect = {.min_x = min_x, .min_y = min_y, .max_x = max_x, .max_y = max_y},
-            .type = clip_rect
-        };
-    }
+        *r->commands.clipshapes_buffer.NewElement() = clip;
     else
         od_log(r, "too many clip shapes! maximum is %d", MAX_CLIPS);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_set_clipdisc(struct onedraw* r, float cx, float cy, float radius)
+static void set_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius)
 {
+    if (max_x < min_x) {float t = min_x; min_x = max_x; max_x = t;}
+    if (max_y < min_y) {float t = min_y; min_y = max_y; max_y = t;}
+
+    float half_x = (max_x - min_x) * 0.5f;
+    float half_y = (max_y - min_y) * 0.5f;
+
+    // clamp the radius to the half of the smaller side, a larger radius would leave the shape undefined
+    radius = min(min(radius, half_x), half_y);
+
+    clip_shape clip =
+    {
+        .rect =
+        {
+            .center_x = min_x + half_x,
+            .center_y = min_y + half_y,
+            .half_x = half_x,
+            .half_y = half_y,
+            .radius = radius
+        },
+        .type = clip_rect
+    };
+
+    // avoid redundant clip rect
     if (r->commands.clipshapes_buffer.GetNumElements()>0)
     {
-        clip_shape* clip = r->commands.clipshapes_buffer.LastElement();
+        clip_shape* last = r->commands.clipshapes_buffer.LastElement();
 
-        if (clip->type == clip_disc && clip->disc.center_x == cx && clip->disc.center_y == cy &&
-            clip->disc.squared_radius == (radius * radius))
+        if (last->type == clip_rect && last->rect.center_x == clip.rect.center_x && last->rect.center_y == clip.rect.center_y &&
+            last->rect.half_x == clip.rect.half_x && last->rect.half_y == clip.rect.half_y && last->rect.radius == clip.rect.radius)
             return;
     }
 
-    if (r->commands.clipshapes_buffer.GetNumElements() < MAX_CLIPS)
+    push_clip_shape(r, clip);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_set_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y)
+{
+    set_cliprect(r, min_x, min_y, max_x, max_y, 0.f);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_set_cliprect_rounded(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius)
+{
+    set_cliprect(r, min_x, min_y, max_x, max_y, radius);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_set_clipdisc(struct onedraw* r, float cx, float cy, float radius)
+{
+    clip_shape clip =
     {
-        *r->commands.clipshapes_buffer.NewElement() = (clip_shape) 
-        {
-            .disc = {.center_x = cx, .center_y = cy, .squared_radius = radius * radius},
-            .type = clip_disc
-        };
+        .disc = {.center_x = cx, .center_y = cy, .radius = radius},
+        .type = clip_disc
+    };
+
+    // avoid redundant clip disc
+    if (r->commands.clipshapes_buffer.GetNumElements()>0)
+    {
+        clip_shape* last = r->commands.clipshapes_buffer.LastElement();
+
+        if (last->type == clip_disc && last->disc.center_x == clip.disc.center_x &&
+            last->disc.center_y == clip.disc.center_y && last->disc.radius == clip.disc.radius)
+            return;
     }
-    else
-        od_log(r, "too many clip shapes! maximum is %d", MAX_CLIPS);
+
+    push_clip_shape(r, clip);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

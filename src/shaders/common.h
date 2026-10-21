@@ -117,10 +117,10 @@ enum clip_type
 
 typedef struct clip_shape
 {
-    union 
+    union
     {
-        struct {float min_x, min_y, max_x, max_y;} rect;
-        struct {float center_x, center_y, squared_radius;} disc;
+        struct {float center_x, center_y, half_x, half_y, radius;} rect;
+        struct {float center_x, center_y, radius;} disc;
     };
     enum clip_type type;
 } clip_shape;
