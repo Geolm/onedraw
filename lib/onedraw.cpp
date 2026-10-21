@@ -2713,14 +2713,19 @@ static uint32_t dash_path_draw(struct onedraw* r, dash_path* path, float width, 
 //----------------------------------------------------------------------------------------------------------------------------
 uint32_t od_draw_dashed_line(struct onedraw* r, float ax, float ay, float bx, float by, float width, od_dash_style style, draw_color srgb_color)
 {
-    dash_path path = {};
-    path.kind = path_line;
-    path.a = vec2_set(ax, ay);
-    path.b = vec2_set(bx, by);
-    path.perimeter = vec2_distance(path.a, path.b);
+    vec2 a = vec2_set(ax, ay), b = vec2_set(bx, by);
+    float perimeter = vec2_distance(a, b);
 
-    if (path.perimeter <= HALF_PIXEL)
+    if (perimeter <= HALF_PIXEL)
         return 0;
+
+    dash_path path =
+    {
+        .kind = path_line,
+        .perimeter = perimeter,
+        .a = a,
+        .b = b
+    };
 
     return dash_path_draw(r, &path, width, style, srgb_color);
 }
@@ -2731,12 +2736,14 @@ uint32_t od_draw_dashed_ring(struct onedraw* r, float cx, float cy, float radius
     if (radius <= 0.f)
         return 0;
 
-    dash_path path = {};
-    path.kind = path_circle;
-    path.closed = true;
-    path.center = vec2_set(cx, cy);
-    path.radius = radius;
-    path.perimeter = FULL_TURN * radius;
+    dash_path path =
+    {
+        .kind = path_circle,
+        .closed = true,
+        .perimeter = FULL_TURN * radius,
+        .center = vec2_set(cx, cy),
+        .radius = radius
+    };
 
     return dash_path_draw(r, &path, thickness, style, srgb_color);
 }
@@ -2752,16 +2759,20 @@ uint32_t od_draw_dashed_box(struct onedraw* r, float x0, float y0, float x1, flo
     if (w <= 0.f || h <= 0.f)
         return 0;
 
-    dash_path path = {};
-    path.kind = path_box;
-    path.closed = true;
     vec2 center = vec2_scale(vec2_add(lo, hi), .5f);
-    path.a = vec2_sub(lo, center);
-    path.b = vec2_sub(hi, center);
-    path.center = center;
-    path.axis = vec2_set(1.f, 0.f);
-    path.radius = fminf(radius, fminf(w, h) * .5f);
-    path.perimeter = 2.f * (w + h) - 8.f * path.radius + FULL_TURN * path.radius;
+    float corner = fminf(radius, fminf(w, h) * .5f);
+
+    dash_path path =
+    {
+        .kind = path_box,
+        .closed = true,
+        .perimeter = 2.f * (w + h) - 8.f * corner + FULL_TURN * corner,
+        .a = vec2_sub(lo, center),
+        .b = vec2_sub(hi, center),
+        .center = center,
+        .radius = corner,
+        .axis = vec2_set(1.f, 0.f)
+    };
 
     return dash_path_draw(r, &path, thickness, style, srgb_color);
 }
@@ -2776,16 +2787,20 @@ uint32_t od_draw_dashed_oriented_box(struct onedraw* r, float ax, float ay, floa
     if (length <= 0.f || width <= 0.f)
         return 0;
 
-    dash_path path = {};
-    path.kind = path_box;
-    path.closed = true;
     vec2 center = vec2_scale(vec2_add(a, b), .5f);
-    path.a = vec2_set(-length * .5f, -width * .5f);
-    path.b = vec2_set(length * .5f, width * .5f);
-    path.center = center;
-    path.axis = vec2_scale(vec2_sub(b, a), 1.f / length);
-    path.radius = fminf(roundness, fminf(length, width) * .5f);
-    path.perimeter = 2.f * (length + width) - 8.f * path.radius + FULL_TURN * path.radius;
+    float corner = fminf(roundness, fminf(length, width) * .5f);
+
+    dash_path path =
+    {
+        .kind = path_box,
+        .closed = true,
+        .perimeter = 2.f * (length + width) - 8.f * corner + FULL_TURN * corner,
+        .a = vec2_set(-length * .5f, -width * .5f),
+        .b = vec2_set(length * .5f, width * .5f),
+        .center = center,
+        .radius = corner,
+        .axis = vec2_scale(vec2_sub(b, a), 1.f / length)
+    };
 
     return dash_path_draw(r, &path, thickness, style, srgb_color);
 }
@@ -2801,24 +2816,30 @@ uint32_t od_draw_dashed_ellipse_ring(struct onedraw* r, float ax, float ay, floa
     if (semi_major <= HALF_PIXEL || width <= 0.f)
         return 0;
 
-    dash_path path = {};
-    path.kind = path_ellipse;
-    path.closed = true;
-    path.center = vec2_scale(vec2_add(p0, p1), .5f);
-    path.semi_axes = vec2_set(semi_major, width * .5f);
+    vec2 center = vec2_scale(vec2_add(p0, p1), .5f);
+    vec2 semi_axes = vec2_set(semi_major, width * .5f);
 
     // a needle like ellipse is a line segment along its main axis
-    if (path.semi_axes.y < 0.01f)
+    if (semi_axes.y < 0.01f)
     {
-        path.kind = path_line;
-        path.closed = false;
-        path.a = p0;
-        path.b = p1;
-        path.perimeter = vec2_distance(p0, p1);
+        dash_path path =
+        {
+            .kind = path_line,
+            .perimeter = vec2_distance(p0, p1),
+            .a = p0,
+            .b = p1
+        };
         return dash_path_draw(r, &path, thickness, style, srgb_color);
     }
 
-    path.axis = vec2_scale(vec2_sub(p1, p0), 1.f / (2.f * semi_major));
+    dash_path path =
+    {
+        .kind = path_ellipse,
+        .closed = true,
+        .center = center,
+        .semi_axes = semi_axes,
+        .axis = vec2_scale(vec2_sub(p1, p0), 1.f / (2.f * semi_major))
+    };
     dash_path_init_ellipse(&path);
 
     return dash_path_draw(r, &path, thickness, style, srgb_color);
@@ -2836,13 +2857,13 @@ uint32_t od_draw_dashed_triangle_ring(struct onedraw* r, const float* vertices, 
     if (vec2_similar(v[0], v[1], HALF_PIXEL) || vec2_similar(v[2], v[1], HALF_PIXEL) || vec2_similar(v[0], v[2], HALF_PIXEL))
         return 0;
 
-    dash_path path = {};
-    path.kind = path_triangle;
-    path.closed = true;
-    path.vertices[0] = v[0];
-    path.vertices[1] = v[1];
-    path.vertices[2] = v[2];
-    path.perimeter = vec2_distance(v[0], v[1]) + vec2_distance(v[1], v[2]) + vec2_distance(v[2], v[0]);
+    dash_path path =
+    {
+        .kind = path_triangle,
+        .closed = true,
+        .perimeter = vec2_distance(v[0], v[1]) + vec2_distance(v[1], v[2]) + vec2_distance(v[2], v[0]),
+        .vertices = { v[0], v[1], v[2] }
+    };
 
     return dash_path_draw(r, &path, thickness, style, srgb_color);
 }
@@ -2850,11 +2871,16 @@ uint32_t od_draw_dashed_triangle_ring(struct onedraw* r, const float* vertices, 
 //----------------------------------------------------------------------------------------------------------------------------
 uint32_t od_draw_dashed_quadratic_bezier(struct onedraw* r, const float* control_points, float width, od_dash_style style, draw_color srgb_color)
 {
-    dash_path path = {};
-    path.kind = path_quadratic;
-    path.control[0] = vec2_set(control_points[0], control_points[1]);
-    path.control[1] = vec2_set(control_points[2], control_points[3]);
-    path.control[2] = vec2_set(control_points[4], control_points[5]);
+    dash_path path =
+    {
+        .kind = path_quadratic,
+        .control =
+        {
+            vec2_set(control_points[0], control_points[1]),
+            vec2_set(control_points[2], control_points[3]),
+            vec2_set(control_points[4], control_points[5])
+        }
+    };
 
     // the path length requires the tesselation, run it once to measure it before checking the budget
     dash_path_start_at(&path, 0.f);
@@ -2869,12 +2895,17 @@ uint32_t od_draw_dashed_quadratic_bezier(struct onedraw* r, const float* control
 //----------------------------------------------------------------------------------------------------------------------------
 uint32_t od_draw_dashed_cubic_bezier(struct onedraw* r, const float* control_points, float width, od_dash_style style, draw_color srgb_color)
 {
-    dash_path path = {};
-    path.kind = path_cubic;
-    path.control[0] = vec2_set(control_points[0], control_points[1]);
-    path.control[1] = vec2_set(control_points[2], control_points[3]);
-    path.control[2] = vec2_set(control_points[4], control_points[5]);
-    path.control[3] = vec2_set(control_points[6], control_points[7]);
+    dash_path path =
+    {
+        .kind = path_cubic,
+        .control =
+        {
+            vec2_set(control_points[0], control_points[1]),
+            vec2_set(control_points[2], control_points[3]),
+            vec2_set(control_points[4], control_points[5]),
+            vec2_set(control_points[6], control_points[7])
+        }
+    };
 
     // the path length requires the tesselation, run it once to measure it before checking the budget
     dash_path_start_at(&path, 0.f);
