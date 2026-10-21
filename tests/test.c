@@ -7,16 +7,32 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+#define FLAG_IMPLEMENTATION
+#include "flag.h"
+
 #define SOKOL_METAL
 #include "sokol_app.h"
 
 #include "../lib/onedraw.h"
 struct onedraw* renderer;
 bool culling_debug = false;
-bool exit_after_100_frames = false;
+
+// command line options, parsed in sokol_main
+struct test_options
+{
+    bool autoexit;     // quit after 100 frames
+    bool compare;      // exit non-zero if the screenshot differs from the reference
+    bool update_refs;  // rewrite the matching reference image from the current capture
+};
+
+struct test_options options = {false, false, false};
 
 #define FROM_HTML(html)   ((html&0xff)<<16) | ((html>>16)&0xff) | (html&0x00ff00) | 0xff000000
 #define TEX_SIZE (256)
+#define REFERENCE_PSNR_THRESHOLD_DB (60.0f)
 
 // https://lospec.com/palette-list/miyazaki-16
 static const uint32_t miya_black = FROM_HTML(0x232228);
@@ -148,6 +164,100 @@ static void bgra_to_rgba(uint8_t *pixels, uint32_t width, uint32_t height)
         uint8_t b = pixels[i * 4 + 0];
         pixels[i * 4 + 0] = pixels[i * 4 + 2];
         pixels[i * 4 + 2] = b;
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+static const char* reference_name(uint32_t width, uint32_t height)
+{
+    return (width == 1280 && height == 720) ? "reference.png" : "reference_highdpi.png";
+}
+
+// Regression check: compare the captured frame against the committed reference image.
+// Identical images are a clean pass; otherwise the PSNR (all RGBA channels) must stay
+// above the threshold. Only --compare makes a mismatch fail the run; --update-refs
+// rewrites the matching reference from the current capture.
+static void compare_with_reference(const uint8_t* pixels, uint32_t width, uint32_t height)
+{
+    const char* name = reference_name(width, height);
+
+    uint32_t ref_width = 0, ref_height = 0, ref_channels = 0;
+    uint8_t* reference = stbi_load(name, (int*)&ref_width, (int*)&ref_height, (int*)&ref_channels, 4);
+
+    if (reference == NULL)
+    {
+        if (options.update_refs)
+        {
+            stbi_write_png(name, (int)width, (int)height, 4, pixels, (int)width * 4);
+            fprintf(stdout, "reference : %s created from current capture\n", name);
+        }
+        else
+            fprintf(stderr, "reference : %s not found, comparison skipped\n", name);
+        return;
+    }
+
+    if (ref_width != width || ref_height != height)
+    {
+        fprintf(stderr, "reference : %s is %ux%u, screenshot is %ux%u, comparison skipped\n",
+                name, ref_width, ref_height, width, height);
+        stbi_image_free(reference);
+        return;
+    }
+
+    double ssd = 0.0;
+    uint32_t diff_pixels = 0, max_delta = 0;
+    uint32_t pixel_count = width * height;
+
+    for (uint32_t p = 0; p < pixel_count; ++p)
+    {
+        uint32_t c;
+        bool pixel_differs = false;
+
+        for (c = 0; c < 4; ++c)
+        {
+            int a = pixels[(p * 4u) + c];
+            int b = reference[(p * 4u) + c];
+            int delta = (a > b) ? (a - b) : (b - a);
+
+            if (delta != 0)
+            {
+                pixel_differs = true;
+                ssd += (double)delta * (double)delta;
+            }
+
+            if (delta > (int)max_delta)
+                max_delta = (uint32_t)delta;
+        }
+
+        if (pixel_differs)
+            diff_pixels++;
+    }
+
+    stbi_image_free(reference);
+
+    if (ssd == 0.0)
+    {
+        fprintf(stdout, "reference : %s identical\n", name);
+        return;
+    }
+
+    float psnr = (float)(10.0 * log10((255.0 * 255.0) / (ssd / (double)pixel_count / 4.0)));
+    if (psnr >= REFERENCE_PSNR_THRESHOLD_DB)
+    {
+        fprintf(stdout, "reference : %s psnr %.1f dB (threshold %.1f) - ok\n", name, psnr, REFERENCE_PSNR_THRESHOLD_DB);
+    }
+    else
+    {
+        fprintf(stderr, "reference : %s psnr %.1f dB (threshold %.1f) - MISMATCH (%u/%u px differ, max delta %u)\n",
+                name, psnr, REFERENCE_PSNR_THRESHOLD_DB, diff_pixels, pixel_count, max_delta);
+        if (options.compare)
+            exit(1);
+    }
+
+    if (options.update_refs)
+    {
+        stbi_write_png(name, (int)width, (int)height, 4, pixels, (int)width * 4);
+        fprintf(stdout, "reference : %s updated from current capture\n", name);
     }
 }
 
@@ -407,10 +517,11 @@ void frame(void)
     {
         bgra_to_rgba(pixels, sapp_width(), sapp_height());
         stbi_write_png("screenshot.png", sapp_width(), sapp_height(), 4, pixels,  sapp_width() * sizeof(uint32_t));
+        compare_with_reference(pixels, sapp_width(), sapp_height());
         free(pixels);
     }
 
-    if (exit_after_100_frames && stats.frame_index == 100)
+    if (options.autoexit && stats.frame_index == 100)
         sapp_quit();
 }
 
@@ -456,11 +567,23 @@ void cleanup(void)
 // ---------------------------------------------------------------------------------------------------------------------------
 sapp_desc sokol_main(int argc, char* argv[])
 {
-    if (argc>1 && strstr(argv[1], "--autoexit"))
-        exit_after_100_frames = true;
+    // flag.h matches single-dash names; normalize "--foo" to "-foo" so both forms work
+    for (int i = 1; i < argc; ++i)
+    {
+        if (argv[i][0] == '-' && argv[i][1] == '-' && argv[i][2] != '\0')
+            memmove(argv[i] + 1, argv[i] + 2, strlen(argv[i]) - 1);
+    }
 
-    (void) argc;
-    (void) argv;
+    flag_bool_var(&options.autoexit, "autoexit", false, "quit after 100 frames");
+    flag_bool_var(&options.compare, "compare", false, "exit non-zero if the screenshot differs from the reference");
+    flag_bool_var(&options.update_refs, "update-refs", false, "rewrite the matching reference image from the current capture");
+
+    if (!flag_parse(argc, argv))
+    {
+        flag_print_error(stderr);
+        flag_print_options(stderr);
+        exit(1);
+    }
     return (sapp_desc) 
     {
         .width = 1280,

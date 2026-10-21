@@ -1,6 +1,6 @@
 # AGENTS.md
 
-You can't modify this file.
+Don't modify this file.
 
 ## Code & API
 
@@ -46,6 +46,9 @@ You can't modify this file.
 - Build: `cmake --build build`
 - Clean: `rm -rf build/`
 - Test: `./build/test --autoexit`
+- Regression: the test always compares screenshot.png against the reference matching its dpi scale (1x: reference.png, 2x: reference_highdpi.png) and reports PSNR; identical images pass.
+- Run `./build/test --autoexit --compare` as the regression gate: it exits non-zero if PSNR falls below threshold.
+- After any intentional scene change, regenerate the reference with `./build/test --autoexit --update-refs` and commit the updated reference in the same change.
 - Every bug fix requires a regression test. Adding new tests is allowed.
 - Never modify/weaken tests to make them pass.
 - Verify tests actually run before claiming success.
