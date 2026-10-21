@@ -29,6 +29,8 @@ add_executable(minimal
     ./tests/sokol_app.mm
 )
 
+target_include_directories(minimal PRIVATE ./third_party)
+
 if(TARGET build_lib)
     add_dependencies(minimal build_lib)
 endif()
@@ -47,6 +49,8 @@ add_executable(test
     ./tests/test.c
     ./tests/sokol_app.mm
 )
+
+target_include_directories(test PRIVATE ./third_party)
 
 if(TARGET build_lib)
     add_dependencies(test build_lib)

@@ -4,6 +4,9 @@
 #include <string.h>
 #include <stdbool.h>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
 #define SOKOL_METAL
 #include "sokol_app.h"
 
@@ -136,24 +139,15 @@ static inline float iq_random_float(int* seed)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void writeTGA(const char* filename, uint8_t* pixels, uint32_t width, uint32_t height) 
+static void bgra_to_rgba(uint8_t *pixels, uint32_t width, uint32_t height)
 {
-    // TGA Header (18 bytes)
-    uint8_t header[18] = {};
-    header[2]  = 2; // Image type: uncompressed true-color
-    header[12] = width & 0xFF;
-    header[13] = (width >> 8) & 0xFF;
-    header[14] = height & 0xFF;
-    header[15] = (height >> 8) & 0xFF;
-    header[16] = 32; // Bits per pixel
-    header[17] = 0x20; // Image origin: top-left (bit 5)
+    uint32_t count = width * height;
 
-    FILE* f = fopen(filename, "wb");
-    if (f)
+    for (uint32_t i = 0; i < count; ++i)
     {
-        fwrite(header, sizeof(header), 1, f);
-        fwrite(pixels, width * height * 4, 1, f);
-        fclose(f);
+        uint8_t b = pixels[i * 4 + 0];
+        pixels[i * 4 + 0] = pixels[i * 4 + 2];
+        pixels[i * 4 + 2] = b;
     }
 }
 
@@ -411,7 +405,8 @@ void frame(void)
 
     if (pixels != NULL)
     {
-        writeTGA("screenshot.tga", pixels, sapp_width(), sapp_height());
+        bgra_to_rgba(pixels, sapp_width(), sapp_height());
+        stbi_write_png("screenshot.png", sapp_width(), sapp_height(), 4, pixels,  sapp_width() * sizeof(uint32_t));
         free(pixels);
     }
 

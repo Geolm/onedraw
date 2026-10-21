@@ -8,6 +8,8 @@ add_executable(builder
     shader_reader.c
 )
 
+target_include_directories(builder PRIVATE ../third_party)
+
 add_custom_command(
     TARGET builder
     POST_BUILD

@@ -76,4 +76,6 @@ _deps
 /build
 
 # project specific
-*.tga
+screenshot.png
+# doc diagram tooling
+.docgen/venv
