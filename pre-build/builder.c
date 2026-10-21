@@ -494,7 +494,7 @@ int main(int argc, const char * argv[])
     UNUSED_VARIABLE(argc);
     UNUSED_VARIABLE(argv);
 
-    fprintf(stdout, "onedraw %u.%u library builder\n\n", ONEDRAW_MAJOR_VERSION, ONEDRAW_MINOR_VERSION);
+    fprintf(stdout, "onedraw %u.%u.%u library builder\n\n", ONEDRAW_MAJOR_VERSION, ONEDRAW_MINOR_VERSION, ONEDRAW_PATCH);
 
     if (!verify_inputs())
         return 1;
