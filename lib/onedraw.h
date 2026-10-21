@@ -7,7 +7,7 @@
 
     zlib License
 
-    (C) 2025 Geolm
+    (C) 2026 Geolm
 
     This software is provided 'as-is', without any express or implied
     warranty.  In no event will the authors be held liable for any damages
