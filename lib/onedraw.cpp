@@ -1960,10 +1960,11 @@ static void dash_path_add_box(dash_path* p, vec2 center, vec2 axis, float half_w
 
     for (uint32_t corner = 0; corner < 4; corner++)
     {
-        // corner 0 top-right, 1 bottom-right, 2 bottom-left, 3 top-left, each sweeps a quarter turn clockwise
-        float cx = (corner < 2) ? (half_w - radius) : (-half_w + radius);
-        float cy = (corner & 1) ? (half_h - radius) : (-half_h + radius);
-        vec2 c = vec2_add(center, vec2_add(vec2_scale(axis, cx), vec2_scale(sk, cy)));
+        // corner 0 top-right, 1 bottom-right, 2 bottom-left, 3 top-left, each sweeps a quarter turn clockwise ;
+        // the right half is corners 0-1, the bottom half is corners 1-2 (a wrong side here folds the box into a bowtie)
+        float sx = (corner < 2) ? 1.f : -1.f;
+        float sy = ((corner == 1) || (corner == 2)) ? 1.f : -1.f;
+        vec2 c = vec2_add(center, vec2_add(vec2_scale(axis, sx * (half_w - radius)), vec2_scale(sk, sy * (half_h - radius))));
         dash_path_add_arc(p, c, u, v, -VEC2_PI * .5f + (float)corner * VEC2_PI * .5f, VEC2_PI * .5f, dash_path_arc_samples(VEC2_PI * .5f, radius));
     }
 }
