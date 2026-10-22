@@ -504,7 +504,7 @@ void frame(void)
         od_dash_style tiny = {0.001f, 0.001f, 0.f, true};
         uint32_t tiny_budget = od_draw_dashed_line(renderer, cx + radius * 0.7f, cy - radius * 0.55f, cx + radius * 0.7f + 3000.f, cy - radius * 0.55f, 6.f, tiny,
                                                    miya_grey);
-        snprintf(string, 256, "dashed : %s, tiny : %s", (budget == UINT32_MAX) ? "ok" : "error", (tiny_budget == UINT32_MAX) ? "ok" : "error");
+        snprintf(string, 256, "dashed : %s %s", (budget == UINT32_MAX) ? "ok" : "error", (tiny_budget == UINT32_MAX) ? "ok" : "error");
     }
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, string, miya_brown);
 

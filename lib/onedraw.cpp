@@ -1771,6 +1771,7 @@ typedef struct bezier_leaf_iter
     bool      failed;                 // the tesselation stack overflowed
 } bezier_leaf_iter;
 
+//----------------------------------------------------------------------------------------------------------------------------
 static void bezier_leaf_iter_init(bezier_leaf_iter* iter, vec2 c0, vec2 c1, vec2 c2, vec2 c3)
 {
     iter->stack[0] = (cubic_bezier) {.c0 = c0, .c1 = c1, .c2 = c2, .c3 = c3};
@@ -1778,8 +1779,8 @@ static void bezier_leaf_iter_init(bezier_leaf_iter* iter, vec2 c0, vec2 c1, vec2
     iter->failed = false;
 }
 
-// Returns the next colinear leaf in curve order ([p0] to [p1]), false when the curve is fully tesselated
-// or the stack overflowed ([iter]->failed then set)
+//----------------------------------------------------------------------------------------------------------------------------
+// returns the next colinear leaf in curve order ([p0] to [p1]), false when the curve is fully tesselated
 static bool bezier_leaf_iter_next(bezier_leaf_iter* iter, vec2* p0, vec2* p1)
 {
     while (iter->stack_index > 0)
@@ -1820,7 +1821,8 @@ static bool bezier_leaf_iter_next(bezier_leaf_iter* iter, vec2* p0, vec2* p1)
     return false;
 }
 
-// A quadratic is the same geometric curve as its degree elevation to a cubic
+//----------------------------------------------------------------------------------------------------------------------------
+// a quadratic is the same geometric curve as its degree elevation to a cubic
 static inline void quadratic_to_cubic(vec2 c0, vec2 c1, vec2 c2, cubic_bezier* out)
 {
     out->c0 = c0;
@@ -1829,7 +1831,7 @@ static inline void quadratic_to_cubic(vec2 c0, vec2 c1, vec2 c2, cubic_bezier* o
     out->c3 = c2;
 }
 
-// Breaks a cubic into multiple capsules, one per tesselation leaf
+//----------------------------------------------------------------------------------------------------------------------------
 static uint32_t bezier_draw_cubic(struct onedraw* r, cubic_bezier root, float width, draw_color srgb_color)
 {
     bezier_leaf_iter iter;
@@ -1846,7 +1848,6 @@ static uint32_t bezier_draw_cubic(struct onedraw* r, cubic_bezier root, float wi
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// Breaks the bezier quadratic curve into multiple capsules, using the degree elevated cubic tesselation
 uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points, float width, draw_color srgb_color)
 {
     vec2 c0 = {control_points[0], control_points[1]};
@@ -1859,7 +1860,6 @@ uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// Breaks the bezier cubic curve into multiple capsules, using De Casteljau’s algorithm and colinear detection
 uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, float width, draw_color srgb_color)
 {
     cubic_bezier root =
@@ -1872,23 +1872,150 @@ uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, fl
     return bezier_draw_cubic(r, root, width, srgb_color);
 }
 
+//----------------------------------------------------------------------------------------------------------------------------
+float od_text_height(struct onedraw* r)
+{
+    return r->font.desc.font_height * r->font.scale;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+float od_text_width(struct onedraw* r, const char* text)
+{
+    float width = 0.f;
+    const float scale = r->font.scale;
+    for(const char *c = text; *c != 0; c++)
+    {
+        if (*c >= r->font.desc.first_glyph && *c < (r->font.desc.first_glyph + r->font.desc.num_glyphs))
+            width += r->font.desc.glyphs[*c - r->font.desc.first_glyph].advance_x * scale;
+        else
+            width += r->font.desc.glyphs['_'- r->font.desc.first_glyph].advance_x * .65f * scale;
+    }
+    return width;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_set_font_scale(struct onedraw* r, float scale)
+{
+    if (r->font.scale != scale)
+    {
+        r->font.scale = scale;
+        od_upload_font_glyphs(r);
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_set_clear_color(struct onedraw* r, draw_color srgb_color)
+{
+    float r8 = (float)(srgb_color & 0xFF) / 255.f;
+    float g8 = (float)((srgb_color >> 8) & 0xFF) / 255.f;
+    float b8 = (float)((srgb_color >> 16) & 0xFF) / 255.f;
+    float a8 = (float)((srgb_color >> 24) & 0xFF) / 255.f;
+
+    if (r->rasterizer.srgb_backbuffer)
+    {
+        r->rasterizer.clear_color.x = srgb_to_linear(r8);
+        r->rasterizer.clear_color.y = srgb_to_linear(g8);
+        r->rasterizer.clear_color.z = srgb_to_linear(b8);
+        r->rasterizer.clear_color.w = a8;
+    }
+    else
+    {
+        r->rasterizer.clear_color.x = r8;
+        r->rasterizer.clear_color.y = g8;
+        r->rasterizer.clear_color.z = b8;
+        r->rasterizer.clear_color.w = a8;
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+static void push_clip_shape(struct onedraw* r, clip_shape clip)
+{
+    if (r->commands.clipshapes_buffer.GetNumElements() < MAX_CLIPS)
+        *r->commands.clipshapes_buffer.NewElement() = clip;
+    else
+        od_log(r, "too many clip shapes! maximum is %d", MAX_CLIPS);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+static void set_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius)
+{
+    if (max_x < min_x) {float t = min_x; min_x = max_x; max_x = t;}
+    if (max_y < min_y) {float t = min_y; min_y = max_y; max_y = t;}
+
+    float half_x = (max_x - min_x) * 0.5f;
+    float half_y = (max_y - min_y) * 0.5f;
+
+    // clamp the radius to the half of the smaller side, a larger radius would leave the shape undefined
+    radius = min(min(radius, half_x), half_y);
+
+    clip_shape clip =
+    {
+        .rect =
+        {
+            .center_x = min_x + half_x,
+            .center_y = min_y + half_y,
+            .half_x = half_x,
+            .half_y = half_y,
+            .radius = radius
+        },
+        .type = clip_rect
+    };
+
+    // avoid redundant clip rect
+    if (r->commands.clipshapes_buffer.GetNumElements()>0)
+    {
+        clip_shape* last = r->commands.clipshapes_buffer.LastElement();
+
+        if (last->type == clip_rect && last->rect.center_x == clip.rect.center_x && last->rect.center_y == clip.rect.center_y &&
+            last->rect.half_x == clip.rect.half_x && last->rect.half_y == clip.rect.half_y && last->rect.radius == clip.rect.radius)
+            return;
+    }
+
+    push_clip_shape(r, clip);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_set_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y)
+{
+    set_cliprect(r, min_x, min_y, max_x, max_y, 0.f);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_set_cliprect_rounded(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius)
+{
+    set_cliprect(r, min_x, min_y, max_x, max_y, radius);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_set_clipdisc(struct onedraw* r, float cx, float cy, float radius)
+{
+    clip_shape clip =
+    {
+        .disc = {.center_x = cx, .center_y = cy, .radius = radius},
+        .type = clip_disc
+    };
+
+    // avoid redundant clip disc
+    if (r->commands.clipshapes_buffer.GetNumElements()>0)
+    {
+        clip_shape* last = r->commands.clipshapes_buffer.LastElement();
+
+        if (last->type == clip_disc && last->disc.center_x == clip.disc.center_x &&
+            last->disc.center_y == clip.disc.center_y && last->disc.radius == clip.disc.radius)
+            return;
+    }
+
+    push_clip_shape(r, clip);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_set_culling_debug(struct onedraw* r, bool b)
+{
+    r->tiles.culling_debug = b;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------------
 // Dashed shapes
-//
-// The dash pattern is cut on the CPU into small primitives that are emitted along the path, so the shaders don't need
-// dashed shape support : each dash becomes a capsule (round ends) or a line (flat ends), both use the exact oriented
-// box culling. The path is a polyline of vertices, or a cubic bezier tessellated by the shared De Casteljau
-// helper in curve order :
-//  - a line is the segment itself, a triangle ring its 3 edges
-//  - a ring or ellipse is a full turn sampled so the chord sagitta stays below DASH_TOLERANCE (an ellipse has no
-//    closed form arc length, so the dash is placed on the sampled chords)
-//  - a box is its 4 corner arcs, the straight edges are implicit between them
-// A dash in progress kinks at every vertex and every bezier leaf, so it follows the curve instead of cutting
-// across it as a straight chord.
-//
-// A closed path rescales the pattern so it closes without a stub at the seam, and the walk starts at the first
-// vertex with the pattern phase set to the offset ; a dash straddling the seam is emitted as two primitives
-// sharing the seam point (translucent colors are grouped, so no double blend).
 // ---------------------------------------------------------------------------------------------------------------------------
 
 constexpr float FULL_TURN = VEC2_PI * 2.f;
@@ -1920,8 +2047,6 @@ typedef struct dash_path
 } dash_path;
 
 //----------------------------------------------------------------------------------------------------------------------------
-// The sample count of an arc of [sweep] on a circle of radius [radius] : the chord sagitta stays below
-// DASH_TOLERANCE, capped at DASH_SAMPLES per full turn ; a zero radius arc is a sharp corner (a single point)
 static uint32_t dash_path_arc_samples(float sweep, float radius)
 {
     if (radius <= 0.f)
@@ -1933,8 +2058,7 @@ static uint32_t dash_path_arc_samples(float sweep, float radius)
     return min(samples, cap);
 }
 
-// Appends the samples of the arc [center + u*cos(a) + v*sin(a)] from [start_angle] over [sweep] :
-// [samples] + 1 points starting at the arc start ; [samples] == 0 appends the single start point (a sharp corner)
+//----------------------------------------------------------------------------------------------------------------------------
 static void dash_path_add_arc(dash_path* p, vec2 center, vec2 u, vec2 v, float start_angle, float sweep, uint32_t samples)
 {
     for (uint32_t i = 0; i <= samples; i++)
@@ -1944,9 +2068,7 @@ static void dash_path_add_arc(dash_path* p, vec2 center, vec2 u, vec2 v, float s
     }
 }
 
-// Fills a box as its 4 corner arcs of [radius] (a zero radius is a sharp corner point), the straight edges are
-// implicit between the arcs, the walk starts at the top edge start : a [half_w] x [half_h] box in the [axis]
-// frame, centered at [center]
+//----------------------------------------------------------------------------------------------------------------------------
 static void dash_path_add_box(dash_path* p, vec2 center, vec2 axis, float half_w, float half_h, float radius)
 {
     vec2 sk = vec2_skew(axis);
@@ -1969,7 +2091,7 @@ static void dash_path_add_box(dash_path* p, vec2 center, vec2 axis, float half_w
     }
 }
 
-// The perimeter of a polyline path : the sum of its chords, a closed path includes the closing chord
+//----------------------------------------------------------------------------------------------------------------------------
 static float dash_path_polyline_perimeter(dash_path* p)
 {
     float length = 0.f;
@@ -1980,7 +2102,6 @@ static float dash_path_polyline_perimeter(dash_path* p)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// Resets the path cursor to its start (its first point, a closed path then walks a full lap back to it)
 static void dash_path_start_at(dash_path* p)
 {
     if (p->kind == path_polyline)
@@ -2001,8 +2122,6 @@ static void dash_path_start_at(dash_path* p)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// Returns the next segment of the path (in curve order), returns false when the path is exhausted or the
-// tesselation stack overflowed
 static bool dash_path_next_segment(dash_path* p, vec2* p0, vec2* p1, float* length)
 {
     *p0 = p->point;
@@ -2062,7 +2181,6 @@ static void dash_emitter_emit(dash_emitter* e)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// Emits the dash that just ended, or opens a new one, [point] is at a pattern boundary
 static void dash_emitter_boundary(dash_emitter* e)
 {
     if (e->in_dash)
@@ -2080,15 +2198,6 @@ static void dash_emitter_boundary(dash_emitter* e)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// The path leaves the dash's straight line at the current point (a box corner, a triangle vertex, an arc sample,
-// a bezier leaf) : a dash in progress is emitted up to that point, its remainder starts there and continues
-// along the new direction, so a dash follows the curve instead of being a straight chord cutting across it.
-// [in_dash]/[phase] are preserved, the pattern rhythm is unchanged : the dash becomes a chain of primitives
-// sharing the split points (round caps give a smooth join, flat caps a sharp one).
-//
-// The oriented box primitive silently rejects pieces with endpoints closer than half a pixel : a dash piece
-// therefore accumulates across the kinks until it is long enough to actually be drawn (the same half pixel
-// guard), and a kink with a sub half pixel piece is a no-op
 static void dash_emitter_kink(dash_emitter* e)
 {
     if (e->in_dash && e->phase < e->dash_length && !vec2_similar(e->dash_start, e->point, HALF_PIXEL))
@@ -2099,9 +2208,6 @@ static void dash_emitter_kink(dash_emitter* e)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// Walks one path segment, emitting the dashes it contains, the dash/gap phase carries across segments. A dash in
-// progress kinks at every segment end (dash_emitter_kink) so it follows the curve, the kink is a no-op while the
-// dash is straight, on a boundary, or accumulated to less than half a pixel
 static void dash_emitter_segment(dash_emitter* e, vec2 p0, vec2 p1, float length)
 {
     e->point = p0;
@@ -2143,7 +2249,6 @@ static void dash_emitter_segment(dash_emitter* e, vec2 p0, vec2 p1, float length
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// Closes the dash still open at the end of the path
 static void dash_emitter_end(dash_emitter* e)
 {
     if (!e->in_dash)
@@ -2182,8 +2287,6 @@ static void dash_emitter_init(dash_emitter* e, struct onedraw* r, vec2 start, od
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// Walks the whole path through the emitter (the caller must have placed the path cursor with dash_path_start_at),
-// in dry_run mode the primitives are only counted, and the walk breaks as soon as the count exceeds the budget
 static void dash_path_walk(dash_path* path, dash_emitter* e)
 {
     vec2 a, b;
@@ -2195,7 +2298,6 @@ static void dash_path_walk(dash_path* path, dash_emitter* e)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// Emits the dash pattern along the path, returns the number of commands emitted or UINT32_MAX on failure
 static uint32_t dash_path_draw(struct onedraw* r, dash_path* path, float width, od_dash_style style, draw_color color)
 {
     if (width <= 0.f)
@@ -2442,7 +2544,7 @@ uint32_t od_draw_dashed_ellipse_ring(struct onedraw* r, float ax, float ay, floa
         .kind = path_polyline,
         .closed = true
     };
-    // a full turn sampled at the min curvature radius (the tip of the minor axis)
+
     dash_path_add_arc(&path, center, vec2_scale(axis, semi_major), vec2_scale(vec2_skew(axis), semi_minor), 0.f, FULL_TURN,
                       dash_path_arc_samples(FULL_TURN, semi_minor * semi_minor / semi_major));
     path.perimeter = dash_path_polyline_perimeter(&path);
@@ -2541,147 +2643,5 @@ uint32_t od_draw_dashed_cubic_bezier(struct onedraw* r, const float* control_poi
     };
 
     return dash_path_draw(r, &path, width, style, srgb_color);
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-float od_text_height(struct onedraw* r)
-{
-    return r->font.desc.font_height * r->font.scale;
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-float od_text_width(struct onedraw* r, const char* text)
-{
-    float width = 0.f;
-    const float scale = r->font.scale;
-    for(const char *c = text; *c != 0; c++)
-    {
-        if (*c >= r->font.desc.first_glyph && *c < (r->font.desc.first_glyph + r->font.desc.num_glyphs))
-            width += r->font.desc.glyphs[*c - r->font.desc.first_glyph].advance_x * scale;
-        else
-            width += r->font.desc.glyphs['_'- r->font.desc.first_glyph].advance_x * .65f * scale;
-    }
-    return width;
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-void od_set_font_scale(struct onedraw* r, float scale)
-{
-    if (r->font.scale != scale)
-    {
-        r->font.scale = scale;
-        od_upload_font_glyphs(r);
-    }
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-void od_set_clear_color(struct onedraw* r, draw_color srgb_color)
-{
-    float r8 = (float)(srgb_color & 0xFF) / 255.f;
-    float g8 = (float)((srgb_color >> 8) & 0xFF) / 255.f;
-    float b8 = (float)((srgb_color >> 16) & 0xFF) / 255.f;
-    float a8 = (float)((srgb_color >> 24) & 0xFF) / 255.f;
-
-    if (r->rasterizer.srgb_backbuffer)
-    {
-        r->rasterizer.clear_color.x = srgb_to_linear(r8);
-        r->rasterizer.clear_color.y = srgb_to_linear(g8);
-        r->rasterizer.clear_color.z = srgb_to_linear(b8);
-        r->rasterizer.clear_color.w = a8;
-    }
-    else
-    {
-        r->rasterizer.clear_color.x = r8;
-        r->rasterizer.clear_color.y = g8;
-        r->rasterizer.clear_color.z = b8;
-        r->rasterizer.clear_color.w = a8;
-    }
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-static void push_clip_shape(struct onedraw* r, clip_shape clip)
-{
-    if (r->commands.clipshapes_buffer.GetNumElements() < MAX_CLIPS)
-        *r->commands.clipshapes_buffer.NewElement() = clip;
-    else
-        od_log(r, "too many clip shapes! maximum is %d", MAX_CLIPS);
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-static void set_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius)
-{
-    if (max_x < min_x) {float t = min_x; min_x = max_x; max_x = t;}
-    if (max_y < min_y) {float t = min_y; min_y = max_y; max_y = t;}
-
-    float half_x = (max_x - min_x) * 0.5f;
-    float half_y = (max_y - min_y) * 0.5f;
-
-    // clamp the radius to the half of the smaller side, a larger radius would leave the shape undefined
-    radius = min(min(radius, half_x), half_y);
-
-    clip_shape clip =
-    {
-        .rect =
-        {
-            .center_x = min_x + half_x,
-            .center_y = min_y + half_y,
-            .half_x = half_x,
-            .half_y = half_y,
-            .radius = radius
-        },
-        .type = clip_rect
-    };
-
-    // avoid redundant clip rect
-    if (r->commands.clipshapes_buffer.GetNumElements()>0)
-    {
-        clip_shape* last = r->commands.clipshapes_buffer.LastElement();
-
-        if (last->type == clip_rect && last->rect.center_x == clip.rect.center_x && last->rect.center_y == clip.rect.center_y &&
-            last->rect.half_x == clip.rect.half_x && last->rect.half_y == clip.rect.half_y && last->rect.radius == clip.rect.radius)
-            return;
-    }
-
-    push_clip_shape(r, clip);
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-void od_set_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y)
-{
-    set_cliprect(r, min_x, min_y, max_x, max_y, 0.f);
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-void od_set_cliprect_rounded(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius)
-{
-    set_cliprect(r, min_x, min_y, max_x, max_y, radius);
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-void od_set_clipdisc(struct onedraw* r, float cx, float cy, float radius)
-{
-    clip_shape clip =
-    {
-        .disc = {.center_x = cx, .center_y = cy, .radius = radius},
-        .type = clip_disc
-    };
-
-    // avoid redundant clip disc
-    if (r->commands.clipshapes_buffer.GetNumElements()>0)
-    {
-        clip_shape* last = r->commands.clipshapes_buffer.LastElement();
-
-        if (last->type == clip_disc && last->disc.center_x == clip.disc.center_x &&
-            last->disc.center_y == clip.disc.center_y && last->disc.radius == clip.disc.radius)
-            return;
-    }
-
-    push_clip_shape(r, clip);
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-void od_set_culling_debug(struct onedraw* r, bool b)
-{
-    r->tiles.culling_debug = b;
 }
 
