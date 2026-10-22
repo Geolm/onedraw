@@ -483,11 +483,28 @@ void frame(void)
         od_draw_dashed_oriented_box(renderer, cx + radius * 0.24f, cy + radius * 1.05f, cx + radius * 0.70f, cy + radius * 1.38f,
                                     radius * 0.16f, radius * 0.08f, 5.f, ants, 0x800000FF);
 
+        // regression shapes in the bottom band :
+        // a small ring with a dash longer than the radius (a dash must follow the curve, never cut it with a chord)
+        od_draw_dashed_ring(renderer, cx - radius * 0.58f, cy + radius * 1.53f, radius * 0.10f, 5.f, (od_dash_style) {15.f, 10.f, 0.f, true}, miya_dark_blue);
+        // a triangle and a box with an offset that lands mid edge (the walk must close back to the start)
+        od_draw_dashed_triangle_ring(renderer, (float[]){cx - radius * 0.10f, cy + radius * 1.44f, cx - radius * 0.30f, cy + radius * 1.63f,
+                                                         cx + radius * 0.10f, cy + radius * 1.63f}, 5.f, (od_dash_style) {10.f, 10.f, 7.f, true}, miya_red);
+        od_draw_dashed_box(renderer, cx + radius * 0.18f, cy + radius * 1.44f, cx + radius * 0.50f, cy + radius * 1.62f, radius * 0.05f, 5.f,
+                           (od_dash_style) {10.f, 10.f, 13.f, true}, miya_brown);
+        // a solid rounded box (gap 0) : the corner arcs must be drawn, not skipped as sub half pixel chords
+        od_draw_dashed_box(renderer, cx + radius * 0.60f, cy + radius * 1.44f, cx + radius * 0.92f, cy + radius * 1.62f, radius * 0.04f, 5.f,
+                           (od_dash_style) {10.f, 0.f, 0.f, true}, miya_dark_grey);
+
         // overflows the command budget, must return UINT32_MAX without emitting a partial shape
         od_dash_style big = {1.f, 1.f, 0.f, true};
         float big_ctrl[] = {cx, cy, cx + 70000.f, cy - 40000.f, cx + 140000.f, cy + 40000.f, cx + 200000.f, cy};
         uint32_t budget = od_draw_dashed_cubic_bezier(renderer, big_ctrl, 4.f, big, miya_grey);
-        snprintf(string, 256, "dashed : %s", (budget == UINT32_MAX) ? "ok" : "error");
+
+        // a tiny dash on a huge path : overflows the command budget, must return UINT32_MAX fast, without emitting
+        od_dash_style tiny = {0.001f, 0.001f, 0.f, true};
+        uint32_t tiny_budget = od_draw_dashed_line(renderer, cx + radius * 0.7f, cy - radius * 0.55f, cx + radius * 0.7f + 3000.f, cy - radius * 0.55f, 6.f, tiny,
+                                                   miya_grey);
+        snprintf(string, 256, "dashed : %s, tiny : %s", (budget == UINT32_MAX) ? "ok" : "error", (tiny_budget == UINT32_MAX) ? "ok" : "error");
     }
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, string, miya_brown);
 
