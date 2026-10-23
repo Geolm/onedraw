@@ -2,9 +2,16 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+#define FLAG_IMPLEMENTATION
+#include "flag.h"
 
 #define SOKOL_METAL
 #include "sokol_app.h"
@@ -12,10 +19,20 @@
 #include "../lib/onedraw.h"
 struct onedraw* renderer;
 bool culling_debug = false;
-bool exit_after_100_frames = false;
+
+// command line options, parsed in sokol_main
+struct test_options
+{
+    bool autoexit;     // quit after 100 frames
+    bool compare;      // exit non-zero if the screenshot differs from the reference
+    bool update_refs;  // rewrite the matching reference image from the current capture
+};
+
+struct test_options options = {false, false, false};
 
 #define FROM_HTML(html)   ((html&0xff)<<16) | ((html>>16)&0xff) | (html&0x00ff00) | 0xff000000
 #define TEX_SIZE (256)
+#define REFERENCE_PSNR_THRESHOLD_DB (60.0f)
 
 // https://lospec.com/palette-list/miyazaki-16
 static const uint32_t miya_black = FROM_HTML(0x232228);
@@ -151,6 +168,100 @@ static void bgra_to_rgba(uint8_t *pixels, uint32_t width, uint32_t height)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+static const char* reference_name(uint32_t width, uint32_t height)
+{
+    return (width == 1280 && height == 720) ? "reference.png" : "reference_highdpi.png";
+}
+
+// Regression check: compare the captured frame against the committed reference image.
+// Identical images are a clean pass; otherwise the PSNR (all RGBA channels) must stay
+// above the threshold. Only --compare makes a mismatch fail the run; --update-refs
+// rewrites the matching reference from the current capture.
+static void compare_with_reference(const uint8_t* pixels, uint32_t width, uint32_t height)
+{
+    const char* name = reference_name(width, height);
+
+    uint32_t ref_width = 0, ref_height = 0, ref_channels = 0;
+    uint8_t* reference = stbi_load(name, (int*)&ref_width, (int*)&ref_height, (int*)&ref_channels, 4);
+
+    if (reference == NULL)
+    {
+        if (options.update_refs)
+        {
+            stbi_write_png(name, (int)width, (int)height, 4, pixels, (int)width * 4);
+            fprintf(stdout, "reference : %s created from current capture\n", name);
+        }
+        else
+            fprintf(stderr, "reference : %s not found, comparison skipped\n", name);
+        return;
+    }
+
+    if (ref_width != width || ref_height != height)
+    {
+        fprintf(stderr, "reference : %s is %ux%u, screenshot is %ux%u, comparison skipped\n",
+                name, ref_width, ref_height, width, height);
+        stbi_image_free(reference);
+        return;
+    }
+
+    double ssd = 0.0;
+    uint32_t diff_pixels = 0, max_delta = 0;
+    uint32_t pixel_count = width * height;
+
+    for (uint32_t p = 0; p < pixel_count; ++p)
+    {
+        uint32_t c;
+        bool pixel_differs = false;
+
+        for (c = 0; c < 4; ++c)
+        {
+            int a = pixels[(p * 4u) + c];
+            int b = reference[(p * 4u) + c];
+            int delta = (a > b) ? (a - b) : (b - a);
+
+            if (delta != 0)
+            {
+                pixel_differs = true;
+                ssd += (double)delta * (double)delta;
+            }
+
+            if (delta > (int)max_delta)
+                max_delta = (uint32_t)delta;
+        }
+
+        if (pixel_differs)
+            diff_pixels++;
+    }
+
+    stbi_image_free(reference);
+
+    if (ssd == 0.0)
+    {
+        fprintf(stdout, "reference : %s identical\n", name);
+        return;
+    }
+
+    float psnr = (float)(10.0 * log10((255.0 * 255.0) / (ssd / (double)pixel_count / 4.0)));
+    if (psnr >= REFERENCE_PSNR_THRESHOLD_DB)
+    {
+        fprintf(stdout, "reference : %s psnr %.1f dB (threshold %.1f) - ok\n", name, psnr, REFERENCE_PSNR_THRESHOLD_DB);
+    }
+    else
+    {
+        fprintf(stderr, "reference : %s psnr %.1f dB (threshold %.1f) - MISMATCH (%u/%u px differ, max delta %u)\n",
+                name, psnr, REFERENCE_PSNR_THRESHOLD_DB, diff_pixels, pixel_count, max_delta);
+        if (options.compare)
+            exit(1);
+    }
+
+    if (options.update_refs)
+    {
+        stbi_write_png(name, (int)width, (int)height, 4, pixels, (int)width * 4);
+        fprintf(stdout, "reference : %s updated from current capture\n", name);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 void custom_log(const char* string)
 {
     fprintf(stdout, "%s\n", string);
@@ -200,12 +311,15 @@ void slot(uint32_t index, float* cx, float* cy, float* radius)
 const float angle = 0.78539816f;
 float gpu_time_ms = 0.f;
 uint32_t num_frames = 0;
+uint32_t frame_count = 0;
 
 // ---------------------------------------------------------------------------------------------------------------------------
 void frame(void)
 {
     if (renderer == NULL)
         return;
+
+    frame_count++;
 
     float cx, cy, radius;
     char string[256];
@@ -288,14 +402,14 @@ void frame(void)
     slot(15, &cx, &cy, &radius);
     od_set_cliprect_rounded(renderer, cx - radius*.5f, cy - radius*.5f, cx + radius*.5f, cy + radius*.5f, radius*.25f);
     od_draw_quad(renderer, cx-radius, cy-radius, cx, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 0, 0x7fffffff);
-    od_draw_quad(renderer, cx, cy-radius, cx+radius, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 1, 0xffffffff);
-    od_draw_quad(renderer, cx-radius, cy, cx, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 2, 0xffffffff);
-    od_draw_quad(renderer, cx, cy, cx+radius, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 3, 0xffffffff);
+    od_draw_quad(renderer, cx, cy-radius, cx+radius, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 1, 0x7fffffff);
+    od_draw_quad(renderer, cx-radius, cy, cx, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 2, 0x7fffffff);
+    od_draw_quad(renderer, cx, cy, cx+radius, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 3, 0x7fffffff);
     od_set_cliprect(renderer, 0.f, 0.f, UINT16_MAX, UINT16_MAX);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "quad\nrounded clip", miya_brown);
 
     slot(16, &cx, &cy, &radius);
-    od_draw_oriented_quad(renderer, cx, cy, radius, radius*.5f, angle * 0.75f, (od_quad_uv){0.f, 0.f, 1.f, 0.5f}, 2, 0xffffffff);
+    od_draw_oriented_quad(renderer, cx, cy, radius, radius*.5f, angle * 0.75f, (od_quad_uv){0.f, 0.f, 1.f, 0.5f}, 2, 0x7fffffff);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "oriented_quad", miya_brown);
 
     slot(17, &cx, &cy, &radius);
@@ -343,6 +457,47 @@ void frame(void)
                              radius * 0.1f, miya_pale_blue, miya_red);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "capsule_gradient", miya_brown);
 
+    slot(22, &cx, &cy, &radius);
+    {
+        od_dash_style round = {10.f, 10.f, 0.f, true};
+        od_dash_style flat = {10.f, 10.f, 5.f, false};
+        od_dash_style ants = {10.f, 10.f, (float) frame_count * 0.5f, true};    // marching ants, overlapping dashes, no double blend
+
+        od_draw_dashed_line(renderer, cx - radius * 0.7f, cy - radius * 0.55f, cx + radius * 0.7f, cy - radius * 0.55f, 6.f, round, miya_red);
+        od_draw_dashed_line(renderer, cx - radius * 0.7f, cy - radius * 0.25f, cx + radius * 0.7f, cy - radius * 0.25f, 6.f, flat, miya_blue);
+        od_draw_dashed_ring(renderer, cx - radius * 0.45f, cy + radius * 0.15f, radius * 0.3f, 5.f, ants, 0x800000FF);
+        od_draw_dashed_triangle_ring(renderer, (float[]){cx + radius * 0.15f, cy + radius * 0.05f, cx - radius * 0.05f, cy + radius * 0.25f,
+                                                         cx + radius * 0.35f, cy + radius * 0.25f}, 5.f, round, miya_green);
+        od_draw_dashed_ellipse_ring(renderer, cx + radius * 0.35f, cy + radius * 0.15f, cx + radius * 0.75f, cy + radius * 0.15f,
+                                    radius * 0.25f, 5.f, flat, miya_pink);
+
+        // the box family : sharp box, rounded box, oriented box (translucent, group wrapped)
+        od_draw_dashed_box(renderer, cx - radius * 0.70f, cy + radius * 1.05f, cx - radius * 0.34f, cy + radius * 1.38f,
+                           0.f, 5.f, flat, miya_dark_green);
+        od_draw_dashed_box(renderer, cx - radius * 0.30f, cy + radius * 1.05f, cx + radius * 0.02f, cy + radius * 1.38f,
+                           radius * 0.05f, 5.f, round, miya_pink);
+        od_draw_dashed_oriented_box(renderer, cx + radius * 0.24f, cy + radius * 1.05f, cx + radius * 0.70f, cy + radius * 1.38f,
+                                    radius * 0.16f, radius * 0.08f, 5.f, ants, 0x800000FF);
+
+        // regression shapes in the bottom band :
+        // a small ring with a dash longer than the radius (a dash must follow the curve, never cut it with a chord)
+        od_draw_dashed_ring(renderer, cx - radius * 0.58f, cy + radius * 1.53f, radius * 0.10f, 5.f, (od_dash_style) {15.f, 10.f, 0.f, true}, miya_dark_blue);
+        // a triangle and a box with an offset that lands mid edge (the walk must close back to the start)
+        od_draw_dashed_triangle_ring(renderer, (float[]){cx - radius * 0.10f, cy + radius * 1.44f, cx - radius * 0.30f, cy + radius * 1.63f,
+                                                         cx + radius * 0.10f, cy + radius * 1.63f}, 5.f, (od_dash_style) {10.f, 10.f, 7.f, true}, miya_red);
+        od_draw_dashed_box(renderer, cx + radius * 0.18f, cy + radius * 1.44f, cx + radius * 0.50f, cy + radius * 1.62f, radius * 0.05f, 5.f,
+                           (od_dash_style) {10.f, 10.f, 13.f, true}, miya_brown);
+        // a solid rounded box (gap 0) : the corner arcs must be drawn, not skipped as sub half pixel chords
+        od_draw_dashed_box(renderer, cx + radius * 0.60f, cy + radius * 1.44f, cx + radius * 0.92f, cy + radius * 1.62f, radius * 0.04f, 5.f,
+                           (od_dash_style) {10.f, 0.f, 0.f, true}, miya_dark_grey);
+
+        // a tiny dash on a huge path : overflows the command budget, must return UINT32_MAX fast, without emitting
+        od_dash_style tiny = {0.001f, 0.001f, 0.f, true};
+        uint32_t tiny_budget = od_draw_dashed_line(renderer, cx + radius * 0.7f, cy - radius * 0.55f, cx + radius * 0.7f + 3000.f, cy - radius * 0.55f, 6.f, tiny,
+                                                   miya_grey);
+        snprintf(string, 256, "dashed : %s", (tiny_budget == UINT32_MAX) ? "ok" : "error");
+    }
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, string, miya_brown);
 
     od_stats stats;
     od_get_stats(renderer, &stats);
@@ -377,10 +532,11 @@ void frame(void)
     {
         bgra_to_rgba(pixels, sapp_width(), sapp_height());
         stbi_write_png("screenshot.png", sapp_width(), sapp_height(), 4, pixels,  sapp_width() * sizeof(uint32_t));
+        compare_with_reference(pixels, sapp_width(), sapp_height());
         free(pixels);
     }
 
-    if (exit_after_100_frames && stats.frame_index == 100)
+    if (options.autoexit && stats.frame_index == 100)
         sapp_quit();
 }
 
@@ -426,11 +582,23 @@ void cleanup(void)
 // ---------------------------------------------------------------------------------------------------------------------------
 sapp_desc sokol_main(int argc, char* argv[])
 {
-    if (argc>1 && strstr(argv[1], "--autoexit"))
-        exit_after_100_frames = true;
+    // flag.h matches single-dash names; normalize "--foo" to "-foo" so both forms work
+    for (int i = 1; i < argc; ++i)
+    {
+        if (argv[i][0] == '-' && argv[i][1] == '-' && argv[i][2] != '\0')
+            memmove(argv[i] + 1, argv[i] + 2, strlen(argv[i]) - 1);
+    }
 
-    (void) argc;
-    (void) argv;
+    flag_bool_var(&options.autoexit, "autoexit", false, "quit after 100 frames");
+    flag_bool_var(&options.compare, "compare", false, "exit non-zero if the screenshot differs from the reference");
+    flag_bool_var(&options.update_refs, "update-refs", false, "rewrite the matching reference image from the current capture");
+
+    if (!flag_parse(argc, argv))
+    {
+        flag_print_error(stderr);
+        flag_print_options(stderr);
+        exit(1);
+    }
     return (sapp_desc) 
     {
         .width = 1280,

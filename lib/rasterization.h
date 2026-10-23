@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t rasterization_shader_size = 25911;
+static const size_t rasterization_shader_size = 25798;
 static const char rasterization_shader[] =
     "#include <metal_stdlib>\n"
     "#define RASTERIZER_SHADER\n"
@@ -77,11 +77,6 @@ static const char rasterization_shader[] =
     "    fill_hollow = 2,\n"
     "    fill_gradient = 3,\n"
     "};\n"
-    "\n"
-    "#define COMMAND_TYPE_MASK   (0x3f)\n"
-    "#define PRIMITIVE_FILLMODE_MASK (0xC0)\n"
-    "#define PRIMITIVE_FILLMODE_SHIFT (6)\n"
-    "\n"
     "\n"
     "enum sdf_operator\n"
     "{\n"
