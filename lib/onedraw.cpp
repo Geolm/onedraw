@@ -2139,8 +2139,7 @@ static bool dash_path_next_segment(dash_path* p, vec2* p0, vec2* p1, float* leng
 typedef struct dash_emitter
 {
     struct onedraw* r;
-    bool  failed;                       // dry run : the command budget is exceeded, abort the walk
-    bool  dry_run;                      // count the primitives without emitting them (budget check)
+    bool  failed;                       // the command budget is exceeded, abort the walk
     od_dash_style style;
     float dash_length;                  // the pattern is rescaled for closed paths
     float period;
@@ -2151,21 +2150,19 @@ typedef struct dash_emitter
     float width;
     draw_color color;
     uint32_t num_commands;
-    uint32_t capacity;                  // dry run : the command budget, the walk breaks once the count exceeds it
 } dash_emitter;
 
 //----------------------------------------------------------------------------------------------------------------------------
 static void dash_emitter_emit(dash_emitter* e)
 {
-    if (e->dry_run)
+    // one command : a capsule for round ends, a line for flat ends (both use the exact oriented box culling) ;
+    // the capacity was reserved up front, but guard against an exhausted buffer so the walk can never overflow it
+    if (!has_space_for_draw_command(e->r, 6))
     {
-        e->num_commands++;
-        e->failed = e->num_commands > e->capacity;
+        e->failed = true;
         return;
     }
 
-    // one command : a capsule for round ends, a line for flat ends (both use the exact oriented box culling),
-    // the budget was checked up front and the primitives reserve the same 1 command / 1 color / 6 data / 1 aabb
     if (e->style.round_caps)
         od_draw_capsule(e->r, e->dash_start.x, e->dash_start.y, e->point.x, e->point.y, e->width * .5f, e->color);
     else
@@ -2260,7 +2257,6 @@ static void dash_emitter_init(dash_emitter* e, struct onedraw* r, vec2 start, od
 {
     e->r = r;
     e->failed = false;
-    e->dry_run = false;
     e->style = style;
     e->dash_length = style.dash_length;
     e->period = period;
@@ -2269,7 +2265,6 @@ static void dash_emitter_init(dash_emitter* e, struct onedraw* r, vec2 start, od
     e->width = width;
     e->color = color;
     e->num_commands = 0;
-    e->capacity = 0;
 
     // a closed path walks from its first vertex, the offset rotates the pattern (closed paths rescale it to close
     // without a stub at the seam), so open and closed paths start on the same pattern position
@@ -2314,33 +2309,32 @@ static uint32_t dash_path_draw(struct onedraw* r, dash_path* path, float width, 
     // (a caller already in a group composites everything in its group, no wrap needed)
     bool wrap_group = (((color >> 24) & 0xFF) < 0xFF) && (r->commands.group_aabb == nullptr);
 
-    // a dash uses one command, one color, 6 data floats and one aabb, but a dash that spans a corner is split
-    // into a primitive per kink : count the exact number of primitives with a dry run walk, check the capacity
-    // up front, then re-walk to emit, so the function never emits a partial shape
+    // a dash is one primitive (1 command / 1 color / 6 data / 1 aabb), and a dash that spans a corner is split
+    // into one primitive per kink : reserve that much up front and return without emitting if the shape cannot
+    // fit (a path that needs more primitives than the buffers hold would otherwise overflow them), then emit
+    // in a single walk
     uint32_t capacity = min((uint32_t)(r->commands.buffer.GetMaxElements() - r->commands.buffer.GetNumElements()),
                             (uint32_t)(r->commands.colors.GetMaxElements() - r->commands.colors.GetNumElements()));
     capacity = min(capacity, (uint32_t)(r->commands.aabb_buffer.GetMaxElements() - r->commands.aabb_buffer.GetNumElements()));
     capacity = min(capacity, (uint32_t)((r->commands.data_buffer.GetMaxElements() - r->commands.data_buffer.GetNumElements()) / 6));
     capacity = (capacity > (wrap_group ? 2U : 0U)) ? (capacity - (wrap_group ? 2U : 0U)) : 0U;    // the group begin/end, underflow safe
 
+    // the pattern produces one dash per period (+2 for a dash split at the seam or the endpoint), and each path
+    // vertex is a kink that can split a dash into an extra primitive
+    uint32_t num_dashes = (uint32_t)(path->perimeter / period) + 2U;
+    uint32_t num_kinks = path->closed ? path->num_points : ((path->num_points > 1U) ? (path->num_points - 1U) : 0U);
+
+    if (num_dashes + num_kinks > capacity)
+        return UINT32_MAX;
+
     dash_path_start_at(path);
 
     dash_emitter e;
     dash_emitter_init(&e, r, path->point, style, period, width, color);
-    e.dry_run = true;
-    e.capacity = capacity;
-    dash_path_walk(path, &e);
-
-    uint32_t num_commands = e.num_commands;
-    if (!has_space_for_draw_commands(r, num_commands + (wrap_group ? 2U : 0U), num_commands * 6U + (wrap_group ? 3U : 0U)))
-        return UINT32_MAX;
 
     if (wrap_group)
         od_begin_group(r, false, 0.f, 0.f);
 
-    // the real emission, the same deterministic walk
-    dash_path_start_at(path);
-    dash_emitter_init(&e, r, path->point, style, period, width, color);
     dash_path_walk(path, &e);
 
     if (wrap_group)
