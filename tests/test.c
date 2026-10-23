@@ -471,10 +471,6 @@ void frame(void)
         od_draw_dashed_ellipse_ring(renderer, cx + radius * 0.35f, cy + radius * 0.15f, cx + radius * 0.75f, cy + radius * 0.15f,
                                     radius * 0.25f, 5.f, flat, miya_pink);
 
-        float bezier_ctrl[] = {cx - radius * 0.7f, cy + radius * 0.8f, cx - radius * 0.3f, cy + radius * 0.55f,
-                               cx + radius * 0.25f, cy + radius * 1.05f, cx + radius * 0.7f, cy + radius * 0.8f};
-        od_draw_dashed_cubic_bezier(renderer, bezier_ctrl, 6.f, round, miya_light_blue);
-
         // the box family : sharp box, rounded box, oriented box (translucent, group wrapped)
         od_draw_dashed_box(renderer, cx - radius * 0.70f, cy + radius * 1.05f, cx - radius * 0.34f, cy + radius * 1.38f,
                            0.f, 5.f, flat, miya_dark_green);
@@ -495,16 +491,11 @@ void frame(void)
         od_draw_dashed_box(renderer, cx + radius * 0.60f, cy + radius * 1.44f, cx + radius * 0.92f, cy + radius * 1.62f, radius * 0.04f, 5.f,
                            (od_dash_style) {10.f, 0.f, 0.f, true}, miya_dark_grey);
 
-        // overflows the command budget, must return UINT32_MAX without emitting a partial shape
-        od_dash_style big = {1.f, 1.f, 0.f, true};
-        float big_ctrl[] = {cx, cy, cx + 70000.f, cy - 40000.f, cx + 140000.f, cy + 40000.f, cx + 200000.f, cy};
-        uint32_t budget = od_draw_dashed_cubic_bezier(renderer, big_ctrl, 4.f, big, miya_grey);
-
         // a tiny dash on a huge path : overflows the command budget, must return UINT32_MAX fast, without emitting
         od_dash_style tiny = {0.001f, 0.001f, 0.f, true};
         uint32_t tiny_budget = od_draw_dashed_line(renderer, cx + radius * 0.7f, cy - radius * 0.55f, cx + radius * 0.7f + 3000.f, cy - radius * 0.55f, 6.f, tiny,
                                                    miya_grey);
-        snprintf(string, 256, "dashed : %s %s", (budget == UINT32_MAX) ? "ok" : "error", (tiny_budget == UINT32_MAX) ? "ok" : "error");
+        snprintf(string, 256, "dashed : %s", (tiny_budget == UINT32_MAX) ? "ok" : "error");
     }
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, string, miya_brown);
 

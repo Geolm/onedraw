@@ -132,6 +132,7 @@ void write_float(float* buffer, float value, Args ... args)
 
 typedef struct vec2 {float x, y;} vec2;
 typedef struct aabb {vec2 min, max;} aabb;
+typedef struct quadratic_bezier {vec2 c0, c1, c2;} quadratic_bezier;
 typedef struct cubic_bezier {vec2 c0, c1, c2, c3;} cubic_bezier;
 
 // the pre-build baker serializes struct alphabet into the default_font headers, fail at compile time if the layout drifted
@@ -1762,36 +1763,92 @@ void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, f
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// De Casteljau tesselation of a cubic, the shared tesselator of the solid curves and the dashed paths :
-// pops the tesselation stack in curve order, one colinear leaf at a time
-typedef struct bezier_leaf_iter
+// Breaks the bezier quadratic curve into multiple capsules, using De Casteljau’s algorithm and colinear detection
+uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points, float width, draw_color srgb_color)
 {
-    cubic_bezier stack[TESSELATION_STACK_MAX];
-    uint32_t  stack_index;
-    bool      failed;                 // the tesselation stack overflowed
-} bezier_leaf_iter;
+    quadratic_bezier stack[TESSELATION_STACK_MAX];
+    uint32_t stack_index = 0;
 
-//----------------------------------------------------------------------------------------------------------------------------
-static void bezier_leaf_iter_init(bezier_leaf_iter* iter, vec2 c0, vec2 c1, vec2 c2, vec2 c3)
-{
-    iter->stack[0] = (cubic_bezier) {.c0 = c0, .c1 = c1, .c2 = c2, .c3 = c3};
-    iter->stack_index = 1;
-    iter->failed = false;
+    const float radius = width * .5f;
+    uint32_t num_capsules = 0;
+
+    stack[stack_index++] = 
+    {
+        .c0 = {control_points[0], control_points[1]},
+        .c1 = {control_points[2], control_points[3]},
+        .c2 = {control_points[4], control_points[5]},
+    };
+
+    while (stack_index != 0)
+    {
+        quadratic_bezier c = stack[--stack_index];
+
+        // splits proportionally to segment lengths
+        float d0 = vec2_distance(c.c0, c.c1);
+        float d1 = vec2_distance(c.c1, c.c2);
+        float split = d0 / (d0 + d1);
+
+        vec2 left = vec2_lerp( c.c0, c.c1, split);
+        vec2 right = vec2_lerp(c.c1, c.c2, split);
+        vec2 middle = vec2_lerp(left, right, split);
+        
+        if (is_colinear(c.c0, c.c2, middle, COLINEAR_THRESHOLD))
+        {
+            od_draw_capsule(r, c.c0.x, c.c0.y, c.c2.x, c.c2.y, radius, srgb_color);
+            num_capsules++;
+        }
+        else
+        {
+            if (stack_index + 2 <= TESSELATION_STACK_MAX)
+            {
+                stack[stack_index++] =
+                {
+                    .c0 = c.c0,
+                    .c1 = left,
+                    .c2 = middle,
+                };
+
+                stack[stack_index++] =
+                {
+                    .c0 = middle,
+                    .c1 = right,
+                    .c2 = c.c2,
+                };
+            }
+            else
+                return UINT32_MAX;
+        }
+    }
+    return num_capsules;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// returns the next colinear leaf in curve order ([p0] to [p1]), false when the curve is fully tesselated
-static bool bezier_leaf_iter_next(bezier_leaf_iter* iter, vec2* p0, vec2* p1)
+uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, float width, draw_color srgb_color)
 {
-    while (iter->stack_index > 0)
+    cubic_bezier stack[TESSELATION_STACK_MAX];
+    uint32_t stack_index = 0;
+
+    const float radius = width * .5f;
+    uint32_t num_capsules = 0;
+
+    stack[stack_index++] = 
     {
-        cubic_bezier c = iter->stack[--iter->stack_index];
+        .c0 = {control_points[0], control_points[1]},
+        .c1 = {control_points[2], control_points[3]},
+        .c2 = {control_points[4], control_points[5]},
+        .c3 = {control_points[6], control_points[7]}
+    };
+
+    while (stack_index != 0)
+    {
+        cubic_bezier c = stack[--stack_index];
 
         // the halfway point along the control polygon roughly corresponds to halfway along the curve arc length
         float d0 = vec2_distance(c.c0, c.c1);
         float d1 = vec2_distance(c.c1, c.c2);
         float d2 = vec2_distance(c.c2, c.c3);
-        float split = (d0 + 0.5f * d1) / (d0 + d1 + d2);
+        float total = d0 + d1 + d2;
+        float split = (d0 + 0.5f * d1) / total;
 
         vec2 c01 = vec2_lerp(c.c0, c.c1, split);
         vec2 c12 = vec2_lerp(c.c1, c.c2, split);
@@ -1803,73 +1860,35 @@ static bool bezier_leaf_iter_next(bezier_leaf_iter* iter, vec2* p0, vec2* p1)
         if (is_colinear(c.c0, c.c3, middle, COLINEAR_THRESHOLD))
         {
             // the geometric endpoints of a cubic are c0 and c3 (c2 is a control point)
-            *p0 = c.c0;
-            *p1 = c.c3;
-            return true;
+            od_draw_capsule(r, c.c0.x, c.c0.y, c.c3.x, c.c3.y, radius, srgb_color);
+            num_capsules++;
         }
-
-        if (iter->stack_index + 2 > TESSELATION_STACK_MAX)
+        else
         {
-            iter->failed = true;
-            return false;
+            if (stack_index + 2 <= TESSELATION_STACK_MAX)
+            {
+                stack[stack_index++] =
+                {
+                    .c0 = c.c0,
+                    .c1 = c01,
+                    .c2 = c01c12,
+                    .c3 = middle
+                };
+
+                stack[stack_index++] =
+                {
+                    .c0 = middle,
+                    .c1 = c12c23,
+                    .c2 = c23,
+                    .c3 = c.c3,
+                };
+            }
+            else
+                return UINT32_MAX;
         }
-
-        // push the right half first so the left half is popped first : the leaves come out in curve order
-        iter->stack[iter->stack_index++] = (cubic_bezier) {.c0 = middle, .c1 = c12c23, .c2 = c23, .c3 = c.c3};
-        iter->stack[iter->stack_index++] = (cubic_bezier) {.c0 = c.c0, .c1 = c01, .c2 = c01c12, .c3 = middle};
     }
-    return false;
-}
 
-//----------------------------------------------------------------------------------------------------------------------------
-// a quadratic is the same geometric curve as its degree elevation to a cubic
-static inline void quadratic_to_cubic(vec2 c0, vec2 c1, vec2 c2, cubic_bezier* out)
-{
-    out->c0 = c0;
-    out->c1 = vec2_add(c0, vec2_scale(vec2_sub(c1, c0), 2.f / 3.f));
-    out->c2 = vec2_add(c2, vec2_scale(vec2_sub(c1, c2), 2.f / 3.f));
-    out->c3 = c2;
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-static uint32_t bezier_draw_cubic(struct onedraw* r, cubic_bezier root, float width, draw_color srgb_color)
-{
-    bezier_leaf_iter iter;
-    bezier_leaf_iter_init(&iter, root.c0, root.c1, root.c2, root.c3);
-
-    uint32_t num_capsules = 0;
-    vec2 p0, p1;
-    while (bezier_leaf_iter_next(&iter, &p0, &p1))
-    {
-        od_draw_capsule(r, p0.x, p0.y, p1.x, p1.y, width * .5f, srgb_color);
-        num_capsules++;
-    }
-    return iter.failed ? UINT32_MAX : num_capsules;
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-uint32_t od_draw_quadratic_bezier(struct onedraw* r, const float* control_points, float width, draw_color srgb_color)
-{
-    vec2 c0 = {control_points[0], control_points[1]};
-    vec2 c1 = {control_points[2], control_points[3]};
-    vec2 c2 = {control_points[4], control_points[5]};
-
-    cubic_bezier root;
-    quadratic_to_cubic(c0, c1, c2, &root);
-    return bezier_draw_cubic(r, root, width, srgb_color);
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, float width, draw_color srgb_color)
-{
-    cubic_bezier root =
-    {
-        .c0 = {control_points[0], control_points[1]},
-        .c1 = {control_points[2], control_points[3]},
-        .c2 = {control_points[4], control_points[5]},
-        .c3 = {control_points[6], control_points[7]}
-    };
-    return bezier_draw_cubic(r, root, width, srgb_color);
+    return num_capsules;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2023,16 +2042,8 @@ constexpr uint32_t DASH_SAMPLES = 512U;    // max arc samples per full turn
 constexpr float DASH_TOLERANCE = 0.25f;    // max chord sagitta in px, a dash follows the arc within it
 constexpr float DASH_EPSILON = 0.01f;      // distance below which a "zero length" dash is not emitted
 
-enum dash_path_kind
-{
-    path_polyline,    // line, triangle, circle, ellipse, box, oriented box
-    path_cubic        // bezier
-};
-
 typedef struct dash_path
 {
-    enum dash_path_kind kind;
-
     bool       closed;                     // a closed path walks a full lap back to its first point
     float      perimeter;                  // total path length, the closed pattern rescales to it
     vec2       point;                      // current position on the path
@@ -2041,9 +2052,6 @@ typedef struct dash_path
 
     vec2       points[DASH_SAMPLES + 8];   // path_polyline : the vertices, straight edges are implicit between them
     uint32_t   num_points;
-
-    vec2             control[4];           // path_cubic : the control points (root of the tesselation stack)
-    bezier_leaf_iter iter;                 // path_cubic : De Casteljau leaf tesselator
 } dash_path;
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2104,21 +2112,9 @@ static float dash_path_polyline_perimeter(dash_path* p)
 //----------------------------------------------------------------------------------------------------------------------------
 static void dash_path_start_at(dash_path* p)
 {
-    if (p->kind == path_polyline)
-    {
-        p->point = p->points[0];
-        p->index = 1;
-        p->remaining = p->closed ? p->num_points : p->num_points - 1;
-    }
-    else
-    {
-        // an open path always starts at its first control point
-        p->point = p->control[0];
-        p->index = 0;
-        p->remaining = 0;
-
-        bezier_leaf_iter_init(&p->iter, p->control[0], p->control[1], p->control[2], p->control[3]);
-    }
+    p->point = p->points[0];
+    p->index = 1;
+    p->remaining = p->closed ? p->num_points : p->num_points - 1;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2126,16 +2122,13 @@ static bool dash_path_next_segment(dash_path* p, vec2* p0, vec2* p1, float* leng
 {
     *p0 = p->point;
 
-    if (p->kind == path_polyline)
-    {
-        if (p->remaining == 0)
-            return false;
-        p->remaining--;
-        *p1 = p->points[p->index];
-        p->index = p->closed ? (p->index + 1) % p->num_points : p->index + 1;
-    }
-    else if (!bezier_leaf_iter_next(&p->iter, p0, p1))
-        return false;    // the curve is fully tesselated, or the tesselation stack overflowed
+    if (p->remaining == 0)
+        return false;
+    p->remaining--;
+
+    *p1 = p->points[p->index];
+
+    p->index = p->closed ? (p->index + 1) % p->num_points : p->index + 1;
 
     *length = vec2_distance(*p0, *p1);
     p->point = *p1;
@@ -2338,9 +2331,6 @@ static uint32_t dash_path_draw(struct onedraw* r, dash_path* path, float width, 
     e.capacity = capacity;
     dash_path_walk(path, &e);
 
-    if (path->iter.failed)
-        return UINT32_MAX;    // the bezier tesselation stack overflowed, nothing was emitted
-
     uint32_t num_commands = e.num_commands;
     if (!has_space_for_draw_commands(r, num_commands + (wrap_group ? 2U : 0U), num_commands * 6U + (wrap_group ? 3U : 0U)))
         return UINT32_MAX;
@@ -2355,9 +2345,6 @@ static uint32_t dash_path_draw(struct onedraw* r, dash_path* path, float width, 
 
     if (wrap_group)
         od_end_group(r, 0);
-
-    if (path->iter.failed)
-        return UINT32_MAX;
 
     return e.num_commands;
 }
@@ -2384,11 +2371,7 @@ uint32_t od_draw_dashed_line(struct onedraw* r, float ax, float ay, float bx, fl
     if (style.dash_length <= 0.f)
         return 0;
 
-    dash_path path =
-    {
-        .kind = path_polyline,
-        .points = { a, b }
-    };
+    dash_path path = { .points = { a, b } };
     path.num_points = 2;
     path.perimeter = perimeter;
 
@@ -2411,11 +2394,7 @@ uint32_t od_draw_dashed_ring(struct onedraw* r, float cx, float cy, float radius
     if (style.dash_length <= 0.f)
         return 0;
 
-    dash_path path =
-    {
-        .kind = path_polyline,
-        .closed = true
-    };
+    dash_path path = { .closed = true };
     dash_path_add_arc(&path, vec2_set(cx, cy), vec2_set(radius, 0.f), vec2_set(0.f, radius), 0.f, FULL_TURN, dash_path_arc_samples(FULL_TURN, radius));
     path.perimeter = dash_path_polyline_perimeter(&path);
 
@@ -2444,11 +2423,7 @@ uint32_t od_draw_dashed_box(struct onedraw* r, float x0, float y0, float x1, flo
     if (style.dash_length <= 0.f)
         return 0;
 
-    dash_path path =
-    {
-        .kind = path_polyline,
-        .closed = true
-    };
+    dash_path path = { .closed = true };
     dash_path_add_box(&path, center, vec2_set(1.f, 0.f), w * .5f, h * .5f, corner);
     path.perimeter = dash_path_polyline_perimeter(&path);
 
@@ -2477,11 +2452,7 @@ uint32_t od_draw_dashed_oriented_box(struct onedraw* r, float ax, float ay, floa
     if (style.dash_length <= 0.f)
         return 0;
 
-    dash_path path =
-    {
-        .kind = path_polyline,
-        .closed = true
-    };
+    dash_path path = { .closed = true };
     dash_path_add_box(&path, center, axis, length * .5f, width * .5f, corner);
     path.perimeter = dash_path_polyline_perimeter(&path);
 
@@ -2519,11 +2490,7 @@ uint32_t od_draw_dashed_ellipse_ring(struct onedraw* r, float ax, float ay, floa
         if (style.dash_length <= 0.f)
             return 0;
 
-        dash_path path =
-        {
-            .kind = path_polyline,
-            .points = { p0, p1 }
-        };
+        dash_path path = { .points = { p0, p1 } };
         path.num_points = 2;
         path.perimeter = length;
         return dash_path_draw(r, &path, thickness, style, srgb_color);
@@ -2539,12 +2506,7 @@ uint32_t od_draw_dashed_ellipse_ring(struct onedraw* r, float ax, float ay, floa
     if (style.dash_length <= 0.f)
         return 0;
 
-    dash_path path =
-    {
-        .kind = path_polyline,
-        .closed = true
-    };
-
+    dash_path path = { .closed = true };
     dash_path_add_arc(&path, center, vec2_scale(axis, semi_major), vec2_scale(vec2_skew(axis), semi_minor), 0.f, FULL_TURN,
                       dash_path_arc_samples(FULL_TURN, semi_minor * semi_minor / semi_major));
     path.perimeter = dash_path_polyline_perimeter(&path);
@@ -2575,73 +2537,10 @@ uint32_t od_draw_dashed_triangle_ring(struct onedraw* r, const float* vertices, 
     if (style.dash_length <= 0.f)
         return 0;
 
-    dash_path path =
-    {
-        .kind = path_polyline,
-        .closed = true,
-        .points = { v[0], v[1], v[2] }
-    };
+    dash_path path = { .closed = true, .points = { v[0], v[1], v[2] }};
     path.num_points = 3;
     path.perimeter = dash_path_polyline_perimeter(&path);
 
     return dash_path_draw(r, &path, thickness, style, srgb_color);
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-uint32_t od_draw_dashed_quadratic_bezier(struct onedraw* r, const float* control_points, float width, od_dash_style style, draw_color srgb_color)
-{
-    if (width <= 0.f)
-        return 0;
-
-    // a zero gap is the solid curve : one tesselation, no walk
-    if (style.gap_length <= 0.f)
-        return od_draw_quadratic_bezier(r, control_points, width, srgb_color);
-
-    if (style.dash_length <= 0.f)
-        return 0;
-
-    vec2 c0 = vec2_set(control_points[0], control_points[1]);
-    vec2 c1 = vec2_set(control_points[2], control_points[3]);
-    vec2 c2 = vec2_set(control_points[4], control_points[5]);
-
-    // a quadratic is the same geometric curve as its degree elevation to a cubic, one tesselator for both
-    cubic_bezier root;
-    quadratic_to_cubic(c0, c1, c2, &root);
-
-    dash_path path =
-    {
-        .kind = path_cubic,
-        .control = { root.c0, root.c1, root.c2, root.c3 }
-    };
-
-    return dash_path_draw(r, &path, width, style, srgb_color);
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-uint32_t od_draw_dashed_cubic_bezier(struct onedraw* r, const float* control_points, float width, od_dash_style style, draw_color srgb_color)
-{
-    if (width <= 0.f)
-        return 0;
-
-    // a zero gap is the solid curve : one tesselation, no walk
-    if (style.gap_length <= 0.f)
-        return od_draw_cubic_bezier(r, control_points, width, srgb_color);
-
-    if (style.dash_length <= 0.f)
-        return 0;
-
-    dash_path path =
-    {
-        .kind = path_cubic,
-        .control =
-        {
-            vec2_set(control_points[0], control_points[1]),
-            vec2_set(control_points[2], control_points[3]),
-            vec2_set(control_points[4], control_points[5]),
-            vec2_set(control_points[6], control_points[7])
-        }
-    };
-
-    return dash_path_draw(r, &path, width, style, srgb_color);
 }
 

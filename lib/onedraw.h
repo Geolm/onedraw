@@ -449,20 +449,6 @@ uint32_t od_draw_dashed_ellipse_ring(struct onedraw* r, float ax, float ay, floa
 //      [style]                 dash style, see od_dash_style
 uint32_t od_draw_dashed_triangle_ring(struct onedraw* r, const float* vertices, float thickness, od_dash_style style, draw_color srgb_color);
 
-//-----------------------------------------------------------------------------------------------------------------------------
-// Draws a dashed quadratic bezier curve using adaptative tesselation
-//      [control_points]        an array of 6 floats that represent the control points coordinates (x, y)
-//      [width]                 width of the dashes
-//      [style]                 dash style, see od_dash_style
-uint32_t od_draw_dashed_quadratic_bezier(struct onedraw* r, const float* control_points, float width, od_dash_style style, draw_color srgb_color);
-
-//-----------------------------------------------------------------------------------------------------------------------------
-// Draws a dashed cubic bezier curve using adaptative tesselation
-//      [control_points]        an array of 8 floats that represent the control points coordinates (x, y)
-//      [width]                 width of the dashes
-//      [style]                 dash style, see od_dash_style
-uint32_t od_draw_dashed_cubic_bezier(struct onedraw* r, const float* control_points, float width, od_dash_style style, draw_color srgb_color);
-
 #ifdef __cplusplus
 }
 #endif
