@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t rasterization_shader_size = 25798;
+static const size_t rasterization_shader_size = 25532;
 static const char rasterization_shader[] =
     "#include <metal_stdlib>\n"
     "#define RASTERIZER_SHADER\n"
@@ -495,8 +495,7 @@ static const char rasterization_shader[] =
     "\n"
     "        uint32_t packed_data = quad_broadcast(raw_cmd->packed_data, 0);\n"
     "        uint8_t extra = packed_data & 0xFF;\n"
-    "\n"
-    "        constant clip_shape& clip = input.clips[(packed_data >> 8) & 0xFF];\n"
+    "        const uint8_t clip_index = (packed_data >> 8) & 0xFF;\n"
     "        const uint32_t data_index = quad_broadcast(raw_cmd->data_index, 0);\n"
     "        const command_type type = (command_type) ((packed_data >> 24) & 0xFF);\n"
     "        const primitive_fillmode fillmode = (primitive_fillmode) ((packed_data >> 16) & 0xFF);\n"
@@ -701,11 +700,9 @@ static const char rasterization_shader[] =
     "                color = cmd_color;\n"
     "            }\n"
     "\n"
-    "            // intersect with the clip shape : anti-aliased clip edge (box-filter calibrated, see clip_distance).\n"
-    "            // end_group is skipped : its accumulated SDF was already clipped member by member, and re-clipping\n"
-    "            // it with the clip current at end_group would be wrong if the clip changed inside the group\n"
-    "            if (type != end_group)\n"
-    "                distance = max(distance, clip_distance(clip, in.pos.xy, input.aa_width));\n"
+    "            // clip 0 is the full-screen \n"
+    "            if (type != end_group && clip_index != 0)\n"
+    "                distance = max(distance, clip_distance(input.clips[clip_index], in.pos.xy, input.aa_width));\n"
     "\n"
     "            // blend distance / color and skip writing output\n"
     "            if (grouping)\n"

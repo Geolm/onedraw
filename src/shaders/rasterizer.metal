@@ -270,8 +270,7 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
 
         uint32_t packed_data = quad_broadcast(raw_cmd->packed_data, 0);
         uint8_t extra = packed_data & 0xFF;
-
-        constant clip_shape& clip = input.clips[(packed_data >> 8) & 0xFF];
+        const uint8_t clip_index = (packed_data >> 8) & 0xFF;
         const uint32_t data_index = quad_broadcast(raw_cmd->data_index, 0);
         const command_type type = (command_type) ((packed_data >> 24) & 0xFF);
         const primitive_fillmode fillmode = (primitive_fillmode) ((packed_data >> 16) & 0xFF);
@@ -476,11 +475,9 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                 color = cmd_color;
             }
 
-            // intersect with the clip shape : anti-aliased clip edge (box-filter calibrated, see clip_distance).
-            // end_group is skipped : its accumulated SDF was already clipped member by member, and re-clipping
-            // it with the clip current at end_group would be wrong if the clip changed inside the group
-            if (type != end_group)
-                distance = max(distance, clip_distance(clip, in.pos.xy, input.aa_width));
+            // clip 0 is the full-screen 
+            if (type != end_group && clip_index != 0)
+                distance = max(distance, clip_distance(input.clips[clip_index], in.pos.xy, input.aa_width));
 
             // blend distance / color and skip writing output
             if (grouping)

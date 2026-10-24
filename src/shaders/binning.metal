@@ -677,18 +677,25 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
             continue;
 
         draw_command cmd = input.commands[cmd_index];
-        clip_shape clip = input.clips[cmd.clip_index];
-
-        aabb tile_box;
-        tile_box.min = float2(tile_xy) * (float)TILE_SIZE;
-        tile_box.max = tile_box.min + (float)TILE_SIZE;
-
-        if (clip_tile(tile_box, clip))
-            continue;
-
         constant float* data = &input.draw_data[cmd.data_index];
 
-        bool to_be_added = intersection_tile_command(tile_aabb, cmd, group_op, data, input.aa_width + aabb_margin);
+        bool to_be_added;
+        if ((cmd_aabb.min_x == cmd_aabb.max_x) && (cmd_aabb.min_y == cmd_aabb.max_y) &&
+            (cmd.type != begin_group) && (cmd.type != end_group))
+        {
+            to_be_added = true;
+        }
+        else
+        {
+            if (cmd.clip_index != 0)
+            {
+                clip_shape clip = input.clips[cmd.clip_index];
+                if (clip_tile(tile_aabb, clip))
+                    continue;
+            }
+
+            to_be_added = intersection_tile_command(tile_aabb, cmd, group_op, data, input.aa_width + aabb_margin);
+        }
 
         // we traverse in reverse order, so the end comes first
         if (cmd.type == begin_group)
