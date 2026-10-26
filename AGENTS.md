@@ -12,12 +12,19 @@ Don't modify this file.
 - Line length: 160 chars. Separators: 127 chars (`// ----`).
 - Prefer designated initializers for struct initialization. Use compound literals with designated initializers when appropriate and when they improve readability.
 
-
 ## Code Quality
 
 - Prefer the simplest correct implementation: minimize LoC, branches, helpers, and duplication without hurting readability, correctness, or maintainability.
 - Keep concise code clear: no cryptic names, excessive compression, clever tricks, or obfuscation.
 - Before adding code, reuse existing logic, remove redundancy, or simplify the design. Prefer deleting code over adding abstractions.
+
+## Comments
+- Do not write descriptive comments in .c implementation files. The code must explain itself through clear naming and straightforward logic.
+- Do not add comments that restate what the code does, explain obvious implementation details, or introduce sections of code.
+- Comments are allowed only when necessary to explain non-obvious reasoning, tricky algorithms, constraints, or workarounds.
+- API documentation belongs in the .h header files. Document public functions, types, and parameters there when useful.
+- Do not duplicate header documentation in the corresponding .c file.
+
 
 ## Memory
 
