@@ -155,6 +155,7 @@ struct onedraw
         DynamicBuffer<quantized_aabb> aabb_buffer;
         DynamicBuffer<float> data_buffer;
         DynamicBuffer<clip_shape> clipshapes_buffer;
+        MTL::Buffer* command_hashes {nullptr};
         uint32_t count;
         quantized_aabb* group_aabb {nullptr};
         quantized_aabb* draw_aabb {nullptr};
@@ -189,6 +190,10 @@ struct onedraw
         uint16_t num_width;
         uint16_t num_height;
         uint32_t count;
+        MTL::Buffer* hashes {nullptr};
+        MTL::Buffer* dirty {nullptr};
+        MTL::ComputePipelineState* hash_pso {nullptr};
+        uint32_t invalidate_generation {0};
         bool culling_debug {false};
     } tiles;
 
@@ -198,6 +203,9 @@ struct onedraw
         MTL::RenderPipelineState* pso {nullptr};
         MTL::DepthStencilState* depth_stencil_state {nullptr};
         MTL::Texture* atlas {nullptr};
+        MTL::Texture* cache_texture {nullptr};
+        MTL::Texture* cache_placeholder {nullptr};
+        uint32_t atlas_generation {0};
         float4 clear_color {.x = 0.f, .y = 0.f, .z = 0.f, .w = 1.f};
         uint16_t width;
         uint16_t height;
@@ -216,6 +224,7 @@ struct onedraw
         alphabet desc;
         float scale {1.f};
         bool high_dpi {false};
+        uint32_t generation {0};
     } font;
 
     // screenshot service
@@ -241,6 +250,7 @@ struct onedraw
         uint32_t frame_index {0};
     } stats;
 
+    bool cache {false};
     void (*custom_log)(const char* string);
     char string_buffer[STRING_BUFFER_SIZE];
 };
@@ -372,6 +382,22 @@ static inline float bitcast_u32_to_float(uint32_t value)
     union {float f; uint32_t u;} c;
     c.u = value;
     return c.f;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+static inline uint32_t float_bits(float f)
+{
+    union {float f; uint32_t u;} c;
+    c.f = f;
+    return c.u;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+// a cheap mixer to build the per-tile hash seed, a change on any input changes the seed
+static inline uint32_t hash_combine(uint32_t state, uint32_t value)
+{
+    state ^= value + 0x9e3779b9u + (state << 6u) + (state >> 2u);
+    return state;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -522,6 +548,7 @@ void od_build_pso(struct onedraw* r)
 {
     SAFE_RELEASE(r->regions.binning_pso);
     SAFE_RELEASE(r->tiles.binning_pso);
+    SAFE_RELEASE(r->tiles.hash_pso);
     SAFE_RELEASE(r->rasterizer.pso);
     SAFE_RELEASE(r->tiles.write_icb_pso);
     SAFE_RELEASE(r->regions.exclusive_scan_pso);
@@ -569,6 +596,7 @@ void od_build_pso(struct onedraw* r)
         r->regions.binning_pso = create_pso(r, pLibrary, "region_bin");
         r->regions.predicate_pso = create_pso(r, pLibrary, "predicate");
         r->regions.exclusive_scan_pso = create_pso(r, pLibrary, "exclusive_scan");
+        r->tiles.hash_pso = create_pso(r, pLibrary, "hash_commands");
         pLibrary->release();
     }
     else
@@ -704,12 +732,46 @@ void od_bin_commands(struct onedraw* r)
     args->culling_debug = r->tiles.culling_debug;
     args->srgb_backbuffer = r->rasterizer.srgb_backbuffer;
     args->num_elements_per_thread = (r->commands.count + MAX_THREADS_PER_THREADGROUP-1) / MAX_THREADS_PER_THREADGROUP;
+    args->cache = r->cache;
+    args->num_draw_data = (uint32_t) r->commands.data_buffer.GetNumElements();
+    args->command_hashes = (uint32_t*) r->commands.command_hashes->gpuAddress();
+    MTL::Texture* cache_bound = r->cache ? r->rasterizer.cache_texture : r->rasterizer.cache_placeholder;
+    args->cache_texture = cache_bound->gpuResourceID()._impl;
+
+    // tile cache : the frame seed mixes everything that can change a pixel without changing the commands
+    uint32_t seed = r->tiles.invalidate_generation;
+    seed = hash_combine(seed, r->rasterizer.atlas_generation);
+    seed = hash_combine(seed, r->font.generation);
+    seed = hash_combine(seed, float_bits(r->rasterizer.clear_color.x));
+    seed = hash_combine(seed, float_bits(r->rasterizer.clear_color.y));
+    seed = hash_combine(seed, float_bits(r->rasterizer.clear_color.z));
+    seed = hash_combine(seed, float_bits(r->rasterizer.clear_color.w));
+    seed = hash_combine(seed, float_bits(r->rasterizer.aa_width));
+    seed = hash_combine(seed, (uint32_t) r->tiles.culling_debug);
+    seed = hash_combine(seed, (uint32_t) r->rasterizer.srgb_backbuffer);
+    args->frame_seed = seed;
 
     const uint32_t simd_group_count = MAX_THREADS_PER_THREADGROUP / SIMD_GROUP_SIZE;
     const uint32_t threads_for_commands = optimal_num_threads(r->commands.count, SIMD_GROUP_SIZE, MAX_THREADS_PER_THREADGROUP);
 
-    // predicate
     MTL::ComputeCommandEncoder* compute_encoder = r->command_buffer->computeCommandEncoder();
+
+    // tile cache : hash every command's content before the predicate
+    if (r->cache)
+    {
+        compute_encoder->setComputePipelineState(r->tiles.hash_pso);
+        compute_encoder->setBuffer(r->commands.draw_arg.GetBuffer(r->stats.frame_index), 0, 0);
+        compute_encoder->setBuffer(r->commands.command_hashes, 0, 1);
+        compute_encoder->useResource(r->commands.buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
+        compute_encoder->useResource(r->commands.colors.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
+        compute_encoder->useResource(r->commands.data_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
+        compute_encoder->useResource(r->commands.clipshapes_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
+        compute_encoder->useResource(r->commands.aabb_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
+        compute_encoder->useResource(r->commands.command_hashes, MTL::ResourceUsageWrite);
+        compute_encoder->dispatchThreads(MTL::Size(r->commands.count, 1, 1), MTL::Size(threads_for_commands, 1, 1));
+    }
+
+    // predicate
     compute_encoder->setComputePipelineState(r->regions.predicate_pso);
     compute_encoder->setBuffer(r->commands.draw_arg.GetBuffer(r->stats.frame_index), 0, 0);
     compute_encoder->setBuffer(r->regions.predicate, 0, 1);
@@ -739,6 +801,8 @@ void od_bin_commands(struct onedraw* r)
     output->head = (uint32_t*) r->tiles.head->gpuAddress();
     output->nodes = (tile_node*) r->tiles.nodes->gpuAddress();
     output->tile_indices = (uint16_t*) r->tiles.indices->gpuAddress();
+    output->dirty = (uint8_t*) r->tiles.dirty->gpuAddress();
+    output->tile_hashes = (uint32_t*) r->tiles.hashes->gpuAddress();
 
     compute_encoder->setBuffer(r->commands.bin_output_arg.GetBuffer(r->stats.frame_index), 0, 1);
     compute_encoder->setBuffer(r->tiles.counters_buffer, 0, 2);
@@ -747,6 +811,9 @@ void od_bin_commands(struct onedraw* r)
     compute_encoder->useResource(r->commands.buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
     compute_encoder->useResource(r->commands.data_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
     compute_encoder->useResource(r->commands.clipshapes_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
+    compute_encoder->useResource(r->commands.command_hashes, MTL::ResourceUsageRead);
+    compute_encoder->useResource(r->tiles.hashes, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+    compute_encoder->useResource(r->tiles.dirty, MTL::ResourceUsageWrite);
     compute_encoder->useResource(r->tiles.head, MTL::ResourceUsageRead|MTL::ResourceUsageWrite);
     compute_encoder->useResource(r->tiles.nodes, MTL::ResourceUsageWrite);
     compute_encoder->useResource(r->tiles.indices, MTL::ResourceUsageWrite);
@@ -787,6 +854,7 @@ void od_flush(struct onedraw* r, void* drawable)
         render_encoder->setDepthStencilState(r->rasterizer.depth_stencil_state);
         render_encoder->setVertexBuffer(r->commands.draw_arg.GetBuffer(r->stats.frame_index), 0, 0);
         render_encoder->setVertexBuffer(r->tiles.indices, 0, 1);
+        render_encoder->setVertexBuffer(r->tiles.dirty, 0, 2);
         render_encoder->setFragmentBuffer(r->commands.draw_arg.GetBuffer(r->stats.frame_index), 0, 0);
         render_encoder->setFragmentBuffer(r->commands.bin_output_arg.GetBuffer(r->stats.frame_index), 0, 1);
         render_encoder->useResource(r->commands.draw_arg.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
@@ -797,6 +865,9 @@ void od_flush(struct onedraw* r, void* drawable)
         render_encoder->useResource(r->tiles.head, MTL::ResourceUsageRead);
         render_encoder->useResource(r->tiles.nodes, MTL::ResourceUsageRead);
         render_encoder->useResource(r->tiles.indices, MTL::ResourceUsageRead);
+        render_encoder->useResource(r->tiles.dirty, MTL::ResourceUsageRead);
+        MTL::Texture* cache_bound = r->cache ? r->rasterizer.cache_texture : r->rasterizer.cache_placeholder;
+        render_encoder->useResource(cache_bound, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
         render_encoder->useResource(r->tiles.indirect_cb, MTL::ResourceUsageRead);
         render_encoder->useResource(r->font.texture, MTL::ResourceUsageRead);
         if (r->rasterizer.atlas != nullptr)
@@ -885,6 +956,7 @@ struct onedraw* od_init(onedraw_def* def)
     r->command_queue = r->device->newCommandQueue();
     r->screenshot.allocate_resources = def->allow_screenshot;
     r->rasterizer.srgb_backbuffer = def->srgb_backbuffer;
+    r->cache = def->cache;
 
     if (r->command_queue == nullptr)
     {
@@ -905,6 +977,19 @@ struct onedraw* od_init(onedraw_def* def)
     r->commands.clipshapes_buffer.Init(r->device, sizeof(clip_shape) * MAX_CLIPS);
     r->tiles.counters_buffer = r->device->newBuffer(sizeof(counters), MTL::ResourceStorageModePrivate);
     r->tiles.nodes = r->device->newBuffer(sizeof(tile_node) * MAX_NODES_COUNT, MTL::ResourceStorageModePrivate);
+    r->commands.command_hashes = r->device->newBuffer(sizeof(uint32_t) * MAX_COMMANDS, MTL::ResourceStorageModePrivate);
+
+    // 1x1 placeholder bound to the cache slot when the cache is off; the shader never dereferences it (uniform branch)
+    MTL::TextureDescriptor* cache_placeholder_desc = MTL::TextureDescriptor::alloc()->init();
+    cache_placeholder_desc->setWidth(1);
+    cache_placeholder_desc->setHeight(1);
+    cache_placeholder_desc->setPixelFormat(MTL::PixelFormat::PixelFormatRGBA16Float);
+    cache_placeholder_desc->setTextureType(MTL::TextureType2D);
+    cache_placeholder_desc->setMipmapLevelCount(1);
+    cache_placeholder_desc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite);
+    cache_placeholder_desc->setStorageMode(MTL::StorageModeShared);
+    r->rasterizer.cache_placeholder = r->device->newTexture(cache_placeholder_desc);
+    cache_placeholder_desc->release();
 
     MTL::IndirectCommandBufferDescriptor* icb_desc = MTL::IndirectCommandBufferDescriptor::alloc()->init();
     icb_desc->setCommandTypes(MTL::IndirectCommandTypeDraw);
@@ -962,6 +1047,9 @@ void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_i
         bytes_per_row,
         bytes_per_row * r->rasterizer.atlas->height()
     );
+
+    // tile cache : a slice upload can change every textured quad, invalidate the whole cache
+    r->rasterizer.atlas_generation++;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1020,8 +1108,40 @@ void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
 
     SAFE_RELEASE(r->tiles.head);
     SAFE_RELEASE(r->tiles.indices);
+    SAFE_RELEASE(r->tiles.hashes);
+    SAFE_RELEASE(r->tiles.dirty);
+    SAFE_RELEASE(r->rasterizer.cache_texture);
     r->tiles.head = r->device->newBuffer(r->tiles.count * sizeof(uint32_t), MTL::ResourceStorageModePrivate);
     r->tiles.indices = r->device->newBuffer(r->tiles.num_width * r->tiles.num_height * sizeof(uint16_t), MTL::ResourceStorageModePrivate);
+    r->tiles.hashes = r->device->newBuffer(r->tiles.count * sizeof(uint32_t), MTL::ResourceStorageModePrivate);
+    r->tiles.dirty = r->device->newBuffer(r->tiles.count, MTL::ResourceStorageModePrivate);
+
+    if (r->cache)
+    {
+        MTL::TextureDescriptor* cache_desc = MTL::TextureDescriptor::alloc()->init();
+        cache_desc->setWidth(width);
+        cache_desc->setHeight(height);
+        cache_desc->setPixelFormat(MTL::PixelFormat::PixelFormatRGBA16Float);
+        cache_desc->setTextureType(MTL::TextureType2D);
+        cache_desc->setMipmapLevelCount(1);
+        cache_desc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite);
+        cache_desc->setStorageMode(MTL::StorageModePrivate);
+        r->rasterizer.cache_texture = r->device->newTexture(cache_desc);
+        cache_desc->release();
+    }
+
+    // a resize forces a full redraw : bump the invalidation generation mixed into the frame seed
+    r->tiles.invalidate_generation++;
+
+    // a fresh tile hash buffer must read as "never cached" : fill it with the sentinel the shader checks for
+    MTL::CommandBuffer* fill_cb = r->command_queue->commandBuffer();
+    MTL::BlitCommandEncoder* fill_blit = fill_cb->blitCommandEncoder();
+    fill_blit->fillBuffer(r->tiles.hashes, NS::Range(0, r->tiles.hashes->length()), 0xff);
+    fill_blit->endEncoding();
+    fill_cb->commit();
+    fill_cb->waitUntilCompleted();
+    // commandBuffer() returns an autoreleased buffer : it is released by the current autorelease pool,
+    // a manual release would be a double release (zombie) when the pool pops
 
     od_log(r, "%ux%u tiles", r->tiles.num_width, r->tiles.num_height);
     od_log(r, "%ux%u regions", r->regions.num_width, r->regions.num_height);
@@ -1085,9 +1205,13 @@ void od_terminate(struct onedraw* r)
     r->commands.clipshapes_buffer.Terminate();
     SAFE_RELEASE(r->tiles.counters_buffer);
     SAFE_RELEASE(r->tiles.binning_pso);
+    SAFE_RELEASE(r->tiles.hash_pso);
     SAFE_RELEASE(r->tiles.head);
     SAFE_RELEASE(r->tiles.nodes);
     SAFE_RELEASE(r->tiles.indices);
+    SAFE_RELEASE(r->tiles.hashes);
+    SAFE_RELEASE(r->tiles.dirty);
+    SAFE_RELEASE(r->commands.command_hashes);
     SAFE_RELEASE(r->tiles.indirect_arg);
     SAFE_RELEASE(r->tiles.indirect_cb);
     SAFE_RELEASE(r->regions.predicate_pso);
@@ -1099,6 +1223,8 @@ void od_terminate(struct onedraw* r)
     SAFE_RELEASE(r->rasterizer.pso);
     SAFE_RELEASE(r->rasterizer.depth_stencil_state);
     SAFE_RELEASE(r->rasterizer.atlas);
+    SAFE_RELEASE(r->rasterizer.cache_texture);
+    SAFE_RELEASE(r->rasterizer.cache_placeholder);
     SAFE_RELEASE(r->command_queue);
     SAFE_RELEASE(r->font.texture);
     SAFE_RELEASE(r->font.glyphs);
@@ -1136,6 +1262,10 @@ void od_get_stats(struct onedraw* r, od_stats* stats)
     gpu_mem += r->tiles.indices->allocatedSize();
     gpu_mem += r->tiles.indirect_arg->allocatedSize();
     gpu_mem += r->tiles.nodes->allocatedSize();
+    gpu_mem += r->tiles.hashes->allocatedSize();
+    gpu_mem += r->tiles.dirty->allocatedSize();
+    gpu_mem += r->commands.command_hashes->allocatedSize();
+    gpu_mem += (r->cache ? r->rasterizer.cache_texture : r->rasterizer.cache_placeholder)->allocatedSize();
     stats->gpu_memory_usage = gpu_mem;
 }
 
@@ -1919,6 +2049,7 @@ void od_set_font_scale(struct onedraw* r, float scale)
     {
         r->font.scale = scale;
         od_upload_font_glyphs(r);
+        r->font.generation++;    // tile cache : the glyph metrics changed, invalidate the whole cache
     }
 }
 

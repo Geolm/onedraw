@@ -26,9 +26,10 @@ struct test_options
     bool autoexit;     // quit after 100 frames
     bool compare;      // exit non-zero if the screenshot differs from the reference
     bool update_refs;  // rewrite the matching reference image from the current capture
+    bool cache;        // enable the tile cache
 };
 
-struct test_options options = {false, false, false};
+struct test_options options = {false, false, false, false};
 
 #define FROM_HTML(html)   ((html&0xff)<<16) | ((html>>16)&0xff) | (html&0x00ff00) | 0xff000000
 #define TEX_SIZE (256)
@@ -282,6 +283,7 @@ void init(void)
         .srgb_backbuffer = false,
         .allow_screenshot = true,
         .high_dpi = sapp_high_dpi(),
+        .cache = options.cache,
         .atlas = 
         {
             .width = TEX_SIZE,
@@ -457,6 +459,21 @@ void frame(void)
                              radius * 0.1f, miya_pale_blue, miya_red);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "capsule_gradient", miya_brown);
 
+    // a moving arrow, deterministic with the frame count : its position is a data float, so the hash
+    // changes every frame and the tile cache must invalidate + redraw it (a stale tile would leave a
+    // ghost and fail the PSNR check). 0.01 (1% of the width) keeps it a smooth drift, not a strobe
+    {
+        float s = fminf(sapp_widthf() / 8.f, sapp_heightf() / 3.375f) * 0.4f;
+        float ax = fmodf(s + (float) frame_count * sapp_widthf() * 0.01f, sapp_widthf() + 2.f * s) - s;
+        float ay = sapp_heightf() * 0.295f;
+
+        od_begin_group(renderer, false, 0.f, 0.f);
+        od_draw_box(renderer, ax - s, ay - s * 0.12f, ax + s * 0.3f, ay + s * 0.12f, 0.f, miya_red);
+        // the pie's apex is at its center : put it at the tip (ax + 0.7s) and point the bisector back towards the shaft
+        od_draw_sector(renderer, ax + s * 0.7f, ay, s * 0.4f, 3.14159265f - 0.6f, 1.2f, miya_red);
+        od_end_group(renderer, miya_red);
+    }
+
     slot(22, &cx, &cy, &radius);
     {
         od_dash_style round = {10.f, 10.f, 0.f, true};
@@ -501,18 +518,20 @@ void frame(void)
 
     od_stats stats;
     od_get_stats(renderer, &stats);
-    snprintf(string, 256, "GPU Memory usage : %zu kb", stats.gpu_memory_usage>>10);
-    od_draw_text(renderer, 0, sapp_heightf() - od_text_height(renderer) * 2.f, string, miya_blue);
 
-    snprintf(string, 256, "num commands : %u", stats.peak_num_draw_cmd);
-    od_draw_text(renderer, (sapp_widthf() - od_text_width(renderer, string)) * .5f,
-                 sapp_heightf() - od_text_height(renderer) * 2.f, string, miya_blue);
-
-    if (stats.gpu_time_ms != 0.f)
+    if (stats.frame_index > 60)
     {
         // average all gpu time to get close to the "real" value as the scene is static
         num_frames++;
         gpu_time_ms += stats.gpu_time_ms;
+
+        snprintf(string, 256, "GPU Memory usage : %zu kb", stats.gpu_memory_usage>>10);
+        od_draw_text(renderer, 0, sapp_heightf() - od_text_height(renderer) * 2.f, string, miya_blue);
+
+        snprintf(string, 256, "num commands : %u", stats.peak_num_draw_cmd);
+        od_draw_text(renderer, (sapp_widthf() - od_text_width(renderer, string)) * .5f,
+                    sapp_heightf() - od_text_height(renderer) * 2.f, string, miya_blue);
+
         snprintf(string, 256, "GPU Time : %2.2f ms", gpu_time_ms / (float)(num_frames));
         od_draw_text(renderer, sapp_widthf() - od_text_width(renderer, string),
                     sapp_heightf() - od_text_height(renderer) * 2.f, string, miya_blue);
@@ -592,6 +611,7 @@ sapp_desc sokol_main(int argc, char* argv[])
     flag_bool_var(&options.autoexit, "autoexit", false, "quit after 100 frames");
     flag_bool_var(&options.compare, "compare", false, "exit non-zero if the screenshot differs from the reference");
     flag_bool_var(&options.update_refs, "update-refs", false, "rewrite the matching reference image from the current capture");
+    flag_bool_var(&options.cache, "cache", false, "enable the tile cache");
 
     if (!flag_parse(argc, argv))
     {

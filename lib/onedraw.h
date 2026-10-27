@@ -78,6 +78,7 @@ typedef struct onedraw_def
     bool allow_screenshot;
     bool srgb_backbuffer;
     bool high_dpi;            // use the 2x resolution (64px) built-in font, for retina displays
+    bool cache;               // enable the tile cache, skip the fragment work of the tiles that didn't change
 
     struct
     {
@@ -115,6 +116,9 @@ size_t od_min_memory_size(void);
 //      [high_dpi]              if true the 2x resolution (64px) built-in font is used, sharper on retina displays.
 //                               the 1x font (32px) is the default; on a retina screen the 1x text appears
 //                               blurry unless you also call od_set_font_scale() with the framebuffer scale
+//      [cache]                 if true, a persistent tile cache skips the fragment work of unchanged tiles.
+//                               opt-in : the cache is a full-screen RGBA16Float texture (8 bytes per pixel,
+//                               up to ~128 MiB at the 4096x4096 max resolution)
 //      [atlas]
 //          [width]             width of all textures in the array, if 0 (undefined) the array won't be created
 //          [height]
