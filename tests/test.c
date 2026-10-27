@@ -385,10 +385,10 @@ void frame(void)
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "arc", miya_brown);
 
     slot(13, &cx, &cy, &radius);
-    od_set_cliprect(renderer, cx - radius, cy - radius, cx + radius, cy + radius);
+    od_push_cliprect(renderer, cx - radius, cy - radius, cx + radius, cy + radius);
     od_draw_text(renderer, cx-radius, cy-radius, "Some text\nABCDEFGHILMNO\nPQRSTUVWYZ\n1234567890!@#$%?&*()\nSphinx of black\n quartz, judge my vow.\n"
                  "!\"#$%&'()*+,-./01234\n56789:;<=>?@\n[\\]^_`abcdefghijklmnop\nqrstuvwxyz{|}~", miya_black);
-    od_set_cliprect(renderer, 0.f, 0.f, UINT16_MAX, UINT16_MAX);
+    od_pop_clip(renderer);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "text", miya_brown);
 
     slot(14, &cx, &cy, &radius);
@@ -400,12 +400,12 @@ void frame(void)
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "smoothmin", miya_brown);
 
     slot(15, &cx, &cy, &radius);
-    od_set_cliprect_rounded(renderer, cx - radius*.5f, cy - radius*.5f, cx + radius*.5f, cy + radius*.5f, radius*.25f);
+    od_push_cliprect_rounded(renderer, cx - radius*.5f, cy - radius*.5f, cx + radius*.5f, cy + radius*.5f, radius*.25f);
     od_draw_quad(renderer, cx-radius, cy-radius, cx, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 0, 0x7fffffff);
     od_draw_quad(renderer, cx, cy-radius, cx+radius, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 1, 0x7fffffff);
     od_draw_quad(renderer, cx-radius, cy, cx, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 2, 0x7fffffff);
     od_draw_quad(renderer, cx, cy, cx+radius, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 3, 0x7fffffff);
-    od_set_cliprect(renderer, 0.f, 0.f, UINT16_MAX, UINT16_MAX);
+    od_pop_clip(renderer);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "quad\nrounded clip", miya_brown);
 
     slot(16, &cx, &cy, &radius);
@@ -440,7 +440,7 @@ void frame(void)
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "outline", miya_brown);
 
     slot(20, &cx, &cy, &radius);
-    od_set_clipdisc(renderer, cx, cy, radius);
+    od_push_clipdisc(renderer, cx, cy, radius);
     int seed = 0x12345678;
     const uint32_t colors[] = {miya_green, miya_pale_blue, miya_yellow};
     for(uint32_t i=0; i<100; i++)
@@ -449,7 +449,11 @@ void frame(void)
         od_draw_capsule(renderer, cx, cy, cx + cosf(angle) * 1000.f, cy + sinf(angle) * 1000.f, radius * 0.1f, colors[i%3]);
     }
 
-    od_set_cliprect(renderer, 0.f, 0.f, UINT16_MAX, UINT16_MAX);
+    od_push_cliprect(renderer, cx - radius, cy - radius, cx + radius, cy + radius);
+    od_draw_box(renderer, cx - radius, cy - radius, cx - radius * 0.55f, cy - radius * 0.55f, 0.f, miya_red);
+    od_pop_clip(renderer);
+    od_draw_box(renderer, cx + radius * 0.75f, cy - radius * 0.95f, cx + radius * 0.95f, cy - radius * 0.75f, 0.f, miya_red);
+    od_pop_clip(renderer);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "disc clip", miya_brown);
 
     slot(21, &cx, &cy, &radius);
@@ -479,15 +483,14 @@ void frame(void)
         od_draw_dashed_oriented_box(renderer, cx + radius * 0.24f, cy + radius * 1.05f, cx + radius * 0.70f, cy + radius * 1.38f,
                                     radius * 0.16f, radius * 0.08f, 5.f, ants, 0x800000FF);
 
-        // regression shapes in the bottom band :
-        // a small ring with a dash longer than the radius (a dash must follow the curve, never cut it with a chord)
+        
         od_draw_dashed_ring(renderer, cx - radius * 0.58f, cy + radius * 1.53f, radius * 0.10f, 5.f, (od_dash_style) {15.f, 10.f, 0.f, true}, miya_dark_blue);
-        // a triangle and a box with an offset that lands mid edge (the walk must close back to the start)
+        
         od_draw_dashed_triangle_ring(renderer, (float[]){cx - radius * 0.10f, cy + radius * 1.44f, cx - radius * 0.30f, cy + radius * 1.63f,
                                                          cx + radius * 0.10f, cy + radius * 1.63f}, 5.f, (od_dash_style) {10.f, 10.f, 7.f, true}, miya_red);
         od_draw_dashed_box(renderer, cx + radius * 0.18f, cy + radius * 1.44f, cx + radius * 0.50f, cy + radius * 1.62f, radius * 0.05f, 5.f,
                            (od_dash_style) {10.f, 10.f, 13.f, true}, miya_brown);
-        // a solid rounded box (gap 0) : the corner arcs must be drawn, not skipped as sub half pixel chords
+        
         od_draw_dashed_box(renderer, cx + radius * 0.60f, cy + radius * 1.44f, cx + radius * 0.92f, cy + radius * 1.62f, radius * 0.04f, 5.f,
                            (od_dash_style) {10.f, 0.f, 0.f, true}, miya_dark_grey);
 

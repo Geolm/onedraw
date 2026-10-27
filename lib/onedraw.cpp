@@ -19,7 +19,7 @@
 
 #define SAFE_RELEASE(p) if (p!=nullptr) {p->release(); p = nullptr;}
 #define UNUSED_VARIABLE(a) (void)(a)
-#define LAST_CLIP_INDEX ((uint8_t) r->commands.clipshapes_buffer.GetNumElements()-1)
+#define CURRENT_CLIP_INDEX (r->commands.clip_stack[r->commands.clip_depth - 1])
 #define assert_msg(expr, msg) assert((expr) && (msg))
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -32,8 +32,8 @@ constexpr float HALF_PIXEL = .5f;
 constexpr float VEC2_PI = 3.14159265f;
 constexpr uint32_t TESSELATION_STACK_MAX = 1024U;
 constexpr float COLINEAR_THRESHOLD = .1f;
-// quantized_aabb stores tile indices on 8 bits (max 256 tiles), so the screen is limited to 256 * TILE_SIZE pixels
 constexpr uint32_t MAX_SCREEN_SIZE = (UINT8_MAX + 1U) * TILE_SIZE;   // 4096
+constexpr uint32_t MAX_CLIP_DEPTH = 16U;
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // Templates
@@ -77,13 +77,7 @@ public:
 
     T* NewElement() {if (m_NumElements < m_MaxElements) return &m_pData[m_NumElements++]; return nullptr;}
 
-    T* LastElement()
-    {
-        if (m_NumElements > 0)
-            return &m_pData[m_NumElements-1];
-
-        return nullptr;
-    }
+    T* At(size_t index) {if (index < m_NumElements) return &m_pData[index]; return nullptr;}
 
     T* NewMultiple(uint32_t count)
     {
@@ -155,6 +149,8 @@ struct onedraw
         DynamicBuffer<quantized_aabb> aabb_buffer;
         DynamicBuffer<float> data_buffer;
         DynamicBuffer<clip_shape> clipshapes_buffer;
+        uint8_t clip_stack[MAX_CLIP_DEPTH] {0};
+        uint32_t clip_depth {0};
         uint32_t count;
         quantized_aabb* group_aabb {nullptr};
         quantized_aabb* draw_aabb {nullptr};
@@ -1039,13 +1035,15 @@ void od_begin_frame(struct onedraw* r)
     r->commands.draw_aabb = r->commands.aabb_buffer.Map(r->stats.frame_index);
     r->commands.data_buffer.Map(r->stats.frame_index);
     r->commands.clipshapes_buffer.Map(r->stats.frame_index);
-    od_set_cliprect(r, 0, 0, (uint16_t) r->rasterizer.width, (uint16_t) r->rasterizer.height);
+    r->commands.clip_depth = 0;
+    od_push_cliprect(r, 0, 0, (float)r->rasterizer.width, (float)r->rasterizer.height);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_end_frame(struct onedraw* r, void* drawable)
 {
     assert_msg(r->commands.group_aabb == nullptr, "you need to call od_end_group, before od_end_frame");
+    assert_msg(r->commands.clip_depth == 1, "unbalanced clip stack, every od_push_clip* must be matched by od_pop_clip");
     if (r->screenshot.show_region)
     {
         aabb capture_region = {.min = {(float)r->screenshot.region_x, (float)r->screenshot.region_y}};
@@ -1179,7 +1177,7 @@ static float* new_command(struct onedraw* r, enum command_type type, enum primit
 
     draw_command* cmd = r->commands.buffer.NewElement();
     draw_color* color_ptr = r->commands.colors.NewElement();
-    cmd->clip_index = LAST_CLIP_INDEX;
+    cmd->clip_index = CURRENT_CLIP_INDEX;
     cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
     cmd->fillmode = fillmode;
     cmd->type = type;
@@ -1810,16 +1808,42 @@ void od_set_clear_color(struct onedraw* r, draw_color srgb_color)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-static void push_clip_shape(struct onedraw* r, clip_shape clip)
+static inline bool clip_shape_equal(const clip_shape* a, const clip_shape* b)
 {
-    if (r->commands.clipshapes_buffer.GetNumElements() < MAX_CLIPS)
-        *r->commands.clipshapes_buffer.NewElement() = clip;
-    else
-        od_log(r, "too many clip shapes! maximum is %d", MAX_CLIPS);
+    if (a->type == clip_rect)
+        return a->type == b->type && a->rect.center_x == b->rect.center_x && a->rect.center_y == b->rect.center_y &&
+               a->rect.half_x == b->rect.half_x && a->rect.half_y == b->rect.half_y && a->rect.radius == b->rect.radius;
+
+    return a->type == b->type && a->disc.center_x == b->disc.center_x && a->disc.center_y == b->disc.center_y &&
+           a->disc.radius == b->disc.radius;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-static void set_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius)
+static void push_clip(struct onedraw* r, clip_shape clip)
+{
+    assert_msg(r->commands.clip_depth < MAX_CLIP_DEPTH, "clip stack overflow, maximum depth is 16");
+
+    // dedupe against the current clip, so pushing the same shape twice doesn't grow the buffer;
+    // at depth 0 (the base push of od_begin_frame, the buffer was just mapped) the shape is appended unconditionally
+    uint8_t clip_index = (r->commands.clip_depth > 0) ? CURRENT_CLIP_INDEX : 0;
+    clip_shape* current = r->commands.clipshapes_buffer.At(clip_index);
+
+    if (current == nullptr || !clip_shape_equal(current, &clip))
+    {
+        if (r->commands.clipshapes_buffer.GetNumElements() < MAX_CLIPS)
+        {
+            *r->commands.clipshapes_buffer.NewElement() = clip;
+            clip_index = (uint8_t)r->commands.clipshapes_buffer.GetNumElements() - 1;
+        }
+        else
+            od_log(r, "too many clip shapes! maximum is %d", MAX_CLIPS);
+    }
+
+    r->commands.clip_stack[r->commands.clip_depth++] = clip_index;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+static void push_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius)
 {
     if (max_x < min_x) {float t = min_x; min_x = max_x; max_x = t;}
     if (max_y < min_y) {float t = min_y; min_y = max_y; max_y = t;}
@@ -1843,33 +1867,23 @@ static void set_cliprect(struct onedraw* r, float min_x, float min_y, float max_
         .type = clip_rect
     };
 
-    // avoid redundant clip rect
-    if (r->commands.clipshapes_buffer.GetNumElements()>0)
-    {
-        clip_shape* last = r->commands.clipshapes_buffer.LastElement();
-
-        if (last->type == clip_rect && last->rect.center_x == clip.rect.center_x && last->rect.center_y == clip.rect.center_y &&
-            last->rect.half_x == clip.rect.half_x && last->rect.half_y == clip.rect.half_y && last->rect.radius == clip.rect.radius)
-            return;
-    }
-
-    push_clip_shape(r, clip);
+    push_clip(r, clip);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_set_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y)
+void od_push_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y)
 {
-    set_cliprect(r, min_x, min_y, max_x, max_y, 0.f);
+    push_cliprect(r, min_x, min_y, max_x, max_y, 0.f);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_set_cliprect_rounded(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius)
+void od_push_cliprect_rounded(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius)
 {
-    set_cliprect(r, min_x, min_y, max_x, max_y, radius);
+    push_cliprect(r, min_x, min_y, max_x, max_y, radius);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_set_clipdisc(struct onedraw* r, float cx, float cy, float radius)
+void od_push_clipdisc(struct onedraw* r, float cx, float cy, float radius)
 {
     clip_shape clip =
     {
@@ -1877,17 +1891,14 @@ void od_set_clipdisc(struct onedraw* r, float cx, float cy, float radius)
         .type = clip_disc
     };
 
-    // avoid redundant clip disc
-    if (r->commands.clipshapes_buffer.GetNumElements()>0)
-    {
-        clip_shape* last = r->commands.clipshapes_buffer.LastElement();
+    push_clip(r, clip);
+}
 
-        if (last->type == clip_disc && last->disc.center_x == clip.disc.center_x &&
-            last->disc.center_y == clip.disc.center_y && last->disc.radius == clip.disc.radius)
-            return;
-    }
-
-    push_clip_shape(r, clip);
+//----------------------------------------------------------------------------------------------------------------------------
+void od_pop_clip(struct onedraw* r)
+{
+    assert_msg(r->commands.clip_depth > 1, "cannot pop the base clip");
+    r->commands.clip_depth--;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
