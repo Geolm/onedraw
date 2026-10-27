@@ -491,12 +491,24 @@ static inline uint32_t optimal_num_threads(uint32_t num_elements, uint32_t simd_
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-static inline void write_quantized_aabb(quantized_aabb* box, float min_x, float min_y, float max_x, float max_y)
+static inline quantized_aabb invalid_quantized_aabb()
 {
-    min_x = max(min_x, 0.f);
-    min_y = max(min_y, 0.f);
-    max_x = max(max_x, 0.f);
-    max_y = max(max_y, 0.f);
+    return (quantized_aabb)
+    {
+        .min_x = UINT8_MAX,
+        .min_y = UINT8_MAX,
+        .max_x = 0,
+        .max_y = 0
+    };
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+static inline void write_quantized_aabb(quantized_aabb* box, aabb bb)
+{
+    float min_x = max(bb.min.x, 0.f);
+    float min_y = max(bb.min.y, 0.f);
+    float max_x = max(bb.max.x, 0.f);
+    float max_y = max(bb.max.y, 0.f);
     box->min_x = uint8_t(min(uint32_t(min_x) / TILE_SIZE, (uint32_t)UINT8_MAX));
     box->min_y = uint8_t(min(uint32_t(min_y) / TILE_SIZE, (uint32_t)UINT8_MAX));
     box->max_x = uint8_t(min(uint32_t(max_x) / TILE_SIZE, (uint32_t)UINT8_MAX));
@@ -513,18 +525,6 @@ static inline void merge_quantized_aabb(quantized_aabb* merge, const quantized_a
         merge->max_x = max(merge->max_x, other->max_x);
         merge->max_y = max(merge->max_y, other->max_y);
     }
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-static inline quantized_aabb invalid_quantized_aabb()
-{
-    return (quantized_aabb)
-    {
-        .min_x = UINT8_MAX,
-        .min_y = UINT8_MAX,
-        .max_x = 0,
-        .max_y = 0
-    };
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1286,76 +1286,6 @@ static inline bool has_space_for_draw_command(struct onedraw* r, uint32_t num_da
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_begin_group(struct onedraw* r, bool smoothblend, float group_smoothness, float outline_width)
-{
-    assert_msg(r->commands.group_aabb == nullptr, "cannot call a second time od_begin_group without closing the previous group");
-    assert_msg(group_smoothness >= 0.f, "smoothness cannot be negative");
-
-    if (!smoothblend)
-        group_smoothness = 0.f;
-
-    if (!has_space_for_draw_command(r, 2))
-    {
-        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
-        return;
-    }
-
-    enum sdf_operator op = smoothblend ? op_blend : op_overwrite;
-
-    draw_command* cmd = r->commands.buffer.NewElement();
-    draw_color* color = r->commands.colors.NewElement();
-    cmd->type = begin_group;
-    cmd->fillmode = fill_solid;
-    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
-    cmd->clip_index = LAST_CLIP_INDEX;
-    cmd->extra = (uint8_t)op;
-    *color = draw_color();    // placeholder, the rasterizer reads the color of every command (the begin_group sdf branch ignores it)
-
-    write_float(r->commands.data_buffer.NewMultiple(2), group_smoothness + outline_width, outline_width);
-
-    // keep values for the end group command
-    r->rasterizer.outline_width = outline_width;
-    r->rasterizer.group_smoothness = group_smoothness;
-    r->rasterizer.group_op = op;
-
-    // reserve a aabb that we're going to update depending on the coming shapes
-    r->commands.group_aabb = r->commands.aabb_buffer.NewElement();
-    *r->commands.group_aabb = invalid_quantized_aabb();
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-void od_end_group(struct onedraw* r, draw_color outline_color)
-{
-    assert(r->commands.group_aabb != nullptr);
-
-    if (!has_space_for_draw_command(r, 1))
-    {
-        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
-        return;
-    }
-
-    draw_command* cmd = r->commands.buffer.NewElement();
-    draw_color* color = r->commands.colors.NewElement();
-    cmd->type = end_group;
-    cmd->fillmode = (r->rasterizer.outline_width > 0.f) ? fill_outline : fill_solid;
-    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
-    cmd->clip_index = LAST_CLIP_INDEX;
-    cmd->extra = (uint8_t) r->rasterizer.group_op;
-    *color = outline_color;
-
-    // we put also the smooth value as we traverse the list in reverse order on the gpu
-    *r->commands.data_buffer.NewElement() = r->rasterizer.group_smoothness + r->rasterizer.outline_width;
-
-    quantized_aabb* aabb = r->commands.aabb_buffer.NewElement();
-    *aabb = *r->commands.group_aabb;
-
-    r->commands.group_aabb = nullptr;
-    r->rasterizer.group_smoothness = 0.f;
-    r->rasterizer.group_op = op_overwrite;
-    r->rasterizer.outline_width = 0.f;
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
 static inline float draw_cmd_aabb_bump(struct onedraw* r)
 {
     float result = r->rasterizer.aa_width + r->rasterizer.outline_width;
@@ -1365,42 +1295,120 @@ static inline float draw_cmd_aabb_bump(struct onedraw* r)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
+// the aabb slot is reserved unwritten, the caller fills it (begin_group / end_group write it themselves)
+static float* new_command(struct onedraw* r, enum command_type type, enum primitive_fillmode fillmode, uint8_t extra,
+                          draw_color color, uint32_t num_data, quantized_aabb** out_aabb)
+{
+    *out_aabb = nullptr;
+
+    if (!has_space_for_draw_command(r, num_data))
+    {
+        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
+        return nullptr;
+    }
+
+    draw_command* cmd = r->commands.buffer.NewElement();
+    draw_color* color_ptr = r->commands.colors.NewElement();
+    cmd->clip_index = LAST_CLIP_INDEX;
+    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
+    cmd->fillmode = fillmode;
+    cmd->type = type;
+    cmd->extra = extra;
+    *color_ptr = color;
+
+    float* data = r->commands.data_buffer.NewMultiple(num_data);
+    *out_aabb = r->commands.aabb_buffer.NewElement();
+    return data;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+// [bb] is passed already grown by draw_cmd_aabb_bump(r) when the shape needs it
+static float* new_primitive(struct onedraw* r, enum command_type type, enum primitive_fillmode fillmode, uint8_t extra,
+                            draw_color color, uint32_t num_data, aabb bb)
+{
+    quantized_aabb* aabb;
+    float* data = new_command(r, type, fillmode, extra, color, num_data, &aabb);
+    if (data == nullptr)
+        return nullptr;
+
+    write_quantized_aabb(aabb, bb);
+    merge_quantized_aabb(r->commands.group_aabb, aabb);
+    return data;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_begin_group(struct onedraw* r, bool smoothblend, float group_smoothness, float outline_width)
+{
+    assert_msg(r->commands.group_aabb == nullptr, "cannot call a second time od_begin_group without closing the previous group");
+    assert_msg(group_smoothness >= 0.f, "smoothness cannot be negative");
+
+    if (!smoothblend)
+        group_smoothness = 0.f;
+
+    enum sdf_operator op = smoothblend ? op_blend : op_overwrite;
+
+    // placeholder color, the rasterizer reads the color of every command (the begin_group sdf branch ignores it)
+    quantized_aabb* group_aabb;
+    float* data = new_command(r, begin_group, fill_solid, (uint8_t)op, draw_color(), 2, &group_aabb);
+    if (data == nullptr)
+        return;
+
+    write_float(data, group_smoothness + outline_width, outline_width);
+
+    // keep values for the end group command
+    r->rasterizer.outline_width = outline_width;
+    r->rasterizer.group_smoothness = group_smoothness;
+    r->rasterizer.group_op = op;
+
+    // the aabb that the coming shapes will grow, end_group copies it into its command
+    r->commands.group_aabb = group_aabb;
+    *r->commands.group_aabb = invalid_quantized_aabb();
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_end_group(struct onedraw* r, draw_color outline_color)
+{
+    assert(r->commands.group_aabb != nullptr);
+
+    enum primitive_fillmode fillmode = (r->rasterizer.outline_width > 0.f) ? fill_outline : fill_solid;
+
+    // we put also the smooth value as we traverse the list in reverse order on the gpu
+    quantized_aabb* aabb;
+    float* data = new_command(r, end_group, fillmode, (uint8_t)r->rasterizer.group_op, outline_color, 1, &aabb);
+    if (data == nullptr)
+        return;
+
+    *data = r->rasterizer.group_smoothness + r->rasterizer.outline_width;
+    *aabb = *r->commands.group_aabb;
+
+    r->commands.group_aabb = nullptr;
+    r->rasterizer.group_smoothness = 0.f;
+    r->rasterizer.group_op = op_overwrite;
+    r->rasterizer.outline_width = 0.f;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
 void private_draw_disc(struct onedraw* r, vec2 center, float radius, float thickness, enum primitive_fillmode fillmode,
                        draw_color primary_color, draw_color secondary_color)
 {
     thickness *= .5f;
 
     uint32_t num_data = (fillmode == fill_hollow || fillmode == fill_gradient) ? 4 : 3;
-    if (!has_space_for_draw_command(r, num_data))
-    {
-        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
-        return;
-    }
-
-    draw_command* cmd = r->commands.buffer.NewElement();
-    draw_color* color = r->commands.colors.NewElement();
-    cmd->clip_index = LAST_CLIP_INDEX;
-    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
-    cmd->fillmode = fillmode;
-    cmd->type = primitive_disc;
-    *color = primary_color;
-
-    float* data = r->commands.data_buffer.NewMultiple(num_data);
-    quantized_aabb* aabb = r->commands.aabb_buffer.NewElement();
     float max_radius = radius + draw_cmd_aabb_bump(r);
+    if (fillmode == fill_hollow)
+        max_radius += thickness;
+
+    aabb bb = aabb_from_circle(center, max_radius);
+    float* data = new_primitive(r, primitive_disc, fillmode, 0, primary_color, num_data, bb);
+    if (data == nullptr)
+        return;
 
     if (fillmode == fill_hollow)
-    {
-        max_radius += thickness;
         write_float(data, center.x, center.y, radius, thickness);
-    }
     else if (fillmode == fill_gradient)
         write_float(data, center.x, center.y, radius, bitcast_u32_to_float(secondary_color));
     else
         write_float(data, center.x, center.y, radius);
-
-    write_quantized_aabb(aabb, center.x - max_radius, center.y - max_radius, center.x + max_radius, center.y + max_radius);
-    merge_quantized_aabb(r->commands.group_aabb, aabb);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1431,32 +1439,17 @@ void private_draw_oriented_box(struct onedraw* r, vec2 p0, vec2 p1, float width,
     thickness *= .5f;
 
     uint32_t num_data = (fillmode == fill_gradient) ? 7 : 6;
-    if (!has_space_for_draw_command(r, num_data))
-    {
-        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
-        return;
-    }
-
-    draw_command* cmd = r->commands.buffer.NewElement();
-    draw_color* color = r->commands.colors.NewElement();
-    cmd->clip_index = LAST_CLIP_INDEX;
-    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
-    cmd->fillmode = fillmode;
-    cmd->type = primitive_oriented_box;
-    *color = primary_color;
-
-    float* data = r->commands.data_buffer.NewMultiple(num_data);
-    quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
     float roundness_thickness = (fillmode == fill_hollow) ? thickness : roundness;
     aabb bb = aabb_from_rounded_obb(p0, p1, width, roundness_thickness + draw_cmd_aabb_bump(r));
+
+    float* data = new_primitive(r, primitive_oriented_box, fillmode, 0, primary_color, num_data, bb);
+    if (data == nullptr)
+        return;
 
     if (fillmode == fill_gradient)
         write_float(data, p0.x, p0.y, p1.x, p1.y, width, roundness_thickness, bitcast_u32_to_float(secondary_color));
     else
         write_float(data, p0.x, p0.y, p1.x, p1.y, width, roundness_thickness);
-
-    write_quantized_aabb(aabox, bb.min.x, bb.min.y, bb.max.x, bb.max.y);
-    merge_quantized_aabb(r->commands.group_aabb, aabox);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1505,30 +1498,16 @@ void private_draw_ellipse(struct onedraw* r, vec2 p0, vec2 p1, float width, floa
     thickness = float_max(thickness * .5f, 0.f);
 
     uint32_t num_data = (fillmode == fill_hollow) ? 6 : 5;
-    if (!has_space_for_draw_command(r, num_data))
-    {
-        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
-        return;
-    }
-
-    draw_command* cmd = r->commands.buffer.NewElement();
-    draw_color* color = r->commands.colors.NewElement();
-    cmd->clip_index = LAST_CLIP_INDEX;
-    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
-    cmd->fillmode = fillmode;
-    cmd->type = primitive_ellipse;
-    *color = srgb_color;
-
-    float* data = r->commands.data_buffer.NewMultiple(num_data);
-    quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
     aabb bb = aabb_from_rounded_obb(p0, p1, width, draw_cmd_aabb_bump(r) + thickness);
+
+    float* data = new_primitive(r, primitive_ellipse, fillmode, 0, srgb_color, num_data, bb);
+    if (data == nullptr)
+        return;
+
     if (fillmode == fill_hollow)
         write_float(data, p0.x, p0.y, p1.x, p1.y, width, thickness);
     else
         write_float(data, p0.x, p0.y, p1.x, p1.y, width);
-
-    write_quantized_aabb(aabox, bb.min.x, bb.min.y, bb.max.x, bb.max.y);
-    merge_quantized_aabb(r->commands.group_aabb, aabox);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1552,28 +1531,15 @@ void private_draw_triangle(struct onedraw* r, const vec2* v, float roundness, fl
 
     thickness *= .5f;
 
-    if (!has_space_for_draw_command(r, 7))
-    {
-        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
-        return;
-    }
-
-    draw_command* cmd = r->commands.buffer.NewElement();
-    draw_color* color = r->commands.colors.NewElement();
-    cmd->clip_index = LAST_CLIP_INDEX;
-    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
-    cmd->fillmode = fillmode;
-    cmd->type = primitive_triangle;
-    *color = srgb_color;
-
-    float* data = r->commands.data_buffer.NewMultiple(7);
-    quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
     float roundness_thickness = (fillmode != fill_hollow) ? roundness : thickness;
     aabb bb = aabb_from_triangle(v[0], v[1], v[2]);
     aabb_grow(&bb, vec2_splat(roundness_thickness + draw_cmd_aabb_bump(r)));
+
+    float* data = new_primitive(r, primitive_triangle, fillmode, 0, srgb_color, 7, bb);
+    if (data == nullptr)
+        return;
+
     write_float(data, v[0].x, v[0].y, v[1].x, v[1].y, v[2].x, v[2].y, roundness_thickness);
-    write_quantized_aabb(aabox, bb.min.x, bb.min.y, bb.max.x, bb.max.y);
-    merge_quantized_aabb(r->commands.group_aabb, aabox);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1598,32 +1564,17 @@ void private_draw_pie(struct onedraw* r, vec2 center, vec2 direction, float radi
     thickness = float_max(thickness * .5f, 0.f);
 
     uint32_t num_data = (fillmode != fill_hollow) ? 7 : 8;
-    if (!has_space_for_draw_command(r, num_data))
-    {
-        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
-        return;
-    }
-
-    draw_command* cmd = r->commands.buffer.NewElement();
-    draw_color* color = r->commands.colors.NewElement();
-    cmd->clip_index = LAST_CLIP_INDEX;
-    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
-    cmd->fillmode = fillmode;
-    cmd->type = primitive_pie;
-    *color = srgb_color;
-
-    float* data = r->commands.data_buffer.NewMultiple(num_data);
-    quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
     aabb bb = aabb_from_circle(center, radius);
     aabb_grow(&bb, vec2_splat(thickness + draw_cmd_aabb_bump(r)));
+
+    float* data = new_primitive(r, primitive_pie, fillmode, 0, srgb_color, num_data, bb);
+    if (data == nullptr)
+        return;
 
     if (fillmode != fill_hollow)
         write_float(data, center.x, center.y, radius, direction.x, direction.y, sinf(aperture), cosf(aperture));
     else
         write_float(data, center.x, center.y, radius, direction.x, direction.y, sinf(aperture), cosf(aperture), thickness);
-        
-    write_quantized_aabb(aabox, bb.min.x, bb.min.y, bb.max.x, bb.max.y);
-    merge_quantized_aabb(r->commands.group_aabb, aabox);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1653,29 +1604,14 @@ void od_draw_arc(struct onedraw* r, float cx, float cy, float dx, float dy, floa
     aperture = float_clamp(aperture, 0.f, VEC2_PI);
     thickness = float_max(thickness, 0.f);
 
-    if (!has_space_for_draw_command(r, 8))
-    {
-        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
-        return;
-    }
-
-    draw_command* cmd = r->commands.buffer.NewElement();
-    draw_color* color = r->commands.colors.NewElement();
-    cmd->clip_index = LAST_CLIP_INDEX;
-    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
-    cmd->fillmode = fill_solid;
-    cmd->type = primitive_arc;
-
-    *color = srgb_color;
-
-    float* data = r->commands.data_buffer.NewMultiple(8);
-    quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
     aabb bb = aabb_from_circle(center, radius);
     aabb_grow(&bb, vec2_splat(thickness + draw_cmd_aabb_bump(r)));
 
+    float* data = new_primitive(r, primitive_arc, fill_solid, 0, srgb_color, 8, bb);
+    if (data == nullptr)
+        return;
+
     write_float(data, center.x, center.y, radius, direction.x, direction.y, sinf(aperture), cosf(aperture), thickness);
-    write_quantized_aabb(aabox, bb.min.x, bb.min.y, bb.max.x, bb.max.y);
-    merge_quantized_aabb(r->commands.group_aabb, aabox);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1686,29 +1622,15 @@ void od_draw_box(struct onedraw* r, float x0, float y0, float x1, float y1, floa
 
     aabb box = {.min = {x0, y0}, .max = {x1, y1}};
 
-    if (!has_space_for_draw_command(r, 5))
-    {
-        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
-        return;
-    }
-
-    draw_command* cmd = r->commands.buffer.NewElement();
-    draw_color* color = r->commands.colors.NewElement();
-    cmd->clip_index = LAST_CLIP_INDEX;
-    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
-    cmd->fillmode = fill_solid;
-    cmd->type = primitive_aabox;
-
-    *color = srgb_color;
-
-    float* data = r->commands.data_buffer.NewMultiple(5);
-    quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
     vec2 center = vec2_scale(vec2_add(box.min, box.max), .5f);
     vec2 half_extents = vec2_scale(vec2_sub(box.max, box.min), .5f);
     aabb_grow(&box, vec2_splat(draw_cmd_aabb_bump(r)));
+
+    float* data = new_primitive(r, primitive_aabox, fill_solid, 0, srgb_color, 5, box);
+    if (data == nullptr)
+        return;
+
     write_float(data, center.x, center.y, half_extents.x, half_extents.y, radius);
-    write_quantized_aabb(aabox, box.min.x, box.min.y, box.max.x, box.max.y);
-    merge_quantized_aabb(r->commands.group_aabb, aabox);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1717,27 +1639,14 @@ void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float width, flo
     float half_width = width * .5f;
     float half_height = height * .5f;
 
-    if (!has_space_for_draw_command(r, 5))
-    {
-        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
+    aabb bb = {.min = vec2_set(cx - half_width - roundness, cy - half_height - roundness),
+               .max = vec2_set(cx + half_width + roundness, cy + half_height + roundness)};
+
+    float* data = new_primitive(r, primitive_blurred_box, fill_solid, 0, srgb_color, 5, bb);
+    if (data == nullptr)
         return;
-    }
 
-    draw_command* cmd = r->commands.buffer.NewElement();
-    draw_color* color = r->commands.colors.NewElement();
-    cmd->clip_index = LAST_CLIP_INDEX;
-    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
-    cmd->type = primitive_blurred_box;
-    cmd->fillmode = fill_solid;
-
-    *color = srgb_color;
-
-    float* data = r->commands.data_buffer.NewMultiple(5);
-    quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
     write_float(data, cx, cy, half_width, half_height, roundness);
-    write_quantized_aabb(aabox, cx - half_width - roundness, cy - half_height - roundness,
-                         cx + half_width + roundness, cy + half_height + roundness);
-    merge_quantized_aabb(r->commands.group_aabb, aabox);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1748,22 +1657,6 @@ void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_c
 
     uint32_t glyph_index = c - r->font.desc.first_glyph;
 
-    if (!has_space_for_draw_command(r, 2))
-    {
-        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
-        return;
-    }
-
-    draw_command* cmd = r->commands.buffer.NewElement();
-    draw_color* color = r->commands.colors.NewElement();
-    cmd->clip_index = LAST_CLIP_INDEX;
-    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
-    cmd->fillmode = fill_solid;
-    cmd->type = primitive_char;
-    cmd->extra = (uint8_t) glyph_index;
-
-    *color = srgb_color;
-
     const float scale = r->font.scale;
     const glyph& glyph = r->font.desc.glyphs[glyph_index];
     x += glyph.bearing_x * scale;
@@ -1771,11 +1664,12 @@ void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_c
     float glyph_width = float(glyph.x1 - glyph.x0) * scale;
     float glyph_height = float(glyph.y1 - glyph.y0) * scale;
 
-    float* data = r->commands.data_buffer.NewMultiple(2);
-    quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
+    aabb bb = {.min = vec2_set(x, y), .max = vec2_set(x + glyph_width, y + glyph_height)};
+    float* data = new_primitive(r, primitive_char, fill_solid, (uint8_t)glyph_index, srgb_color, 2, bb);
+    if (data == nullptr)
+        return;
+
     write_float(data, x, y);
-    write_quantized_aabb(aabox, x, y, x + glyph_width, y + glyph_height);
-    merge_quantized_aabb(r->commands.group_aabb, aabox);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1826,27 +1720,12 @@ void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_
     if (fabsf(x0 - x1) < HALF_PIXEL || fabsf(y0 - y1) < HALF_PIXEL)
         return;
 
-    if (!has_space_for_draw_command(r, 8))
-    {
-        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
+    aabb bb = {.min = vec2_set(x0, y0), .max = vec2_set(x1, y1)};
+    float* data = new_primitive(r, primitive_quad, fill_solid, (uint8_t)slice_index, srgb_color, 8, bb);
+    if (data == nullptr)
         return;
-    }
 
-    draw_command* cmd = r->commands.buffer.NewElement();
-    draw_color* color = r->commands.colors.NewElement();
-    cmd->clip_index = LAST_CLIP_INDEX;
-    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
-    cmd->fillmode = fill_solid;
-    cmd->type = primitive_quad;
-    cmd->extra = (uint8_t) slice_index;
-
-    *color = srgb_color;
-
-    float* data = r->commands.data_buffer.NewMultiple(8);
-    quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
     write_float(data, x0, y0, x1, y1, uv.u0, uv.v0, uv.u1, uv.v1);
-    write_quantized_aabb(aabox, x0, y0, x1, y1);
-    merge_quantized_aabb(r->commands.group_aabb, aabox);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1868,28 +1747,12 @@ void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, f
     vec2 p0 = vec2_sub(center, dir);
     vec2 p1 = vec2_add(center, dir);
 
-    if (!has_space_for_draw_command(r, 10))
-    {
-        od_log(r, "out of draw commands/draw data buffer, expect graphical artefacts");
-        return;
-    }
-
-    draw_command* cmd = r->commands.buffer.NewElement();
-    draw_color* color = r->commands.colors.NewElement();
-    cmd->clip_index = LAST_CLIP_INDEX;
-    cmd->data_index = (uint32_t)r->commands.data_buffer.GetNumElements();
-    cmd->fillmode = fill_solid;
-    cmd->type = primitive_oriented_quad;
-    cmd->extra = (uint8_t) slice_index;
-
-    *color = srgb_color;
-
-    float* data = r->commands.data_buffer.NewMultiple(10);
-    quantized_aabb* aabox = r->commands.aabb_buffer.NewElement();
-    write_float(data, cx, cy, 1.f/width, 1.f/height, axis.x, axis.y, uv.u0, uv.v0, uv.u1, uv.v1);
     aabb bb = aabb_from_rounded_obb(p0, p1, height, 0.f);
-    write_quantized_aabb(aabox, bb.min.x, bb.min.y, bb.max.x, bb.max.y);
-    merge_quantized_aabb(r->commands.group_aabb, aabox);
+    float* data = new_primitive(r, primitive_oriented_quad, fill_solid, (uint8_t)slice_index, srgb_color, 10, bb);
+    if (data == nullptr)
+        return;
+
+    write_float(data, cx, cy, 1.f/width, 1.f/height, axis.x, axis.y, uv.u0, uv.v0, uv.u1, uv.v1);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2284,20 +2147,27 @@ typedef struct dash_emitter
 } dash_emitter;
 
 //----------------------------------------------------------------------------------------------------------------------------
+// a capsule (round ends) and a line (flat ends) both use the exact oriented box culling
+static void draw_dash(struct onedraw* r, vec2 a, vec2 b, float width, bool round_caps, draw_color color)
+{
+    if (round_caps)
+        od_draw_capsule(r, a.x, a.y, b.x, b.y, width * .5f, color);
+    else
+        od_draw_line(r, a.x, a.y, b.x, b.y, width, color);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
 static void dash_emitter_emit(dash_emitter* e)
 {
-    // one command : a capsule for round ends, a line for flat ends (both use the exact oriented box culling) ;
-    // the capacity was reserved up front, but guard against an exhausted buffer so the walk can never overflow it
+    // one dash per emit ; the capacity was reserved up front, but guard against an exhausted buffer so the walk
+    // can never overflow it
     if (!has_space_for_draw_command(e->r, 6))
     {
         e->failed = true;
         return;
     }
 
-    if (e->style.round_caps)
-        od_draw_capsule(e->r, e->dash_start.x, e->dash_start.y, e->point.x, e->point.y, e->width * .5f, e->color);
-    else
-        od_draw_line(e->r, e->dash_start.x, e->dash_start.y, e->point.x, e->point.y, e->width, e->color);
+    draw_dash(e->r, e->dash_start, e->point, e->width, e->style.round_caps, e->color);
     e->num_commands++;
 }
 
@@ -2475,6 +2345,28 @@ static uint32_t dash_path_draw(struct onedraw* r, dash_path* path, float width, 
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
+// a closed path needs its perimeter set, dash_path_draw rescales the pattern to it
+static uint32_t dash_closed_path_draw(struct onedraw* r, dash_path* path, float thickness, od_dash_style style, draw_color color)
+{
+    path->perimeter = dash_path_polyline_perimeter(path);
+    return dash_path_draw(r, path, thickness, style, color);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+static uint32_t dash_box(struct onedraw* r, vec2 center, vec2 axis, float half_w, float half_h, float corner,
+                         float thickness, od_dash_style style, draw_color color)
+{
+    // there is no solid rounded box outline primitive : a zero gap pattern is one dash = the whole outline, walked
+    // through the generic emitter (the dash length value is irrelevant with a zero gap, it just must not be zero)
+    if (style.gap_length <= 0.f)
+        style.dash_length = fmaxf(style.dash_length, 1.f);
+
+    dash_path path = { .closed = true };
+    dash_path_add_box(&path, center, axis, half_w, half_h, corner);
+    return dash_closed_path_draw(r, &path, thickness, style, color);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
 uint32_t od_draw_dashed_line(struct onedraw* r, float ax, float ay, float bx, float by, float width, od_dash_style style, draw_color srgb_color)
 {
     vec2 a = vec2_set(ax, ay), b = vec2_set(bx, by);
@@ -2486,15 +2378,9 @@ uint32_t od_draw_dashed_line(struct onedraw* r, float ax, float ay, float bx, fl
     // a zero gap is the solid line : one primitive, no walk
     if (style.gap_length <= 0.f)
     {
-        if (style.round_caps)
-            od_draw_capsule(r, a.x, a.y, b.x, b.y, width * .5f, srgb_color);
-        else
-            od_draw_line(r, a.x, a.y, b.x, b.y, width, srgb_color);
+        draw_dash(r, a, b, width, style.round_caps, srgb_color);
         return 1;
     }
-
-    if (style.dash_length <= 0.f)
-        return 0;
 
     dash_path path = { .points = { a, b } };
     path.num_points = 2;
@@ -2516,14 +2402,9 @@ uint32_t od_draw_dashed_ring(struct onedraw* r, float cx, float cy, float radius
         return 1;
     }
 
-    if (style.dash_length <= 0.f)
-        return 0;
-
     dash_path path = { .closed = true };
     dash_path_add_arc(&path, vec2_set(cx, cy), vec2_set(radius, 0.f), vec2_set(0.f, radius), 0.f, FULL_TURN, dash_path_arc_samples(FULL_TURN, radius));
-    path.perimeter = dash_path_polyline_perimeter(&path);
-
-    return dash_path_draw(r, &path, thickness, style, srgb_color);
+    return dash_closed_path_draw(r, &path, thickness, style, srgb_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2540,19 +2421,7 @@ uint32_t od_draw_dashed_box(struct onedraw* r, float x0, float y0, float x1, flo
     vec2 center = vec2_scale(vec2_add(lo, hi), .5f);
     float corner = fminf(fmaxf(0.f, radius), fminf(w, h) * .5f);    // a negative radius is clamped to a sharp corner
 
-    // there is no solid rounded box outline primitive : a zero gap pattern is one dash = the whole outline, walked
-    // through the generic emitter (the dash length value is irrelevant with a zero gap, it just must not be zero)
-    if (style.gap_length <= 0.f)
-        style.dash_length = fmaxf(style.dash_length, 1.f);
-
-    if (style.dash_length <= 0.f)
-        return 0;
-
-    dash_path path = { .closed = true };
-    dash_path_add_box(&path, center, vec2_set(1.f, 0.f), w * .5f, h * .5f, corner);
-    path.perimeter = dash_path_polyline_perimeter(&path);
-
-    return dash_path_draw(r, &path, thickness, style, srgb_color);
+    return dash_box(r, center, vec2_set(1.f, 0.f), w * .5f, h * .5f, corner, thickness, style, srgb_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2569,19 +2438,7 @@ uint32_t od_draw_dashed_oriented_box(struct onedraw* r, float ax, float ay, floa
     vec2 axis = vec2_scale(vec2_sub(b, a), 1.f / length);
     float corner = fminf(fmaxf(0.f, roundness), fminf(length, width) * .5f);    // a negative roundness is clamped to a sharp corner
 
-    // there is no solid rounded box outline primitive : a zero gap pattern is one dash = the whole outline, walked
-    // through the generic emitter (the dash length value is irrelevant with a zero gap, it just must not be zero)
-    if (style.gap_length <= 0.f)
-        style.dash_length = fmaxf(style.dash_length, 1.f);
-
-    if (style.dash_length <= 0.f)
-        return 0;
-
-    dash_path path = { .closed = true };
-    dash_path_add_box(&path, center, axis, length * .5f, width * .5f, corner);
-    path.perimeter = dash_path_polyline_perimeter(&path);
-
-    return dash_path_draw(r, &path, thickness, style, srgb_color);
+    return dash_box(r, center, axis, length * .5f, width * .5f, corner, thickness, style, srgb_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2605,15 +2462,9 @@ uint32_t od_draw_dashed_ellipse_ring(struct onedraw* r, float ax, float ay, floa
     {
         if (style.gap_length <= 0.f)
         {
-            if (style.round_caps)
-                od_draw_capsule(r, p0.x, p0.y, p1.x, p1.y, thickness * .5f, srgb_color);
-            else
-                od_draw_line(r, p0.x, p0.y, p1.x, p1.y, thickness, srgb_color);
+            draw_dash(r, p0, p1, thickness, style.round_caps, srgb_color);
             return 1;
         }
-
-        if (style.dash_length <= 0.f)
-            return 0;
 
         dash_path path = { .points = { p0, p1 } };
         path.num_points = 2;
@@ -2628,15 +2479,10 @@ uint32_t od_draw_dashed_ellipse_ring(struct onedraw* r, float ax, float ay, floa
         return 1;
     }
 
-    if (style.dash_length <= 0.f)
-        return 0;
-
     dash_path path = { .closed = true };
     dash_path_add_arc(&path, center, vec2_scale(axis, semi_major), vec2_scale(vec2_skew(axis), semi_minor), 0.f, FULL_TURN,
                       dash_path_arc_samples(FULL_TURN, semi_minor * semi_minor / semi_major));
-    path.perimeter = dash_path_polyline_perimeter(&path);
-
-    return dash_path_draw(r, &path, thickness, style, srgb_color);
+    return dash_closed_path_draw(r, &path, thickness, style, srgb_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2659,13 +2505,8 @@ uint32_t od_draw_dashed_triangle_ring(struct onedraw* r, const float* vertices, 
         return 1;
     }
 
-    if (style.dash_length <= 0.f)
-        return 0;
-
     dash_path path = { .closed = true, .points = { v[0], v[1], v[2] }};
     path.num_points = 3;
-    path.perimeter = dash_path_polyline_perimeter(&path);
-
-    return dash_path_draw(r, &path, thickness, style, srgb_color);
+    return dash_closed_path_draw(r, &path, thickness, style, srgb_color);
 }
 
