@@ -62,4 +62,20 @@ During binning, the tile's bounding box is **grown by this k value** so that a s
 
 ---
 
+## Tile cache
+
+The tile cache skips the fragment work of the tiles that did not change between frames. It is **opt-in** through the `cache` flag of `onedraw_def`: with the flag off, the pipeline does exactly what it did before. The whole test runs on the GPU, with no readback:
+
+* a `hash_commands` kernel hashes the *content* of every draw command (its type, color, data floats, clip, quantized bounds) into one `uint` per command — the command's *position* in the list is deliberately not part of the hash, so re-ordering or inserting commands elsewhere does not invalidate a tile;
+* in `tile_bin`, every command folded into a tile also folds its content hash into the tile's hash, which is seeded from a **frame seed** mixing everything that can change a pixel without changing the commands (clear color, anti-aliasing width, atlas generation, font generation, ...);
+* the new tile hash is compared against the previous frame's in a persistent buffer, and on a mismatch the tile is flagged **dirty**; a freshly allocated hash buffer is filled with a sentinel value that can never match a real hash, so the first frame always redraws.
+
+In the fragment shader, a **dirty** tile is shaded exactly as before, and its final result (after the sRGB conversion) is written into a persistent `RGBA16Float` cache texture; a **clean** tile simply reads back its own texel from that texture, skipping the whole command walk. Because the stored value is the very color the tile would produce, the output is bit-exact whether the cache is on or off. Blending must remain off for this to hold (it is, by design).
+
+The price is `4 bytes` per tile for the stored hash, `1 byte` per tile for the dirty flag, `4 bytes` per command for the content hash, and `8 bytes per pixel` for the cache texture (~30 MiB at `2560 × 1440`, up to ~128 MiB at the `4096 × 4096` maximum). Any atlas upload, font scale change, or resize bumps the frame seed and forces a full redraw.
+
+> **Note** — in *culling-debug* mode, redrawn tiles are tinted red after the cache write, so cache hits (untinted) and misses (tinted) are visible while moving the scene.
+
+---
+
 [Next part](part2.md) : Hierarchical binning and intrinsic tricks
