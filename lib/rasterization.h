@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t rasterization_shader_size = 27240;
+static const size_t rasterization_shader_size = 26950;
 static const char rasterization_shader[] =
     "#include <metal_stdlib>\n"
     "#define RASTERIZER_SHADER\n"
@@ -180,7 +180,7 @@ static const char rasterization_shader[] =
     "    constant font_char* glyphs;\n"
     "    texture_half font;\n"
     "    texture_array atlas;\n"
-    "    texture_half_rw cache_texture;    // tile cache surface (a 1x1 placeholder when the cache is off)\n"
+    "    texture_half_rw cache_texture;    // 1x1 placeholder when the cache is off\n"
     "    float4 clear_color;\n"
     "    uint32_t num_commands;\n"
     "    uint32_t max_nodes;\n"
@@ -194,9 +194,9 @@ static const char rasterization_shader[] =
     "    uint32_t num_elements_per_thread;\n"
     "    bool culling_debug;\n"
     "    bool srgb_backbuffer;\n"
-    "    bool cache;               // tile cache enabled (from onedraw_def)\n"
-    "    uint32_t num_draw_data;   // current draw data size in floats (the last command's data range ends here)\n"
-    "    uint32_t frame_seed;      // per-tile hash seed (see od_bin_commands)\n"
+    "    bool cache;\n"
+    "    uint32_t num_draw_data;   // the last command's data range ends here\n"
+    "    uint32_t frame_seed;\n"
     "} draw_cmd_arguments;\n"
     "\n"
     "typedef struct tiles_data\n"
@@ -204,8 +204,8 @@ static const char rasterization_shader[] =
     "    device uint32_t* head;\n"
     "    device tile_node* nodes;\n"
     "    device uint16_t* tile_indices;\n"
-    "    device uint8_t* dirty;          // per-tile dirty flag, written by tile_bin\n"
-    "    device uint32_t* tile_hashes;   // per-tile stored hash, written by tile_bin\n"
+    "    device uint8_t* dirty;\n"
+    "    device uint32_t* tile_hashes;\n"
     "} tiles_data;\n"
     "\n"
     "typedef struct output_command_buffer\n"
@@ -488,7 +488,6 @@ static const char rasterization_shader[] =
     "{\n"
     "    constexpr sampler s_linear(address::clamp_to_zero, filter::linear );\n"
     "\n"
-    "    // clean tile : one texel fetch of the last shaded result, no command walk\n"
     "    if (!in.dirty)\n"
     "    {\n"
     "        half4 cache_lookup = input.cache_texture.read(uint2(in.pos.xy));\n"
@@ -773,7 +772,7 @@ static const char rasterization_shader[] =
     "        // store the final color, before the attachment's 8-bit/srgb conversion, so a cached tile is bit-exact\n"
     "        input.cache_texture.write(output, uint2(in.pos.xy));\n"
     "\n"
-    "        // culling-debug : tint the redrawn tiles so the cache hits stay visible\n"
+    "        // the tint goes after the cache write : the stored tile stays clean, and redrawn tiles stand out from the green cache hits\n"
     "        if (input.culling_debug)\n"
     "            output.rgb = mix(output.rgb, half3(1.h, 0.h, 0.h), 0.5h);\n"
     "    }\n"

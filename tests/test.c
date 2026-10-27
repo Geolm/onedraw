@@ -26,7 +26,7 @@ struct test_options
     bool autoexit;     // quit after 100 frames
     bool compare;      // exit non-zero if the screenshot differs from the reference
     bool update_refs;  // rewrite the matching reference image from the current capture
-    bool cache;        // enable the tile cache
+    bool cache;
 };
 
 struct test_options options = {false, false, false, false};

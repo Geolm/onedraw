@@ -171,7 +171,7 @@ typedef struct draw_cmd_arguments
     constant font_char* glyphs;
     texture_half font;
     texture_array atlas;
-    texture_half_rw cache_texture;    // tile cache surface (a 1x1 placeholder when the cache is off)
+    texture_half_rw cache_texture;    // 1x1 placeholder when the cache is off
     float4 clear_color;
     uint32_t num_commands;
     uint32_t max_nodes;
@@ -185,9 +185,9 @@ typedef struct draw_cmd_arguments
     uint32_t num_elements_per_thread;
     bool culling_debug;
     bool srgb_backbuffer;
-    bool cache;               // tile cache enabled (from onedraw_def)
-    uint32_t num_draw_data;   // current draw data size in floats (the last command's data range ends here)
-    uint32_t frame_seed;      // per-tile hash seed (see od_bin_commands)
+    bool cache;
+    uint32_t num_draw_data;   // the last command's data range ends here
+    uint32_t frame_seed;
 } draw_cmd_arguments;
 
 typedef struct tiles_data
@@ -195,8 +195,8 @@ typedef struct tiles_data
     device uint32_t* head;
     device tile_node* nodes;
     device uint16_t* tile_indices;
-    device uint8_t* dirty;          // per-tile dirty flag, written by tile_bin
-    device uint32_t* tile_hashes;   // per-tile stored hash, written by tile_bin
+    device uint8_t* dirty;
+    device uint32_t* tile_hashes;
 } tiles_data;
 
 typedef struct output_command_buffer

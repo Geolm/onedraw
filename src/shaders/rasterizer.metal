@@ -254,7 +254,6 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
 {
     constexpr sampler s_linear(address::clamp_to_zero, filter::linear );
 
-    // clean tile : one texel fetch of the last shaded result, no command walk
     if (!in.dirty)
     {
         half4 cache_lookup = input.cache_texture.read(uint2(in.pos.xy));
@@ -539,7 +538,7 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
         // store the final color, before the attachment's 8-bit/srgb conversion, so a cached tile is bit-exact
         input.cache_texture.write(output, uint2(in.pos.xy));
 
-        // culling-debug : tint the redrawn tiles so the cache hits stay visible
+        // the tint goes after the cache write : the stored tile stays clean, and redrawn tiles stand out from the green cache hits
         if (input.culling_debug)
             output.rgb = mix(output.rgb, half3(1.h, 0.h, 0.h), 0.5h);
     }

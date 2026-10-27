@@ -449,8 +449,6 @@ bool intersection_tile_command(aabb tile_aabb, draw_command cmd, sdf_operator op
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// pcg hash, one uint per uint
-// ---------------------------------------------------------------------------------------------------------------------------
 static inline uint pcg_hash(uint input)
 {
     uint state = input * 747796405u + 2891336453u;
@@ -460,13 +458,7 @@ static inline uint pcg_hash(uint input)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// tile cache : hash the content of every draw command, one thread per command
-//      * the identity bytes (type, fillmode, clip_index, extra) minus data_index
-//      * the color
-//      * the data floats of the command ([data_index, next command's data_index), the last one ends at num_draw_data)
-//      * the referenced clip shape fields (clip 0 is the full-screen clip, nothing to hash)
-//      * the quantized aabb
-// the command index is not part of the hash, so inserting a command elsewhere doesn't change the other hashes
+// the command index is not part of the hash : inserting a command elsewhere must not change the other hashes
 // ---------------------------------------------------------------------------------------------------------------------------
 kernel void hash_commands(constant draw_cmd_arguments& input [[buffer(0)]],
                           device uint32_t* command_hashes [[buffer(1)]],
@@ -731,7 +723,6 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
     sdf_operator group_op = op_overwrite;
     constant const uint16_t* indices = &regions_indices[region_index * input.num_commands];
 
-    // tile cache : the tile hash starts from the frame seed and folds every added command hash
     uint tile_hash = input.frame_seed;
 
     for(uint32_t i=0; i<input.num_commands; ++i)
@@ -779,7 +770,6 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
 
         if (to_be_added)
         {
-            // tile cache : fold the command's content hash into the tile's hash
             if (input.cache)
                 tile_hash = pcg_hash(tile_hash ^ input.command_hashes[cmd_index]);
 
@@ -804,7 +794,6 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
 
     clean_list(output, tile_index);
 
-    // tile cache : compare with the stored hash and select read-cache vs shade
     if (input.cache)
     {
         uint32_t stored_hash = output.tile_hashes[tile_index];

@@ -393,7 +393,6 @@ static inline uint32_t float_bits(float f)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// a cheap mixer to build the per-tile hash seed, a change on any input changes the seed
 static inline uint32_t hash_combine(uint32_t state, uint32_t value)
 {
     state ^= value + 0x9e3779b9u + (state << 6u) + (state >> 2u);
@@ -756,7 +755,6 @@ void od_bin_commands(struct onedraw* r)
 
     MTL::ComputeCommandEncoder* compute_encoder = r->command_buffer->computeCommandEncoder();
 
-    // tile cache : hash every command's content before the predicate
     if (r->cache)
     {
         compute_encoder->setComputePipelineState(r->tiles.hash_pso);
@@ -1130,7 +1128,7 @@ void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
         cache_desc->release();
     }
 
-    // a resize forces a full redraw : bump the invalidation generation mixed into the frame seed
+    // the generation is mixed into the frame seed : a resize must change every tile hash to force a full redraw
     r->tiles.invalidate_generation++;
 
     // a fresh tile hash buffer must read as "never cached" : fill it with the sentinel the shader checks for
