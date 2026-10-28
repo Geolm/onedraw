@@ -20,10 +20,8 @@
 
 
 
-#define UNUSED_VARIABLE(a) (void)(a)
-
 #define LIB_FOLDER "lib/"
-#define FONT_FILENAME "fonts/Satoshi-Bold.otf"
+#define DEFAULT_FONT_FILENAME "fonts/Satoshi-Bold.otf"
 #define FONT_HEIGHT_STANDARD (24.0f)
 #define FONT_HEIGHT_HIGHDPI  (48.0f)
 #define ATLAS_MAX_SIZE  (1024)
@@ -55,7 +53,7 @@ static bool file_exists(const char* path)
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // the builder relies on relative paths, make sure all the input files are present before doing any work
-static bool verify_inputs(void)
+static bool verify_inputs(const char* font_filename)
 {
     struct input
     {
@@ -65,7 +63,7 @@ static bool verify_inputs(void)
 
     const struct input inputs[] =
     {
-        { FONT_FILENAME,                      "font file" },
+        { font_filename,                      "font file" },
         { SHADERS_FOLDER BINNING_SHADER,      "shader" },
         { SHADERS_FOLDER RASTERIZER_SHADER,   "shader" },
         { SHADERS_FOLDER CPU_GPU_COMMON_FILE, "header" },
@@ -283,12 +281,12 @@ static bool find_atlas_size(const stbtt_fontinfo* font_info, float font_height, 
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-bool build_font(Arena *arena, float font_height, const char* font_h, const char* glyph_h, const char* atlas_var, const char* glyph_var)
+bool build_font(Arena *arena, const char* font_filename, float font_height, const char* font_h, const char* glyph_h, const char* atlas_var, const char* glyph_var)
 {
-    fprintf(stdout, "opening font '%s' : ", FONT_FILENAME);
+    fprintf(stdout, "opening font '%s' : ", font_filename);
 
     size_t font_size;
-    uint8_t* font_data = read_file(FONT_FILENAME, &font_size, arena);
+    uint8_t* font_data = read_file(font_filename, &font_size, arena);
 
     if (font_data == NULL)
         return false; // read_file reported the error
@@ -298,7 +296,7 @@ bool build_font(Arena *arena, float font_height, const char* font_h, const char*
     stbtt_fontinfo font_info = {0};
     if (!stbtt_InitFont(&font_info, font_data, 0))
     {
-        fprintf(stderr, "error: '%s' is not a valid font file\n", FONT_FILENAME);
+        fprintf(stderr, "error: '%s' is not a valid font file\n", font_filename);
         return false;
     }
 
@@ -491,23 +489,34 @@ static void track_peak_memory(Arena* arena, size_t* peak)
 // ---------------------------------------------------------------------------------------------------------------------------
 int main(int argc, const char * argv[]) 
 {
-    UNUSED_VARIABLE(argc);
-    UNUSED_VARIABLE(argv);
+    const char* font_filename = DEFAULT_FONT_FILENAME;
+
+    if (argc > 2)
+    {
+        fprintf(stderr, "usage: builder [font_file]\n");
+        return 1;
+    }
+
+    if (argc == 2)
+        font_filename = argv[1];
 
     fprintf(stdout, "onedraw %u.%u.%u library builder\n\n", ONEDRAW_MAJOR_VERSION, ONEDRAW_MINOR_VERSION, ONEDRAW_PATCH);
 
-    if (!verify_inputs())
+    if (!verify_inputs(font_filename))
         return 1;
+
+    if (strcmp(font_filename, DEFAULT_FONT_FILENAME) != 0)
+        fprintf(stdout, "note: baking a non-default font, the regression test will fail against the committed reference\n\n");
 
     Arena arena = {0};
     size_t peak_memory = 0;
 
-    bool success = build_font(&arena, FONT_HEIGHT_STANDARD, FONT_H, GLYPH_H, "default_font_atlas", "default_font");
+    bool success = build_font(&arena, font_filename, FONT_HEIGHT_STANDARD, FONT_H, GLYPH_H, "default_font_atlas", "default_font");
 
     track_peak_memory(&arena, &peak_memory);
     arena_reset(&arena);
 
-    success = success && build_font(&arena, FONT_HEIGHT_HIGHDPI, FONT_H_HIGHDPI, GLYPH_H_HIGHDPI, "default_font_atlas_highdpi", "default_font_highdpi");
+    success = success && build_font(&arena, font_filename, FONT_HEIGHT_HIGHDPI, FONT_H_HIGHDPI, GLYPH_H_HIGHDPI, "default_font_atlas_highdpi", "default_font_highdpi");
 
     track_peak_memory(&arena, &peak_memory);
     arena_reset(&arena);

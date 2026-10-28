@@ -89,6 +89,18 @@ Follow the step to build and run the test program
 * make
 * ./test
 
+#### Custom font
+
+The pre-build step bakes `fonts/Satoshi-Bold.otf` into `lib/` as a BC4 atlas. To experiment with another font (e.g. `fonts/JetBrainsMono-Regular.ttf`), run the builder manually from the project root, then rebuild:
+
+```
+./build/pre-build/builder fonts/JetBrainsMono-Regular.ttf
+cmake --build build
+./build/test --autoexit
+```
+
+This overwrites the generated headers in `lib/`, so the regression gate (`--compare`) fails until the default font is baked again (`./build/pre-build/builder`) and the project is rebuilt.
+
 
 ### Links and references
 

@@ -36,7 +36,7 @@
 #include <stdbool.h>
 
 #define ONEDRAW_MAJOR_VERSION   (2)
-#define ONEDRAW_MINOR_VERSION   (0)
+#define ONEDRAW_MINOR_VERSION   (1)
 #define ONEDRAW_PATCH           (0)
 
 //----------------------------------------------------------------------------------------------------------------------------
