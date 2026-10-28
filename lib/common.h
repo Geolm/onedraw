@@ -26,10 +26,10 @@
 #define constant
 #define atomic_uint uint32_t
 #define device
-#define command_buffer void*
 #define texture_half uint64_t
 #define texture_array uint64_t
-#define texture_half_rw uint64_t
+#define texture_half_r uint64_t
+#define texture_half_w uint64_t
 #ifdef __cplusplus
     typedef struct alignas(8) {float x, y;} float2;
     typedef struct alignas(16) {float x, y, z, w;} float4;
@@ -41,7 +41,8 @@
 using namespace metal;
 #define texture_half texture2d<half>
 #define texture_array texture2d_array<half>
-#define texture_half_rw texture2d<half, access::read_write>
+#define texture_half_r texture2d<half, access::read>
+#define texture_half_w texture2d<half, access::write>
 #endif
 
 // packed on 6 bits
@@ -103,7 +104,8 @@ typedef struct counters
 {
     atomic_uint num_nodes;
     atomic_uint num_tiles;
-    uint32_t pad[2];
+    atomic_uint num_clean_tiles;
+    uint32_t pad;
 } counters;
 
 enum clip_type 
@@ -171,7 +173,8 @@ typedef struct draw_cmd_arguments
     constant font_char* glyphs;
     texture_half font;
     texture_array atlas;
-    texture_half_rw cache_texture;    // 1x1 placeholder when the cache is off
+    texture_half_w cache_texture;    // tile cache surface, written by tile_fs (1x1 placeholder when the cache is off)
+    texture_half_r cache_read;       // read view of the same surface, for the clean tiles redraw
     float4 clear_color;
     uint32_t num_commands;
     uint32_t max_nodes;
@@ -195,13 +198,16 @@ typedef struct tiles_data
     device uint32_t* head;
     device tile_node* nodes;
     device uint16_t* tile_indices;
-    device uint8_t* dirty;
+    device uint16_t* clean_indices;
     device uint32_t* tile_hashes;
 } tiles_data;
 
 typedef struct output_command_buffer
 {
-    command_buffer cmd_buffer;
+    // MTLDrawPrimitivesIndirectArguments { vertexCount, instanceCount, vertexStart, baseInstance } of the dirty and
+    // clean draws, written by write_icb and consumed by the render pass as the indirect draw arguments
+    uint32_t dirty_indirect_args[4];
+    uint32_t clean_indirect_args[4];
 } output_command_buffer;
 
 #ifdef __METAL_VERSION__
@@ -221,7 +227,6 @@ T linearstep(T edge0, T edge1, T x)
 #undef constant
 #undef atomic_uint
 #undef device
-#undef command_buffer
 #endif
 
 

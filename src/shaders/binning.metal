@@ -794,24 +794,31 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
 
     clean_list(output, tile_index);
 
+    // a tile is dirty when its hash changed since it was last drawn ; with the cache off, every tile is dirty
+    bool dirty = true;
     if (input.cache)
     {
         uint32_t stored_hash = output.tile_hashes[tile_index];
 
         // a sentinel stored value (fresh buffer) can never match a real hash, so it always counts as dirty
-        bool dirty = (stored_hash == INVALID_INDEX) || (tile_hash != stored_hash);
+        dirty = (stored_hash == INVALID_INDEX) || (tile_hash != stored_hash);
 
         output.tile_hashes[tile_index] = tile_hash;
-        output.dirty[tile_index] = dirty ? 1u : 0u;
     }
 
     // if the tile has some draw command to proceed
     if (output.head[tile_index] != INVALID_INDEX)
     {
-        uint pos = atomic_fetch_add_explicit(&counter.num_tiles, 1, memory_order_relaxed);
-
-        // add tile index
-        output.tile_indices[pos] = tile_index;
+        if (dirty)
+        {
+            uint pos = atomic_fetch_add_explicit(&counter.num_tiles, 1, memory_order_relaxed);
+            output.tile_indices[pos] = tile_index;
+        }
+        else
+        {
+            uint pos = atomic_fetch_add_explicit(&counter.num_clean_tiles, 1, memory_order_relaxed);
+            output.clean_indices[pos] = tile_index;
+        }
     }
 }
 
@@ -820,7 +827,16 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
 kernel void write_icb(device counters& counter [[buffer(0)]],
                       device output_command_buffer& indirect_draw [[buffer(1)]])
 {
-    render_command cmd(indirect_draw.cmd_buffer, 0);
-    cmd.draw_primitives(primitive_type::triangle_strip, 0, 4, atomic_load_explicit(&counter.num_tiles, memory_order_relaxed), 0);
+    // both draws are indirect : a 4-vertex triangle strip, one instance per tile, in the
+    // MTLDrawPrimitivesIndirectArguments { vertexCount, instanceCount, vertexStart, baseInstance } layout
+    indirect_draw.dirty_indirect_args[0] = 4;
+    indirect_draw.dirty_indirect_args[1] = atomic_load_explicit(&counter.num_tiles, memory_order_relaxed);
+    indirect_draw.dirty_indirect_args[2] = 0;
+    indirect_draw.dirty_indirect_args[3] = 0;
+
+    indirect_draw.clean_indirect_args[0] = 4;
+    indirect_draw.clean_indirect_args[1] = atomic_load_explicit(&counter.num_clean_tiles, memory_order_relaxed);
+    indirect_draw.clean_indirect_args[2] = 0;
+    indirect_draw.clean_indirect_args[3] = 0;
 }
 

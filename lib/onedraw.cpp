@@ -182,12 +182,11 @@ struct onedraw
         MTL::Buffer* indirect_arg {nullptr};
         MTL::Buffer* indices {nullptr};
         MTL::Buffer* nodes {nullptr};
-        MTL::IndirectCommandBuffer* indirect_cb {nullptr};
         uint16_t num_width;
         uint16_t num_height;
         uint32_t count;
         MTL::Buffer* hashes {nullptr};
-        MTL::Buffer* dirty {nullptr};
+        MTL::Buffer* clean_indices {nullptr};
         MTL::ComputePipelineState* hash_pso {nullptr};
         uint32_t invalidate_generation {0};
         bool culling_debug {false};
@@ -197,6 +196,7 @@ struct onedraw
     struct
     {
         MTL::RenderPipelineState* pso {nullptr};
+        MTL::RenderPipelineState* clean_pso {nullptr};
         MTL::DepthStencilState* depth_stencil_state {nullptr};
         MTL::Texture* atlas {nullptr};
         MTL::Texture* cache_texture {nullptr};
@@ -545,6 +545,7 @@ void od_build_pso(struct onedraw* r)
     SAFE_RELEASE(r->tiles.binning_pso);
     SAFE_RELEASE(r->tiles.hash_pso);
     SAFE_RELEASE(r->rasterizer.pso);
+    SAFE_RELEASE(r->rasterizer.clean_pso);
     SAFE_RELEASE(r->tiles.write_icb_pso);
     SAFE_RELEASE(r->regions.exclusive_scan_pso);
 
@@ -582,8 +583,6 @@ void od_build_pso(struct onedraw* r)
 
         MTL::ArgumentEncoder* indirectArgumentEncoder = pWriteIcbFunction->newArgumentEncoder(1);
         r->tiles.indirect_arg = r->device->newBuffer(indirectArgumentEncoder->encodedLength(), MTL::ResourceStorageModeShared);
-        indirectArgumentEncoder->setArgumentBuffer(r->tiles.indirect_arg, 0);
-        indirectArgumentEncoder->setIndirectCommandBuffer(r->tiles.indirect_cb, 0);
 
         indirectArgumentEncoder->release();
         pWriteIcbFunction->release();
@@ -606,7 +605,6 @@ void od_build_pso(struct onedraw* r)
         MTL::RenderPipelineDescriptor* pDesc = MTL::RenderPipelineDescriptor::alloc()->init();
         pDesc->setVertexFunction(pVertexFunction);
         pDesc->setFragmentFunction(pFragmentFunction);
-        pDesc->setSupportIndirectCommandBuffers(true);
 
         MTL::RenderPipelineColorAttachmentDescriptor *pRenderbufferAttachment = pDesc->colorAttachments()->object(0);
         pRenderbufferAttachment->setPixelFormat(r->rasterizer.srgb_backbuffer ? MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormat::PixelFormatBGRA8Unorm);
@@ -615,6 +613,26 @@ void od_build_pso(struct onedraw* r)
 
         if (r->rasterizer.pso == nullptr)
             od_log(r, "error while creating rasterizer pso : %s", pError->localizedDescription()->utf8String());
+
+        if (r->cache)
+        {
+            MTL::Function* pCleanFragmentFunction = pLibrary->newFunction(NS::String::string("clean_fs", NS::UTF8StringEncoding));
+
+            MTL::RenderPipelineDescriptor* pCleanDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+            pCleanDesc->setVertexFunction(pVertexFunction);
+            pCleanDesc->setFragmentFunction(pCleanFragmentFunction);
+
+            MTL::RenderPipelineColorAttachmentDescriptor* pCleanAttachment = pCleanDesc->colorAttachments()->object(0);
+            pCleanAttachment->setPixelFormat(r->rasterizer.srgb_backbuffer ? MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormat::PixelFormatBGRA8Unorm);
+            pCleanAttachment->setBlendingEnabled(false);
+            r->rasterizer.clean_pso = r->device->newRenderPipelineState( pCleanDesc, &pError );
+
+            if (r->rasterizer.clean_pso == nullptr)
+                od_log(r, "error while creating clean rasterizer pso : %s", pError->localizedDescription()->utf8String());
+
+            pCleanFragmentFunction->release();
+            pCleanDesc->release();
+        }
 
         pVertexFunction->release();
         pFragmentFunction->release();
@@ -732,6 +750,7 @@ void od_bin_commands(struct onedraw* r)
     args->command_hashes = (uint32_t*) r->commands.command_hashes->gpuAddress();
     MTL::Texture* cache_bound = r->cache ? r->rasterizer.cache_texture : r->rasterizer.cache_placeholder;
     args->cache_texture = cache_bound->gpuResourceID()._impl;
+    args->cache_read = cache_bound->gpuResourceID()._impl;
 
     // tile cache : the frame seed mixes everything that can change a pixel without changing the commands
     uint32_t seed = r->tiles.invalidate_generation;
@@ -795,7 +814,7 @@ void od_bin_commands(struct onedraw* r)
     output->head = (uint32_t*) r->tiles.head->gpuAddress();
     output->nodes = (tile_node*) r->tiles.nodes->gpuAddress();
     output->tile_indices = (uint16_t*) r->tiles.indices->gpuAddress();
-    output->dirty = (uint8_t*) r->tiles.dirty->gpuAddress();
+    output->clean_indices = (uint16_t*) r->tiles.clean_indices->gpuAddress();
     output->tile_hashes = (uint32_t*) r->tiles.hashes->gpuAddress();
 
     compute_encoder->setBuffer(r->commands.bin_output_arg.GetBuffer(r->stats.frame_index), 0, 1);
@@ -807,15 +826,15 @@ void od_bin_commands(struct onedraw* r)
     compute_encoder->useResource(r->commands.clipshapes_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
     compute_encoder->useResource(r->commands.command_hashes, MTL::ResourceUsageRead);
     compute_encoder->useResource(r->tiles.hashes, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
-    compute_encoder->useResource(r->tiles.dirty, MTL::ResourceUsageWrite);
     compute_encoder->useResource(r->tiles.head, MTL::ResourceUsageRead|MTL::ResourceUsageWrite);
     compute_encoder->useResource(r->tiles.nodes, MTL::ResourceUsageWrite);
     compute_encoder->useResource(r->tiles.indices, MTL::ResourceUsageWrite);
+    compute_encoder->useResource(r->tiles.clean_indices, MTL::ResourceUsageWrite);
     compute_encoder->dispatchThreads(MTL::Size(REGION_SIZE, REGION_SIZE, r->regions.count), MTL::Size(16, 16, 1));
     compute_encoder->setComputePipelineState(r->tiles.write_icb_pso);
     compute_encoder->setBuffer(r->tiles.counters_buffer, 0, 0);
     compute_encoder->setBuffer(r->tiles.indirect_arg, 0, 1);
-    compute_encoder->useResource(r->tiles.indirect_cb, MTL::ResourceUsageWrite);
+    compute_encoder->useResource(r->tiles.indirect_arg, MTL::ResourceUsageWrite);
     compute_encoder->dispatchThreads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
     compute_encoder->endEncoding();
 }
@@ -848,7 +867,6 @@ void od_flush(struct onedraw* r, void* drawable)
         render_encoder->setDepthStencilState(r->rasterizer.depth_stencil_state);
         render_encoder->setVertexBuffer(r->commands.draw_arg.GetBuffer(r->stats.frame_index), 0, 0);
         render_encoder->setVertexBuffer(r->tiles.indices, 0, 1);
-        render_encoder->setVertexBuffer(r->tiles.dirty, 0, 2);
         render_encoder->setFragmentBuffer(r->commands.draw_arg.GetBuffer(r->stats.frame_index), 0, 0);
         render_encoder->setFragmentBuffer(r->commands.bin_output_arg.GetBuffer(r->stats.frame_index), 0, 1);
         render_encoder->useResource(r->commands.draw_arg.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
@@ -859,15 +877,22 @@ void od_flush(struct onedraw* r, void* drawable)
         render_encoder->useResource(r->tiles.head, MTL::ResourceUsageRead);
         render_encoder->useResource(r->tiles.nodes, MTL::ResourceUsageRead);
         render_encoder->useResource(r->tiles.indices, MTL::ResourceUsageRead);
-        render_encoder->useResource(r->tiles.dirty, MTL::ResourceUsageRead);
+        render_encoder->useResource(r->tiles.clean_indices, MTL::ResourceUsageRead);
         MTL::Texture* cache_bound = r->cache ? r->rasterizer.cache_texture : r->rasterizer.cache_placeholder;
         render_encoder->useResource(cache_bound, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
-        render_encoder->useResource(r->tiles.indirect_cb, MTL::ResourceUsageRead);
+        render_encoder->useResource(r->tiles.indirect_arg, MTL::ResourceUsageRead);
         render_encoder->useResource(r->font.texture, MTL::ResourceUsageRead);
         if (r->rasterizer.atlas != nullptr)
             render_encoder->useResource(r->rasterizer.atlas, MTL::ResourceUsageRead);
         render_encoder->setRenderPipelineState(r->rasterizer.pso);
-        render_encoder->executeCommandsInBuffer(r->tiles.indirect_cb, NS::Range(0, 1));
+        render_encoder->drawPrimitives(MTL::PrimitiveType::PrimitiveTypeTriangleStrip, r->tiles.indirect_arg, 0);
+
+        if (r->cache)
+        {
+            render_encoder->setRenderPipelineState(r->rasterizer.clean_pso);
+            render_encoder->setVertexBuffer(r->tiles.clean_indices, 0, 1);
+            render_encoder->drawPrimitives(MTL::PrimitiveType::PrimitiveTypeTriangleStrip, r->tiles.indirect_arg, 16);
+        }
     }
     render_encoder->endEncoding();
 
@@ -977,22 +1002,13 @@ struct onedraw* od_init(onedraw_def* def)
     MTL::TextureDescriptor* cache_placeholder_desc = MTL::TextureDescriptor::alloc()->init();
     cache_placeholder_desc->setWidth(1);
     cache_placeholder_desc->setHeight(1);
-    cache_placeholder_desc->setPixelFormat(MTL::PixelFormat::PixelFormatRGBA16Float);
+    cache_placeholder_desc->setPixelFormat(r->rasterizer.srgb_backbuffer ? MTL::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormatBGRA8Unorm);
     cache_placeholder_desc->setTextureType(MTL::TextureType2D);
     cache_placeholder_desc->setMipmapLevelCount(1);
     cache_placeholder_desc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite);
     cache_placeholder_desc->setStorageMode(MTL::StorageModeShared);
     r->rasterizer.cache_placeholder = r->device->newTexture(cache_placeholder_desc);
     cache_placeholder_desc->release();
-
-    MTL::IndirectCommandBufferDescriptor* icb_desc = MTL::IndirectCommandBufferDescriptor::alloc()->init();
-    icb_desc->setCommandTypes(MTL::IndirectCommandTypeDraw);
-    icb_desc->setInheritBuffers(true);
-    icb_desc->setInheritPipelineState(true);
-    icb_desc->setMaxVertexBufferBindCount(2);
-    icb_desc->setMaxFragmentBufferBindCount(2);
-    r->tiles.indirect_cb = r->device->newIndirectCommandBuffer(icb_desc, 1, MTL::ResourceStorageModePrivate);
-    icb_desc->release();
 
     r->semaphore = dispatch_semaphore_create(DynamicBuffer<float>::MaxInflightBuffers);
     r->stats.average_gpu_time = 0.f;
@@ -1103,19 +1119,19 @@ void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
     SAFE_RELEASE(r->tiles.head);
     SAFE_RELEASE(r->tiles.indices);
     SAFE_RELEASE(r->tiles.hashes);
-    SAFE_RELEASE(r->tiles.dirty);
+    SAFE_RELEASE(r->tiles.clean_indices);
     SAFE_RELEASE(r->rasterizer.cache_texture);
     r->tiles.head = r->device->newBuffer(r->tiles.count * sizeof(uint32_t), MTL::ResourceStorageModePrivate);
     r->tiles.indices = r->device->newBuffer(r->tiles.num_width * r->tiles.num_height * sizeof(uint16_t), MTL::ResourceStorageModePrivate);
+    r->tiles.clean_indices = r->device->newBuffer(r->tiles.num_width * r->tiles.num_height * sizeof(uint16_t), MTL::ResourceStorageModePrivate);
     r->tiles.hashes = r->device->newBuffer(r->tiles.count * sizeof(uint32_t), MTL::ResourceStorageModePrivate);
-    r->tiles.dirty = r->device->newBuffer(r->tiles.count, MTL::ResourceStorageModePrivate);
 
     if (r->cache)
     {
         MTL::TextureDescriptor* cache_desc = MTL::TextureDescriptor::alloc()->init();
         cache_desc->setWidth(width);
         cache_desc->setHeight(height);
-        cache_desc->setPixelFormat(MTL::PixelFormat::PixelFormatRGBA16Float);
+        cache_desc->setPixelFormat(r->rasterizer.srgb_backbuffer ? MTL::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormatBGRA8Unorm);
         cache_desc->setTextureType(MTL::TextureType2D);
         cache_desc->setMipmapLevelCount(1);
         cache_desc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite);
@@ -1206,10 +1222,9 @@ void od_terminate(struct onedraw* r)
     SAFE_RELEASE(r->tiles.nodes);
     SAFE_RELEASE(r->tiles.indices);
     SAFE_RELEASE(r->tiles.hashes);
-    SAFE_RELEASE(r->tiles.dirty);
+    SAFE_RELEASE(r->tiles.clean_indices);
     SAFE_RELEASE(r->commands.command_hashes);
     SAFE_RELEASE(r->tiles.indirect_arg);
-    SAFE_RELEASE(r->tiles.indirect_cb);
     SAFE_RELEASE(r->regions.predicate_pso);
     SAFE_RELEASE(r->regions.exclusive_scan_pso);
     SAFE_RELEASE(r->regions.indices);
@@ -1217,6 +1232,7 @@ void od_terminate(struct onedraw* r)
     SAFE_RELEASE(r->regions.scan);
     SAFE_RELEASE(r->tiles.write_icb_pso);
     SAFE_RELEASE(r->rasterizer.pso);
+    SAFE_RELEASE(r->rasterizer.clean_pso);
     SAFE_RELEASE(r->rasterizer.depth_stencil_state);
     SAFE_RELEASE(r->rasterizer.atlas);
     SAFE_RELEASE(r->rasterizer.cache_texture);
@@ -1259,7 +1275,7 @@ void od_get_stats(struct onedraw* r, od_stats* stats)
     gpu_mem += r->tiles.indirect_arg->allocatedSize();
     gpu_mem += r->tiles.nodes->allocatedSize();
     gpu_mem += r->tiles.hashes->allocatedSize();
-    gpu_mem += r->tiles.dirty->allocatedSize();
+    gpu_mem += r->tiles.clean_indices->allocatedSize();
     gpu_mem += r->commands.command_hashes->allocatedSize();
     gpu_mem += (r->cache ? r->rasterizer.cache_texture : r->rasterizer.cache_placeholder)->allocatedSize();
     stats->gpu_memory_usage = gpu_mem;

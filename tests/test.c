@@ -321,6 +321,12 @@ void frame(void)
     if (renderer == NULL)
         return;
 
+    // fully obscured window : macOS provides no drawable, sapp returns an invalid swapchain (the nil
+    // drawable reads as 0x0 and would fail the onedraw size assert), so skip the whole frame until visible
+    sapp_swapchain sc = sapp_acquire_swapchain();
+    if (sc.invalid)
+        return;
+
     frame_count++;
 
     float cx, cy, radius;
@@ -547,7 +553,6 @@ void frame(void)
         od_take_screenshot(renderer, pixels);
     }
 
-    sapp_swapchain sc = sapp_acquire_swapchain();
     od_end_frame(renderer, (void*)sc.metal.current_drawable);
 
     if (pixels != NULL)

@@ -68,13 +68,17 @@ The tile cache skips the fragment work of the tiles that did not change between 
 
 * a `hash_commands` kernel hashes the *content* of every draw command (its type, color, data floats, clip, quantized bounds) into one `uint` per command — the command's *position* in the list is deliberately not part of the hash, so re-ordering or inserting commands elsewhere does not invalidate a tile;
 * in `tile_bin`, every command folded into a tile also folds its content hash into the tile's hash, which is seeded from a **frame seed** mixing everything that can change a pixel without changing the commands (clear color, anti-aliasing width, atlas generation, font generation, ...);
-* the new tile hash is compared against the previous frame's in a persistent buffer, and on a mismatch the tile is flagged **dirty**; a freshly allocated hash buffer is filled with a sentinel value that can never match a real hash, so the first frame always redraws.
+* the new tile hash is compared against the previous frame's in a persistent buffer: a match makes the tile **clean**, a mismatch makes it **dirty**. A freshly allocated hash buffer is filled with a sentinel value that can never match a real hash, so the first frame always redraws.
 
-In the fragment shader, a **dirty** tile is shaded exactly as before, and its final result (after the sRGB conversion) is written into a persistent `RGBA16Float` cache texture; a **clean** tile simply reads back its own texel from that texture, skipping the whole command walk. Because the stored value is the very color the tile would produce, the output is bit-exact whether the cache is on or off. Blending must remain off for this to hold (it is, by design).
+At rasterization time the two categories take two paths. A **dirty** tile is shaded exactly as before, and its final color is written into a persistent cache texture in the **backbuffer format** (`BGRA8Unorm`, or the `_sRGB` variant when the backbuffer is). A **clean** tile is redrawn by a *second* indirect draw that reuses the tile vertex shader and a fragment shader that only reads the tile's own texel back from the cache — the whole command walk is skipped. Because the dirty path stores the very color the tile would produce and the clean path returns the stored texel unchanged, the output is bit-exact whether the cache is on or off. Blending must remain off for this to hold (it is, by design). For an sRGB backbuffer the store converts and the read decodes, and the ROP re-encodes on the way out — a round-trip that is exact by construction, though the sRGB path is not exercised by the tests yet.
 
-The price is `4 bytes` per tile for the stored hash, `1 byte` per tile for the dirty flag, `4 bytes` per command for the content hash, and `8 bytes per pixel` for the cache texture (~30 MiB at `2560 × 1440`, up to ~128 MiB at the `4096 × 4096` maximum). Any atlas upload, font scale change, or resize bumps the frame seed and forces a full redraw.
+The price is `4 bytes` per pixel for the cache texture (~14 MiB at `2560 × 1440`, up to 64 MiB at the `4096 × 4096` maximum), plus `4 bytes` per tile for the stored hash and `4 bytes` per command for the content hash. Any atlas upload, font scale change, or resize bumps the frame seed and forces a full redraw.
 
-> **Note** — in *culling-debug* mode, redrawn tiles are tinted red after the cache write, so cache hits (untinted) and misses (tinted) are visible while moving the scene.
+### Measured gain
+
+On the [test scene](../tests/test.c) — mostly static, with a single moving arrow — at `2560 × 1440` on an M5 Pro (20 GPU cores), the cache cuts the GPU frame time from **1.69 ms** to **1.11 ms** (−34 %). The gain scales with how much of the screen stays static: a fully static scene approaches the cost of a full-screen texture copy, and a fully moving scene pays the extra cache write on every tile.
+
+> **Note** — in *culling-debug* mode, dirty tiles are tinted red and clean (cached) tiles green, so cache hits and misses are visible while moving the scene.
 
 ---
 

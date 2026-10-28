@@ -117,8 +117,10 @@ size_t od_min_memory_size(void);
 //                               the 1x font (32px) is the default; on a retina screen the 1x text appears
 //                               blurry unless you also call od_set_font_scale() with the framebuffer scale
 //      [cache]                 if true, a persistent tile cache skips the fragment work of unchanged tiles.
-//                               opt-in : the cache is a full-screen RGBA16Float texture (8 bytes per pixel,
-//                               up to ~128 MiB at the 4096x4096 max resolution)
+//                               opt-in : the cache is a full-screen texture in the backbuffer format
+//                               (4 bytes per pixel, up to ~64 MiB at the 4096x4096 max resolution).
+//                               on a mostly static 1440p scene : 1.69 ms -> 1.11 ms of GPU time (M5 Pro, 20 cores).
+//                               the sRGB backbuffer path is not tested yet (no sRGB setup available)
 //      [atlas]
 //          [width]             width of all textures in the array, if 0 (undefined) the array won't be created
 //          [height]

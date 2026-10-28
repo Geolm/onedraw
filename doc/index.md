@@ -47,9 +47,9 @@ The whole binning phase runs **on the GPU** as a short chain of compute kernels 
 | **exclusive scan** | A prefix-sum over the predicate mask computes a compact slot for each visible command. |
 | **region bin** | Scatters the visible, order-preserving indices into each region's list. |
 | **tile bin** | For every tile, walks its region's list and appends the matching commands to the per-tile linked list. |
-| **write ICB** | Counts the active tiles and writes the indirect draw buffer. |
+| **write indirect args** | Counts the tiles to shade and the tiles to copy, and writes the two indirect draw buffers. |
 
-Because every tile with at least one command is appended to a list of tiles to render, the **indirect draw** rasterizes *only* the active tiles — no full-screen pass, and no CPU work after `od_end_frame()`.
+Because every tile with at least one command is appended to a list of tiles to render, the **indirect draw** rasterizes *only* the tiles that need it — no full-screen pass, and no CPU work after `od_end_frame()`. With the [tile cache](part1.md) on, only the tiles that changed this frame are shaded; unchanged tiles are appended to a second list and redrawn from the cache by a second indirect draw.
 
 ### Key constants
 

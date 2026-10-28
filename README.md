@@ -10,6 +10,7 @@
 ### Features
 * **Single draw call rendering** – as the name suggests, all primitives are drawn in one draw call.
 * **Hierarchical tile-based binning** – the compute shader processes only the primitives that influence each tile, reducing wasted work.
+* **Tile cache** – opt-in via the `cache` flag of `onedraw_def`: unchanged tiles are redrawn from a full-screen cache texture instead of being re-shaded (4 extra bytes per pixel). On the mostly-static 1440p test scene (M5 Pro, 20 GPU cores) the GPU frame time drops from 1.69 ms to 1.11 ms (−34 %).
 * **Shader-based alpha blending** – all blending operations are handled in the shader, no framebuffer read/write required.
 * **Anti-aliasing** – smooth edges using signed distance functions.
 * **Lightweight and minimal** – drop-in library with minimal dependencies.

@@ -211,17 +211,16 @@ struct vs_out
 {
     float4 pos [[position]];
     uint16_t tile_index [[flat]];
-    uint8_t dirty [[flat]];
 };
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// vertex shader
+// vertex shader, shared by the dirty tiles (indirect command buffer) and the clean tiles (indirect draw) :
+// only the tile index list bound on buffer(1) differs
 // ---------------------------------------------------------------------------------------------------------------------------
 vertex vs_out tile_vs(uint instance_id [[instance_id]],
                       uint vertex_id [[vertex_id]],
                       constant draw_cmd_arguments& input [[buffer(0)]],
-                      constant uint16_t* tile_indices [[buffer(1)]],
-                      device uint8_t* dirty [[buffer(2)]])
+                      constant uint16_t* tile_indices [[buffer(1)]])
 {
     vs_out out;
 
@@ -240,8 +239,6 @@ vertex vs_out tile_vs(uint instance_id [[instance_id]],
     out.pos = float4(clipspace_pos.xy, 0.f, 1.0f);
     out.tile_index = tile_index;
 
-    out.dirty = input.cache ? dirty[tile_index] : 1u;
-
     return out;
 }
 
@@ -254,24 +251,8 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
 {
     constexpr sampler s_linear(address::clamp_to_zero, filter::linear );
 
-    if (!in.dirty)
-    {
-        half4 cache_lookup = input.cache_texture.read(uint2(in.pos.xy));
-        if (input.culling_debug)
-            return mix(cache_lookup, half4(0.h, 1.h, 0.h, 1.h), 0.5h);
-            
-        return cache_lookup;
-    }
-
     half4 output = input.culling_debug ? half4(0.f, 0.f, 1.0f, 1.0f) : half4(input.clear_color);
     uint32_t node_index = tiles.head[in.tile_index];
-    if (node_index == INVALID_INDEX)
-    {
-        // a drawn tile always has commands, but keep the cache consistent if this ever fires
-        if (input.cache)
-            input.cache_texture.write(output, uint2(in.pos.xy));
-        return output;
-    }
 
     float previous_distance;
     half4 previous_color;
@@ -544,4 +525,17 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
     }
 
     return output;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// clean tiles : one texel fetch of the last shaded result, no command walk
+// the read is decoded by the texture format (sRGB or raw) and re-encoded by the ROP on store,
+// which returns the exact bytes the tile was last drawn with
+// ---------------------------------------------------------------------------------------------------------------------------
+fragment half4 clean_fs(vs_out in [[stage_in]],
+                        constant draw_cmd_arguments& input [[buffer(0)]])
+{
+    half4 cached = input.cache_read.read(uint2(in.pos.xy));
+
+    return input.culling_debug ? mix(cached, half4(0.h, 1.h, 0.h, 1.h), 0.5h) : cached;
 }
