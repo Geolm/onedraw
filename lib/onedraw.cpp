@@ -1059,10 +1059,12 @@ struct onedraw* od_init(onedraw_def* def)
         return nullptr;
     }
 
-    r->commands.buffer.Init(r->device, sizeof(draw_command) * MAX_COMMANDS);
-    r->commands.colors.Init(r->device, sizeof(draw_color) * MAX_COMMANDS);
+    // sized on LAST_COMMAND, not MAX_COMMANDS : the region lists are terminated with LAST_COMMAND,
+    // which must never be a real command index, so the newest command is LAST_COMMAND - 1
+    r->commands.buffer.Init(r->device, sizeof(draw_command) * LAST_COMMAND);
+    r->commands.colors.Init(r->device, sizeof(draw_color) * LAST_COMMAND);
     r->commands.data_buffer.Init(r->device, sizeof(float) * MAX_DRAWDATA);
-    r->commands.aabb_buffer.Init(r->device, sizeof(quantized_aabb) * MAX_COMMANDS);
+    r->commands.aabb_buffer.Init(r->device, sizeof(quantized_aabb) * LAST_COMMAND);
     r->commands.clipshapes_buffer.Init(r->device, sizeof(clip_shape) * MAX_CLIPS);
     r->tiles.counters_buffer = r->device->newBuffer(sizeof(counters), MTL::ResourceStorageModePrivate);
     r->tiles.nodes = r->device->newBuffer(sizeof(tile_node) * MAX_NODES_COUNT, MTL::ResourceStorageModePrivate);
@@ -1359,7 +1361,7 @@ void od_get_stats(struct onedraw* r, od_stats* stats)
     gpu_mem += r->commands.draw_arg.GetTotalSize();
     gpu_mem += r->font.texture->allocatedSize();
     gpu_mem += r->font.glyphs->allocatedSize();
-    gpu_mem += r->rasterizer.atlas->allocatedSize();
+    gpu_mem += (r->rasterizer.atlas != nullptr) ? r->rasterizer.atlas->allocatedSize() : 0;
     gpu_mem += r->regions.indices->allocatedSize();
     gpu_mem += r->regions.predicate->allocatedSize();
     gpu_mem += r->regions.scan->allocatedSize();
