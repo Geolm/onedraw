@@ -90,7 +90,7 @@ typedef struct onedraw_def
 
 } onedraw_def;
 
-typedef uint32_t draw_color; // color is expected to be B8G8R8A8 and in sRGB color space
+typedef uint32_t draw_color; // color is expected to be A8R8G8B8 and in sRGB color space
 
 #ifdef __cplusplus
 extern "C" {
@@ -247,11 +247,8 @@ float od_text_width(struct onedraw* r, const char* text);
 //-----------------------------------------------------------------------------------------------------------------------------
 // Sets the scale factor applied to the built-in font (glyphs, bearings and advances)
 //      [scale]     scale factor, 1.0 = the native size of the baked atlas (32px)
-//
-// The built-in font atlas is baked at 1x resolution, on a high-dpi display (e.g. a retina screen)
-// the text will appear smaller relative to the rest of the scene unless the scale is set to
-// the framebuffer scale. Pass sapp_dpi_scale() and update it when the window is resized
-// (moving the window between screens of different scale changes it).
+// 
+// Warning : this variable is store in frame params, it cannot change in a frame
 void od_set_font_scale(struct onedraw* r, float scale);
 
 //-----------------------------------------------------------------------------------------------------------------------------
