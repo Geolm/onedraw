@@ -14,7 +14,7 @@
 * **Shader-based alpha blending** – all blending operations are handled in the shader, no framebuffer read/write required.
 * **Anti-aliasing** – smooth edges using signed distance functions.
 * **Lightweight and minimal** – drop-in library with minimal dependencies.
-* **Baked font** – ready-to-use text rendering (custom fonts are planned).
+* **Baked font** – ready-to-use text rendering; the pre-build step can bake a custom font instead ([Custom font](#custom-font)).
 * **Wide shape support** – box, blurred box, rectangle, oriented box/rectangle, triangle, triangle ring, disc, circle, ellipse, ellipse ring, arc, sector, sector ring, Bézier curves (quadratic & cubic), textured quad, oriented textured quad.
 * **Dashed shapes** – dashed variants of line, ring, box, oriented box, ellipse ring and triangle ring, with configurable dash length, gap, phase and round/flat caps.
 * **Gradient fills** – radial gradient disc and two-color capsule.

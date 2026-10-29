@@ -15,7 +15,7 @@ The default atlas is baked at 1x (24 px), so on a high-dpi display (e.g. a retin
 * `od_set_font_scale()` applies a scale factor to the glyph size, bearings, advances, and the `od_text_height()` / `od_text_width()` measurements. Pass `sapp_dpi_scale()` (2.0 on a retina display) and update it when the window is resized, since the scale can change when the window is moved between displays. The 1x atlas is stretched to that scale, so edges stay slightly soft.
 * `onedraw_def.high_dpi` selects a second, 2x-resolution atlas (baked at 48 px) that is sampled at native retina size, giving crisper text. Set it in `od_init()` when targeting a high-dpi display and keep `od_set_font_scale()` at 1.0.
 
-We plan to extend the API to let users provide their own fonts. As for SDF fonts, we are not opposed to them, but there is currently no widely accepted standard (for instance, `stb_truetype` only exports distance values, which can introduce artifacts). Simplicity is a core design goal of this project, and we want to avoid forcing users to rely on specific atlas generation tools.
+A different font can be baked with the pre-build step (see the [Custom font](../README.md#custom-font) section of the README); a *runtime* API to let users provide their own fonts is still planned. As for SDF fonts, we are not opposed to them, but there is currently no widely accepted standard (for instance, `stb_truetype` only exports distance values, which can introduce artifacts). Simplicity is a core design goal of this project, and we want to avoid forcing users to rely on specific atlas generation tools.
 
 ## Textured quad
 
