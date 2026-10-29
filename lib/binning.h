@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t binning_shader_size = 38480;
+static const size_t binning_shader_size = 39008;
 static const char binning_shader[] =
     "#include <metal_stdlib>\n"
     "#ifndef __COMMON_H__\n"
@@ -779,6 +779,7 @@ static const char binning_shader[] =
     "kernel void exclusive_scan(constant draw_cmd_arguments& input [[buffer(0)]],\n"
     "                           device const uint8_t* predicate [[buffer(1)]],\n"
     "                           device uint16_t* scan [[buffer(2)]],\n"
+    "                           device uint16_t* regions_indices [[buffer(3)]],\n"
     "                           threadgroup uint16_t* simd_totals [[threadgroup(0)]],\n"
     "                           threadgroup uint16_t* simd_offsets [[threadgroup(1)]],\n"
     "                           uint tid_in_tg [[thread_index_in_threadgroup]],\n"
@@ -832,6 +833,17 @@ static const char binning_shader[] =
     "        uint idx = thread_base_idx + i;\n"
     "        if (idx < input.num_commands) \n"
     "            scan[region_offset + idx] += thread_offset;\n"
+    "    }\n"
+    "\n"
+    "    // write the region list terminator : tile_bin stops at LAST_COMMAND, so the positions\n"
+    "    // past the last visible command keep their previous content, only the terminator is refreshed\n"
+    "    if (thread_index == 0)\n"
+    "    {\n"
+    "        uint16_t total = 0;\n"
+    "        for (uint g = 0; g < num_simd_groups; ++g)\n"
+    "            total += simd_totals[g];\n"
+    "        if (total < input.num_commands)\n"
+    "            regions_indices[region_offset + total] = LAST_COMMAND;\n"
     "    }\n"
     "}\n"
     "\n"

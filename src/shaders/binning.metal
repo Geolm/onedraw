@@ -540,6 +540,7 @@ kernel void predicate(constant draw_cmd_arguments& input [[buffer(0)]],
 kernel void exclusive_scan(constant draw_cmd_arguments& input [[buffer(0)]],
                            device const uint8_t* predicate [[buffer(1)]],
                            device uint16_t* scan [[buffer(2)]],
+                           device uint16_t* regions_indices [[buffer(3)]],
                            threadgroup uint16_t* simd_totals [[threadgroup(0)]],
                            threadgroup uint16_t* simd_offsets [[threadgroup(1)]],
                            uint tid_in_tg [[thread_index_in_threadgroup]],
@@ -593,6 +594,17 @@ kernel void exclusive_scan(constant draw_cmd_arguments& input [[buffer(0)]],
         uint idx = thread_base_idx + i;
         if (idx < input.num_commands) 
             scan[region_offset + idx] += thread_offset;
+    }
+
+    // write the region list terminator : tile_bin stops at LAST_COMMAND, so the positions
+    // past the last visible command keep their previous content, only the terminator is refreshed
+    if (thread_index == 0)
+    {
+        uint16_t total = 0;
+        for (uint g = 0; g < num_simd_groups; ++g)
+            total += simd_totals[g];
+        if (total < input.num_commands)
+            regions_indices[region_offset + total] = LAST_COMMAND;
     }
 }
 

@@ -725,7 +725,6 @@ void od_bin_commands(struct onedraw* r)
     MTL::BlitCommandEncoder* blit_encoder = r->command_buffer->blitCommandEncoder();
     blit_encoder->fillBuffer(r->tiles.counters_buffer, NS::Range(0, r->tiles.counters_buffer->length()), 0);
     blit_encoder->fillBuffer(r->tiles.head, NS::Range(0, r->tiles.head->length()), 0xff);
-    blit_encoder->fillBuffer(r->regions.indices, NS::Range(0, r->regions.indices->length()), 0xff);
     blit_encoder->endEncoding();
 
 
@@ -826,6 +825,7 @@ void od_bin_commands(struct onedraw* r)
                                                       SIMD_GROUP_SIZE, MAX_THREADS_PER_THREADGROUP);
 
     compute_encoder->setComputePipelineState(r->regions.exclusive_scan_pso);
+    compute_encoder->setBuffer(r->regions.indices, 0, 3);
     compute_encoder->setBuffer(r->regions.scan, 0, 2);
     compute_encoder->setThreadgroupMemoryLength(simd_group_count * sizeof(uint16_t), 0);
     compute_encoder->setThreadgroupMemoryLength(simd_group_count * sizeof(uint16_t), 1);

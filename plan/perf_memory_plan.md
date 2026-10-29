@@ -42,9 +42,16 @@ no buffer and no work to the averaged frames, so the numbers equal the pre-fix b
 ## Step 2 : remove the per-frame `regions.indices` clear
 
 - Today `od_bin_commands` fills the whole `regions.indices` buffer with `0xff` every frame (`onedraw.cpp:728`) only so `tile_bin` finds a terminator : 7.5 MiB/frame at 1440p, 17 MiB at 4K.
-- The scan knows each region's visible count : write a single terminator at `region_offset + count` when `count < num_commands` (the `for i < num_commands` bound already covers the full case).
+- The scan knows each region's visible count : thread 0 of `exclusive_scan` sums the simdgroup totals already in threadgroup memory and writes `LAST_COMMAND` at `region_offset + count` when `count < num_commands` (the `for i < num_commands` bound already covers the full case). The host binds `regions.indices` to the `exclusive_scan` dispatch and drops the blit fill.
 - After step 4 (head kept in a register and always written), the `tiles.head` clear can go too.
-- Expected : binning time down, no memory change.
+- Measured, same machine and scene, reference identical : the fill sits in the blit encoder, outside the binning sample, so the mechanical win is on the gpu total, no memory change.
+
+| cache | gpu | binning | rasterization | gpu memory |
+|-------|-----|---------|---------------|------------|
+| off   | 1.19 ms | 0.36 ms | 0.60 ms | 74661 kb |
+| on    | 0.60 ms | 0.36 ms | 0.20 ms | 89637 kb |
+
+(before : 1.91/1.04/0.80 and 1.72/0.94/0.72 ms, same memory). The measured binning drop (1.04 -> 0.36) exceeds what removing the fill explains on its own : this machine shows large run to run variance, treat the absolute numbers with care, the direction is solid.
 
 ## Step 3 : fuse predicate / exclusive scan / region bin into one kernel
 
