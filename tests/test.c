@@ -27,9 +27,10 @@ struct test_options
     bool compare;      // exit non-zero if the screenshot differs from the reference
     bool update_refs;  // rewrite the matching reference image from the current capture
     bool cache;
+    bool validate;     // enable the metal api validation layer
 };
 
-struct test_options options = {false, false, false, false};
+struct test_options options = {false, false, false, false, false};
 
 #define FROM_HTML(html)   ((html&0xff)<<16) | ((html>>16)&0xff) | (html&0x00ff00) | 0xff000000
 #define TEX_SIZE (256)
@@ -312,6 +313,8 @@ void slot(uint32_t index, float* cx, float* cy, float* radius)
 
 const float angle = 0.78539816f;
 float gpu_time_ms = 0.f;
+float binning_time_ms = 0.f;
+float rasterization_time_ms = 0.f;
 uint32_t num_frames = 0;
 uint32_t frame_count = 0;
 
@@ -533,6 +536,8 @@ void frame(void)
         // average all gpu time to get close to the "real" value as the scene is static
         num_frames++;
         gpu_time_ms += stats.gpu_time_ms;
+        binning_time_ms += stats.binning_time_ms;
+        rasterization_time_ms += stats.rasterization_time_ms;
 
         snprintf(string, 256, "GPU Memory usage : %zu kb", stats.gpu_memory_usage>>10);
         od_draw_text(renderer, 0, sapp_heightf() - od_text_height(renderer) * 2.f, string, miya_blue);
@@ -601,7 +606,35 @@ void event(const sapp_event* event)
 void cleanup(void)
 {
     if (renderer != NULL)
+    {
+        if (num_frames > 0)
+        {
+            const float avg_gpu = gpu_time_ms / (float)num_frames;
+            const float avg_binning = binning_time_ms / (float)num_frames;
+            const float avg_rasterization = rasterization_time_ms / (float)num_frames;
+
+            fprintf(stdout, "gpu time (last %u frames) : %.2f ms (binning %.2f ms, rasterization %.2f ms)\n",
+                    num_frames, avg_gpu, avg_binning, avg_rasterization);
+
+            if (options.validate)
+                fprintf(stdout, "validation : clean\n");
+
+            if (options.autoexit && (avg_binning > 0.f || avg_rasterization > 0.f))
+            {
+                // the fine timings are only measured when the counter sample buffer exists, in which case
+                // each part must be positive and fit in the global buffer time (the tolerance covers the
+                // tick->seconds conversion error); the sum is not checked, encoders can overlap
+                if ((avg_gpu <= 0.f) || (avg_binning <= 0.f) || (avg_rasterization <= 0.f) ||
+                    (avg_binning > avg_gpu * 1.05f + 0.00001f) || (avg_rasterization > avg_gpu * 1.05f + 0.00001f))
+                {
+                    fprintf(stderr, "gpu time check failed : expected 0 < binning, rasterization <= global gpu time\n");
+                    exit(1);
+                }
+            }
+        }
+
         od_terminate(renderer);
+    }
     free(renderer);
     renderer = NULL;
 }
@@ -620,6 +653,7 @@ sapp_desc sokol_main(int argc, char* argv[])
     flag_bool_var(&options.compare, "compare", false, "exit non-zero if the screenshot differs from the reference");
     flag_bool_var(&options.update_refs, "update-refs", false, "rewrite the matching reference image from the current capture");
     flag_bool_var(&options.cache, "cache", false, "enable the tile cache");
+    flag_bool_var(&options.validate, "validate", false, "enable the metal api validation layer");
 
     if (!flag_parse(argc, argv))
     {
@@ -627,6 +661,11 @@ sapp_desc sokol_main(int argc, char* argv[])
         flag_print_options(stderr);
         exit(1);
     }
+
+    // must be set before the metal device is created in sapp_run; the layer aborts the process
+    // on any validation error, so reaching cleanup() means the whole run was clean
+    if (options.validate)
+        setenv("MTL_DEBUG_LAYER", "1", 1);
     return (sapp_desc) 
     {
         .width = 1280,

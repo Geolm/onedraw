@@ -34,6 +34,7 @@ constexpr uint32_t TESSELATION_STACK_MAX = 1024U;
 constexpr float COLINEAR_THRESHOLD = .1f;
 constexpr uint32_t MAX_SCREEN_SIZE = (UINT8_MAX + 1U) * TILE_SIZE;   // 4096
 constexpr uint32_t MAX_CLIP_DEPTH = 16U;
+constexpr uint32_t STATS_AVERAGE_FRAMES = 60U;
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // Templates
@@ -133,12 +134,30 @@ typedef struct cubic_bezier {vec2 c0, c1, c2, c3;} cubic_bezier;
 static_assert(sizeof(alphabet) == default_font_size, "baked font layout mismatch");
 static_assert(sizeof(alphabet) == default_font_highdpi_size, "baked font layout mismatch");
 
+struct gpu_timer
+{
+    _Atomic(float) last = 0.f;
+    float accumulated {0.f};
+    float average {0.f};
+};
+
+static void gpu_timer_end_frame(gpu_timer* t, uint32_t frame_index)
+{
+    t->accumulated += atomic_load(&t->last);
+    if (frame_index % STATS_AVERAGE_FRAMES == 0)
+    {
+        t->average = t->accumulated / (float)STATS_AVERAGE_FRAMES;
+        t->accumulated = 0.f;
+    }
+}
+
 struct onedraw
 {
     MTL::Device* device;
     MTL::CommandQueue* command_queue;
     MTL::CommandBuffer* command_buffer;
     dispatch_semaphore_t semaphore;
+    MTL::CounterSampleBuffer* sample_buffer {nullptr};
 
     struct
     {
@@ -240,9 +259,10 @@ struct onedraw
     {
         uint32_t peak_num_draw_cmd {0};
         uint32_t num_draw_data {0};
-        _Atomic(float) gpu_time;
-        float average_gpu_time {0.f};
-        float accumulated_gpu_time {0.f};
+        gpu_timer total;
+        gpu_timer binning;
+        gpu_timer rasterization;
+        double seconds_per_tick {0.0};
         uint32_t frame_index {0};
     } stats;
 
@@ -581,10 +601,8 @@ void od_build_pso(struct onedraw* r)
             return;
         }
 
-        MTL::ArgumentEncoder* indirectArgumentEncoder = pWriteIcbFunction->newArgumentEncoder(1);
-        r->tiles.indirect_arg = r->device->newBuffer(indirectArgumentEncoder->encodedLength(), MTL::ResourceStorageModeShared);
+        r->tiles.indirect_arg = r->device->newBuffer(2 * sizeof(MTL::DrawPrimitivesIndirectArguments), MTL::ResourceStorageModeShared);
 
-        indirectArgumentEncoder->release();
         pWriteIcbFunction->release();
 
         r->regions.binning_pso = create_pso(r, pLibrary, "region_bin");
@@ -768,7 +786,19 @@ void od_bin_commands(struct onedraw* r)
     const uint32_t simd_group_count = MAX_THREADS_PER_THREADGROUP / SIMD_GROUP_SIZE;
     const uint32_t threads_for_commands = optimal_num_threads(r->commands.count, SIMD_GROUP_SIZE, MAX_THREADS_PER_THREADGROUP);
 
-    MTL::ComputeCommandEncoder* compute_encoder = r->command_buffer->computeCommandEncoder();
+    MTL::ComputeCommandEncoder* compute_encoder = nullptr;
+    if (r->sample_buffer != nullptr)
+    {
+        MTL::ComputePassDescriptor* pass_desc = MTL::ComputePassDescriptor::alloc()->init();
+        MTL::ComputePassSampleBufferAttachmentDescriptor* attachment = pass_desc->sampleBufferAttachments()->object(0);
+        attachment->setSampleBuffer(r->sample_buffer);
+        attachment->setStartOfEncoderSampleIndex(0);
+        attachment->setEndOfEncoderSampleIndex(1);
+        compute_encoder = r->command_buffer->computeCommandEncoder(pass_desc);
+        pass_desc->release();
+    }
+    else
+        compute_encoder = r->command_buffer->computeCommandEncoder();
 
     if (r->cache)
     {
@@ -859,6 +889,15 @@ void od_flush(struct onedraw* r, void* drawable)
     cd->setClearColor(MTL::ClearColor(r->rasterizer.clear_color.x, r->rasterizer.clear_color.y, r->rasterizer.clear_color.z, r->rasterizer.clear_color.w));
     cd->setStoreAction(MTL::StoreActionStore);
 
+    const bool timed = (r->sample_buffer != nullptr) && (r->commands.count != 0);
+    if (timed)
+    {
+        MTL::RenderPassSampleBufferAttachmentDescriptor* attachment = renderPassDescriptor->sampleBufferAttachments()->object(0);
+        attachment->setSampleBuffer(r->sample_buffer);
+        attachment->setStartOfVertexSampleIndex(2);
+        attachment->setEndOfFragmentSampleIndex(3);
+    }
+
     MTL::RenderCommandEncoder* render_encoder = r->command_buffer->renderCommandEncoder(renderPassDescriptor);
     if (r->commands.count)
     {
@@ -903,7 +942,38 @@ void od_flush(struct onedraw* r, void* drawable)
         UNUSED_VARIABLE(pCmd);
         dispatch_semaphore_signal( r->semaphore );
 
-        atomic_store(&r->stats.gpu_time, (float)(pCmd->GPUEndTime() - pCmd->GPUStartTime()));
+        atomic_store(&r->stats.total.last, (float)(pCmd->GPUEndTime() - pCmd->GPUStartTime()));
+
+        if (timed)
+        {
+            NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+
+            NS::Data* samples = r->sample_buffer->resolveCounterRange(NS::Range(0, 4));
+            const MTL::CounterResultTimestamp* s = (const MTL::CounterResultTimestamp*)samples->bytes();
+            const bool valid = (samples->length() >= 4 * sizeof(MTL::CounterResultTimestamp)) &&
+                               (s[0].timestamp != MTL::CounterErrorValue) && (s[1].timestamp != MTL::CounterErrorValue) &&
+                               (s[2].timestamp != MTL::CounterErrorValue) && (s[3].timestamp != MTL::CounterErrorValue) &&
+                               (s[1].timestamp >= s[0].timestamp) && (s[3].timestamp >= s[2].timestamp) &&
+                               (s[1].timestamp <= s[3].timestamp);
+
+            // the timestamp counter ticks on the gpu core clock, which varies in frequency,
+            // so the tick -> seconds rate is derived per frame from the buffer span itself :
+            // the same gpu interval expressed in seconds and in counter ticks
+            if (valid && s[3].timestamp > s[0].timestamp)
+                r->stats.seconds_per_tick = (double)(pCmd->GPUEndTime() - pCmd->GPUStartTime()) / (double)(s[3].timestamp - s[0].timestamp);
+
+            const float binning_time = valid ? (float)((double)(s[1].timestamp - s[0].timestamp) * r->stats.seconds_per_tick) : 0.f;
+            const float raster_time = valid ? (float)((double)(s[3].timestamp - s[2].timestamp) * r->stats.seconds_per_tick) : 0.f;
+            atomic_store(&r->stats.binning.last, binning_time);
+            atomic_store(&r->stats.rasterization.last, raster_time);
+
+            pool->release();
+        }
+        else
+        {
+            atomic_store(&r->stats.binning.last, 0.f);
+            atomic_store(&r->stats.rasterization.last, 0.f);
+        }
 
         if (take_screenshot)
         {
@@ -1011,9 +1081,34 @@ struct onedraw* od_init(onedraw_def* def)
     cache_placeholder_desc->release();
 
     r->semaphore = dispatch_semaphore_create(DynamicBuffer<float>::MaxInflightBuffers);
-    r->stats.average_gpu_time = 0.f;
-    r->stats.accumulated_gpu_time = 0.f;
-    atomic_store(&r->stats.gpu_time, 0.f);
+
+    // a single counter sample buffer is enough : od_flush ends with waitUntilCompleted(), frames never overlap on the gpu
+    NS::Array* counter_sets = r->device->counterSets();
+    MTL::CounterSet* timestamp_set = nullptr;
+    for (NS::UInteger i = 0; i < counter_sets->count(); ++i)
+    {
+        MTL::CounterSet* set = counter_sets->object<MTL::CounterSet>(i);
+        if (set->name()->isEqualToString(MTL::CommonCounterSetTimestamp))
+        {
+            timestamp_set = set;
+            break;
+        }
+    }
+    if (timestamp_set != nullptr)
+    {
+        MTL::CounterSampleBufferDescriptor* sample_desc = MTL::CounterSampleBufferDescriptor::alloc()->init();
+        sample_desc->setCounterSet(timestamp_set);
+        sample_desc->setStorageMode(MTL::StorageModeShared);
+        sample_desc->setSampleCount(4);
+        r->sample_buffer = r->device->newCounterSampleBuffer(sample_desc, nullptr);
+        sample_desc->release();
+        if (r->sample_buffer == nullptr)
+            od_log(r, "warning: couldn't create the counter sample buffer, binning/rasterization time will report 0");
+    }
+    else
+        od_log(r, "warning: the device exposes no timestamp counter set, binning/rasterization time will report 0");
+
+    r->stats.seconds_per_tick = 0.0;
 
     r->font.high_dpi = def->high_dpi;
 
@@ -1188,12 +1283,9 @@ void od_end_frame(struct onedraw* r, void* drawable)
     r->commands.count = (uint32_t)r->commands.buffer.GetNumElements();
     r->stats.peak_num_draw_cmd = max(r->stats.peak_num_draw_cmd, r->commands.count);
     r->stats.num_draw_data = (uint32_t)r->commands.data_buffer.GetNumElements();
-    r->stats.accumulated_gpu_time += atomic_load(&r->stats.gpu_time);
-    if (r->stats.frame_index%60 == 0)
-    {
-        r->stats.average_gpu_time = r->stats.accumulated_gpu_time / 60.f;
-        r->stats.accumulated_gpu_time = 0;
-    }
+    gpu_timer_end_frame(&r->stats.total, r->stats.frame_index);
+    gpu_timer_end_frame(&r->stats.binning, r->stats.frame_index);
+    gpu_timer_end_frame(&r->stats.rasterization, r->stats.frame_index);
     r->regions.num_groups = (r->commands.count + SIMD_GROUP_SIZE - 1) / SIMD_GROUP_SIZE;
 
     od_flush(r, drawable);
@@ -1202,7 +1294,7 @@ void od_end_frame(struct onedraw* r, void* drawable)
 //----------------------------------------------------------------------------------------------------------------------------
 float od_get_average_gputime(struct onedraw* r)
 {
-    return r->stats.average_gpu_time;
+    return r->stats.total.average;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1241,6 +1333,7 @@ void od_terminate(struct onedraw* r)
     SAFE_RELEASE(r->font.texture);
     SAFE_RELEASE(r->font.glyphs);
     SAFE_RELEASE(r->screenshot.texture);
+    SAFE_RELEASE(r->sample_buffer);
     if (r->semaphore != nullptr)
     {
         dispatch_release(r->semaphore);
@@ -1254,7 +1347,9 @@ void od_get_stats(struct onedraw* r, od_stats* stats)
     stats->frame_index = r->stats.frame_index;
     stats->num_draw_cmd = r->commands.count;
     stats->peak_num_draw_cmd = r->stats.peak_num_draw_cmd;
-    stats->gpu_time_ms = r->stats.average_gpu_time * 1000.f;
+    stats->gpu_time_ms = r->stats.total.average * 1000.f;
+    stats->binning_time_ms = r->stats.binning.average * 1000.f;
+    stats->rasterization_time_ms = r->stats.rasterization.average * 1000.f;
     size_t gpu_mem = r->commands.aabb_buffer.GetTotalSize();
     gpu_mem += r->commands.bin_output_arg.GetTotalSize();
     gpu_mem += r->commands.buffer.GetTotalSize();

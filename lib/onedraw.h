@@ -36,8 +36,8 @@
 #include <stdbool.h>
 
 #define ONEDRAW_MAJOR_VERSION   (2)
-#define ONEDRAW_MINOR_VERSION   (1)
-#define ONEDRAW_PATCH           (0)
+#define ONEDRAW_MINOR_VERSION   (2)
+#define ONEDRAW_PATCH           (1)
 
 //----------------------------------------------------------------------------------------------------------------------------
 // Structures
@@ -58,6 +58,8 @@ typedef struct od_stats
     uint32_t peak_num_draw_cmd;
     size_t gpu_memory_usage;
     float gpu_time_ms;
+    float binning_time_ms;
+    float rasterization_time_ms;
 } od_stats;
 
 typedef struct od_dash_style
