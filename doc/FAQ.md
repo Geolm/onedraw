@@ -12,7 +12,7 @@ Instead, the library remains a **single C++ source file** to add to your build s
 ### What are the by-design limits of the renderer?
 We support up to :
 * 65536 draw commands (including begin/end group)
-* 256 clip rects
+* 256 clip shapes (rect, rounded rect, disc)
 * max viewport resolution of 4096x4096
 * 256 slices texture array
 

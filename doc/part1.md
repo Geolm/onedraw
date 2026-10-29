@@ -22,7 +22,7 @@ The section below explains how each one is handled so that nothing that touches 
 
 ## Anti-aliasing
 
-The width of the anti-aliasing region (set by the user) must be accounted for during the intersection test.
+The width of the anti-aliasing region must be accounted for during the intersection test.
 
 ![Growing the test box for anti-aliasing](anti-aliasing.png)
 
