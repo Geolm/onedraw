@@ -47,6 +47,7 @@ Don't modify this file.
 - Avoid redundant passes over large data.
 - Optimize only based on measured/profiled improvements; no speculative complexity.
 - Never sacrifice correctness or maintainability for unmeasured optimization.
+- Profile GPU while the LLM is running doesn't produce useful numbers. Ask the use to run the gpu profiling.
 
 ## Build & Test
 
