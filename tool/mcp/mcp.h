@@ -36,6 +36,30 @@ static inline float mcp_tx_y(mcp_transform t, float y) { return t.offy + y * t.s
 static inline float mcp_tx_s(mcp_transform t, float v) { return v * t.scale; }
 
 //----------------------------------------------------------------------------------------------------------------------------
+// Tool commands (the `cmd` field of a tools/call, plan §4)
+//----------------------------------------------------------------------------------------------------------------------------
+enum mcp_cmd
+{
+    MCP_CMD_CLEAR = 0,
+    MCP_CMD_DRAW,
+    MCP_CMD_UPDATE,
+    MCP_CMD_REMOVE,
+    MCP_CMD_SCREENSHOT
+};
+
+// Result of parsing a tools/call `arguments` object : on success the scene has already been
+// mutated (clear / draw / update / remove), screenshot only fills [shot_w]/[shot_h]
+typedef struct mcp_parse_result
+{
+    enum mcp_cmd cmd;
+    uint32_t index;    // draw : first assigned index, update / remove : the target index
+    uint32_t count;    // draw : number of ops appended
+    uint32_t live;     // number of alive ops after the command
+    uint32_t shot_w;   // screenshot : requested output pixels, 0 = omitted (canvas rect)
+    uint32_t shot_h;
+} mcp_parse_result;
+
+//----------------------------------------------------------------------------------------------------------------------------
 // Scene (plan §4, D4)
 //
 // A flat, ordered, index-addressable list of draw ops. `draw` appends an op and returns its
@@ -128,9 +152,12 @@ bool mcp_scene_remove(mcp_scene* s, uint32_t index);
 // Number of alive ops
 uint32_t mcp_scene_live_count(const mcp_scene* s);
 
-// Copies [str] into the string pool and returns a pointer valid until the buffer is reallocated
-// returns NULL on allocation failure
+// Copies the NUL-terminated [str] into the string pool and returns a pointer valid until the
+// buffer is reallocated, NULL on allocation failure
 const char* mcp_scene_intern(mcp_scene* s, const char* str);
+
+// Like mcp_scene_intern for a string that isn't NUL-terminated (e.g. a parsed JSON value)
+const char* mcp_scene_intern_len(mcp_scene* s, const char* data, size_t len);
 
 // Returns false if the alive ops have unbalanced groups or clips
 bool mcp_scene_is_balanced(const mcp_scene* s);
@@ -174,5 +201,19 @@ bool mcp_scene_is_balanced(const mcp_scene* s);
 //   push_clipdisc         0 cx, 1 cy, 2 radius
 //   pop_clip              -
 bool mcp_scene_replay(struct onedraw* r, const mcp_scene* s, mcp_transform t);
+
+//----------------------------------------------------------------------------------------------------------------------------
+// Tool-JSON parsing (parse.c, sj.h + sv.h, plan §4/§6)
+//
+// [buf] must be writable (sj mutates the input) and NUL-terminated by the caller.
+// On failure [err] is filled with a message and, for JSON errors, the line/col from
+// sj_location; on success it is left untouched.
+//----------------------------------------------------------------------------------------------------------------------------
+// Parses a #rrggbb or #rrggbbaa string into a draw_color (A8R8G8B8, sRGB).
+bool mcp_parse_color(const char* str, draw_color* out);
+
+// Parses one tools/call `arguments` object and applies it to the scene (clear / draw /
+// update / remove mutate the scene immediately, screenshot only fills the result)
+bool mcp_parse_tool_call(mcp_scene* s, char* buf, size_t len, mcp_parse_result* out, char* err, size_t err_size);
 
 #endif

@@ -104,24 +104,42 @@ uint32_t mcp_scene_live_count(const mcp_scene* s)
 //----------------------------------------------------------------------------------------------------------------------------
 const char* mcp_scene_intern(mcp_scene* s, const char* str)
 {
-    size_t len = strlen(str) + 1;
-    if (s->text_len + len > s->text_capacity)
+    return mcp_scene_intern_len(s, str, strlen(str));
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+const char* mcp_scene_intern_len(mcp_scene* s, const char* data, size_t len)
+{
+    size_t total = len + 1;
+    if (s->text_len + total > s->text_capacity)
     {
         size_t new_capacity = s->text_capacity ? s->text_capacity : MCP_SCENE_INITIAL_TEXT;
-        while (new_capacity < s->text_len + len)
+        while (new_capacity < s->text_len + total)
             new_capacity *= 2;
 
         char* text = (char*) realloc(s->text, new_capacity);
         if (text == NULL)
             return NULL;
 
+        // the pool layout (offsets) is unchanged, only the base may move : rebase the pointers
+        // held by the text ops, or they would dangle after the move
+        if (s->text != NULL)
+        {
+            for (uint32_t i = 0; i < s->count; i++)
+            {
+                if (s->ops[i].type == MCP_OP_TEXT && s->ops[i].text != NULL)
+                    s->ops[i].text = text + ((size_t) (s->ops[i].text - s->text));
+            }
+        }
+
         s->text = text;
         s->text_capacity = new_capacity;
     }
 
     char* at = s->text + s->text_len;
-    memcpy(at, str, len);
-    s->text_len += len;
+    memcpy(at, data, len);
+    at[len] = '\0';
+    s->text_len += total;
     return at;
 }
 

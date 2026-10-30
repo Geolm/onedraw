@@ -47,6 +47,7 @@ target_link_libraries(minimal
 add_executable(mcp
     ./lib/onedraw.cpp
     ./tool/mcp/main.c
+    ./tool/mcp/parse.c
     ./tool/mcp/scene.c
     ./tool/mcp/window.mm
     ./tests/sokol_app.mm
@@ -65,6 +66,16 @@ target_link_libraries(mcp
     "-framework Foundation"
     "-framework QuartzCore"
 )
+
+# --- Parse check (headless, no GPU) ---
+add_executable(parse_check
+    ./tool/mcp/parse.c
+    ./tool/mcp/scene.c
+    ./tests/parse_check.c
+    ./tests/parse_check_stubs.c
+)
+
+target_include_directories(parse_check PRIVATE ./third_party)
 
 # --- Test ---
 add_executable(test
