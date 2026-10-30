@@ -615,6 +615,26 @@ static inline void add_node(device tiles_data& output, device counters& counter,
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+static inline bool covers_tile(ushort2 tile_xy, quantized_aabb cmd_aabb, aabb tile, draw_command cmd,
+                               uint32_t color, bool in_group, constant float* data)
+{
+    if (cmd.type != primitive_aabox)
+        return false;
+
+    // box size 1 cannot occluder anything
+    if ((cmd_aabb.max_x <= tile_xy.x) || (cmd_aabb.max_y <= tile_xy.y))
+        return false;
+
+    if ((cmd.fillmode != fill_solid) || (cmd.clip_index != 0) || ((color & 0xff000000u) != 0xff000000u) || in_group)
+        return false;
+
+    float2 center = float2(data[0], data[1]);
+    float2 shrunk = float2(data[2], data[3]) - float2(data[4], data[4]) - float2(0.01f, 0.01f);
+
+    return all(center - shrunk < tile.min) && all(tile.max < center + shrunk);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // for each tile of the screen, we traverse the list of commands of the region and if the command has an impact on the tile
 // we add the command to the linked list of the tile
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -642,6 +662,7 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
 
     float aabb_margin = 0.f;
     sdf_operator group_op = op_overwrite;
+    bool in_group = false;
     constant const uint16_t* indices = &regions_indices[region_index * input.num_commands];
 
     uint tile_hash = input.frame_seed;
@@ -689,11 +710,13 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
         {
             aabb_margin = 0.f;
             group_op = op_overwrite;
+            in_group = false;
         }
         else if (cmd.type == end_group)
         {
             aabb_margin = data[0];
             group_op = (sdf_operator) cmd.extra;
+            in_group = true;
         }
 
         // a group only counts when one of its primitives counts : the end node is deferred until the
@@ -731,6 +754,9 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
             }
 
             add_node(output, counter, input.max_nodes, cmd_index, head);
+
+            if (covers_tile(tile_xy, cmd_aabb, tile_aabb, cmd, input.colors[cmd_index], in_group, data))
+                break;
         }
     }
 

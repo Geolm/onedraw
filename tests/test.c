@@ -624,6 +624,33 @@ void frame(void)
     }
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, string, miya_brown);
 
+    slot(23, &cx, &cy, &radius);
+    {
+        const uint32_t grid_colors[] = {miya_green, miya_yellow, miya_pink, miya_red, miya_blue, miya_light_green};
+        const uint32_t num_cols = 6;
+        const uint32_t num_rows = 5;
+
+        for (uint32_t j = 0; j < num_rows; j++)
+        {
+            for (uint32_t i = 0; i < num_cols; i++)
+            {
+                float gx = cx + ((float)i - (float)(num_cols - 1) * .5f) * radius * .36f;
+                float gy = cy + ((float)j - (float)(num_rows - 1) * .5f) * radius * .3f;
+                uint32_t color = grid_colors[(i + j) % 6u];
+
+                if ((i + j) & 1u)
+                    od_draw_disc(renderer, gx, gy, radius * .1f, color);
+                else
+                    od_draw_box(renderer, gx - radius * .1f, gy - radius * .1f, gx + radius * .1f, gy + radius * .1f, 0.f, color);
+            }
+        }
+
+        od_draw_box(renderer, cx - radius * 1.1f, cy - radius * .8f, cx + radius * 1.1f, cy + radius * 1.4f, radius * .2f, miya_blue);
+        od_draw_box(renderer, cx - radius * 1.0f, cy - radius * .7f, cx + radius * 1.0f, cy + radius * 1.3f, 0.f, miya_white);
+        od_draw_disc(renderer, cx + cosf(angle) * radius * .3f, cy - sinf(angle) * radius * .3f, radius * .33f, miya_red);
+    }
+    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "occlusion", miya_brown);
+
     od_stats stats;
     od_get_stats(renderer, &stats);
 

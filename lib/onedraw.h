@@ -37,7 +37,7 @@
 
 #define ONEDRAW_MAJOR_VERSION   (2)
 #define ONEDRAW_MINOR_VERSION   (2)
-#define ONEDRAW_PATCH           (2)
+#define ONEDRAW_PATCH           (3)
 
 //----------------------------------------------------------------------------------------------------------------------------
 // Structures

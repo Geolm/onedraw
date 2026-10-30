@@ -20,19 +20,22 @@ The fine GPU timings (`binning_time_ms`, `rasterization_time_ms`) are implemente
 `--validate` enables the Metal validation layer.
 
 Baseline, MacBook Pro 2x (1280x720 window -> 2560x1440 framebuffer, 160x90 tiles, 10x6 = 60 regions), averaged over the full session
-(14448 / 10744 frames), beefed scene of 06c0ec3 / 08b1028 (peak 2044 commands), current tree with steps 1 to 4 :
+(19888 / 25974 frames), current tree with steps 1 to 6, step 5 implemented, slot 23 scene (peak 2086 commands) :
 
 | cache | gpu | binning | rasterization | gpu memory |
 |-------|-----|---------|---------------|------------|
-| off   | 2.82 ms | 0.41 ms | 2.40 ms | 63141 kb (61.7 MiB) |
-| on    | 1.04 ms | 0.45 ms | 0.59 ms | 78117 kb (76.3 MiB) |
+| off   | 2.02 ms | 0.45 ms | 1.57 ms | 61087 kb (59.7 MiB) |
+| on    | 1.52 ms | 0.59 ms | 0.92 ms | 76063 kb (74.3 MiB) |
 
 The scene beef up invalidated the pre-beef baseline (1.91 / 1.04 / 0.80 ms off, 1.72 / 0.94 / 0.72 ms on, at 74661 / 89637 kb,
 scene ~790 commands, 40 frame averages ; the few "out of draw commands" lines were the step 1 regression frame) and the absolute
 numbers of the step 2 to 4 tables below, measured pre-beef : they stay as history, the baseline is re-anchored here.
 `gpu_memory_usage` does not move with the scene density (the buffers are sized from `LAST_COMMAND` and `MAX_NODES_COUNT`, not the peak) :
 the memory only changes in step 3 (the two region buffers) and step 7 (the pool sized from the peak).
-Rasterization is now the dominant cost (2.40 of the 2.82 ms, cache off) : the cache cut it 2.40 -> 0.59 ms, steps 5 and 9 attack the rest.
+The slot 23 scene of step 5 invalidated the previous anchor (2.82 / 1.04 ms at 63141 / 78117 kb) : same treatment as the 06c0ec3
+beef up, the old numbers stay as history in the step tables. Step 5 then re-anchored it once more, the pre-5 numbers stay in the step 5 table.
+
+Rasterization is now the dominant cost (1.57 of the 2.02 ms, cache off) : the cache cut it 1.57 -> 0.92 ms, steps 7 and 9 attack the rest.
 
 ## Step 1 : bug fixes
 
@@ -207,42 +210,54 @@ which helps group-heavy scenes the test scene doesn't have.
 
 ## Step 5 : occlusion culling in `tile_bin`
 
-Skipped, not implemented : the test scene has no occlusion (the non-colliding background of 06c0ec3 hides nothing), so the step would have
-nothing to measure. The spec stays below for a scene with stacked opaque content.
+Scene : slot 23 of the test scene - a grid of small shapes hidden by a rounded box "window", a sharp box inside it for the border, and a disc
+on top, all opaque, unclipped, ungrouped (the slot was tuned after the first draft). This invalidated the step 0 / 6 baseline : the scene is the
+new anchor, re-anchored at step 0.
+
+The cover is an `aabox` only, tested from its own parameters, rounded or not : a window fully covering some tiles is the main UI use case,
+disc / triangle / capsule covers are too niche to pay for. `commands_aabb` cannot be used for the test : it is grown by the aa / outline
+margin, which is not opaque and would cull under the box edge.
 
 - `tile_bin` walks the commands top-most first. When an added command fully covers the tile with alpha 1, add it and `break` : everything below is
-  hidden in this tile.
-- Rasterization is the dominant cost on the beefed scene (2.40 of the 2.82 ms, cache off) : every culled node is fewer pixels to shade. The
+  hidden in this tile. Rasterization is the dominant cost (1.83 of the 2.39 ms, cache off) : every culled node is fewer pixels to shade. The
   check stays a few cheap tests, ordered so almost every command leaves at the first (integer) test, keeping the binning cost negligible :
-  1. type is `primitive_aabox`, `primitive_disc`, `primitive_triangle`, or `primitive_oriented_box` with `width == 0` (capsule)
+  1. type is `primitive_aabox`
   2. `cmd_aabb.max_x > tile_xy.x && cmd_aabb.max_y > tile_xy.y`
   3. `fillmode == fill_solid`
   4. color alpha 255
   5. `clip_index == 0`
-  6. not inside a group (between an `end_group` and its `begin_group` in the reverse walk) ; groups are not handled
-  7. the containment test below
+  6. not inside a group (between an `end_group` and its `begin_group` in the reverse walk) ; a group shape blends through the group result, its own
+     alpha never applies
+  7. the box contains the tile (below)
 - Test 2 is an exact necessary condition, independent of the aabb margin : covering tile `k` means reaching its far edge `16(k+1)`, so the quantized
   max is at least `k+1`. It rejects every single-tile command (the ones accepted without an intersection test) and the last column / row of tiles of
   any command, with two integer compares on values already loaded. The min side is not tested : the clamp to 0 at the screen edge makes it a special case.
-- No `aa_width` margin is needed : `tile_fs` gives alpha 1 wherever `distance <= 0`, the anti-aliased fringe is outside the shape. Testing the tile
-  corners (not the pixel centers) already leaves half a pixel ; use a small epsilon (inside by 0.01 px) so binning and the fragment SDF agree.
-  All four shapes are convex : the four tile corners inside means the whole tile is inside.
-
-| Shape | Containment test | Cost |
-|-------|------------------|------|
-| box | tile inside the box shrunk by its corner radius on both axes (exact when the radius is 0, conservative otherwise) | 4 compares |
-| disc | farthest tile corner `max(abs(center - tile.min), abs(center - tile.max))` within the radius ; only possible from a ~11.3 px radius (tile half-diagonal) | 1 squared length |
-| capsule | the four tile corners within the radius of the segment (`data[5]`) | 4 point-segment distances |
-| triangle | `is_aabb_inside_triangle` (already used for hollow triangles), against the sharp triangle : conservative with a roundness | 4 x 3 edge functions |
-
-- Not covered on purpose : groups, ellipse, pie, arc, oriented box with a width, quads, chars, blurred box, hollow and gradient fills.
+- No `aa_width` margin is needed : `tile_fs` gives alpha 1 wherever `distance <= 0`, the anti-aliased fringe is outside the shape. The box is tested
+  shrunk by its corner radius (exact when the radius is 0, conservative when rounded : a tile inside the rounding band is not culled) with a 0.01 px
+  inward epsilon, so the binning and the fragment SDF agree. 4 compares, no SDF.
+- Not covered on purpose : disc, triangle, capsule, groups, ellipse, pie, arc, oriented box with a width, quads, chars, blurred box, hollow and
+  gradient fills.
 - Gains : fewer nodes, fewer SDF evaluations per pixel, shorter `tile_bin` loops (the `break` skips the rest of the region list for that tile), more
   cache hits (changes under an opaque panel no longer dirty the tile).
-- Measure on the test scene and on a UI-like scene (stacked opaque panels) ; keep the step only if the frame time drops.
-- Risk : `mix(prev, c, 1.0h)` is not guaranteed to round to exactly `c`, a few pixels can move by one 8-bit step ; check the PSNR, regenerate the
-  references only if the change is intentional and visually identical.
-- Test : for each of the four shapes, an opaque one covering other shapes renders the same as before ; plus the cases that must not cull
-  (translucent color, clip, inside a group, partial coverage).
+- Risk : `mix(prev, c, 1.0h)` is not guaranteed to round to exactly `c`, a few pixels can move by one 8-bit step ; in practice the reference stayed
+  pixel-identical, no update needed.
+- Test : the scene covers the fully covered tiles (the hidden grid) and the partial-coverage edge / corner tiles (the window crossing tile borders,
+  the rounded corners) that must not cull. The must-not-cull alpha case is the big translucent box of slot 2 over the background field : a broken
+  alpha check would erase the field through it and fail the PSNR gate. The clip / group exclusions are conservative and safe in that direction :
+  a clipped or grouped box that fully covers a tile is opaque where it covers, so culling under it is visually a no-op either way.
+
+Measured, same machine and scene, full session (19888 / 25974 frames), reference identical, `--validate` clean :
+
+| cache | gpu | binning | rasterization | gpu memory |
+|-------|-----|---------|---------------|------------|
+| off   | 2.02 ms | 0.45 ms | 1.57 ms | 61087 kb |
+| on    | 1.52 ms | 0.59 ms | 0.92 ms | 76063 kb |
+
+(before : 2.39 / 0.56 / 1.83 and 1.49 / 0.59 / 0.90 ms, same memory). Cache off : rasterization 1.83 -> 1.57 ms (-14 %), the frame
+2.39 -> 2.02 ms : the culled grid nodes under the window are fewer pixels to shade and the `break` shortens the tile lists. Cache on :
+flat within the machine's variance (1.49 -> 1.52) - slot 23 is static, its tiles are clean after the first frame and redrawn by
+`clean_fs`, the culling only saves the first hundred frames of the session. The step is kept : the frame time drops where the
+rasterization dominates (cache off), with no regression on the cache-on path.
 
 ## Step 6 : two frames in flight
 
@@ -291,7 +306,6 @@ and the gpu now running back to back frames instead of with a per frame idle gap
 - Replace one 8-byte node per command by chunks, e.g. 16 bytes = `next` + six `uint16` command indices (~2.7 bytes per command instead of 8).
 - `tile_bin` fills the current chunk in registers, from the last slot down (reverse traversal), and prepends it when full ; unused slots hold a sentinel skipped by the fragment shader.
 - About 3x less node memory for the same capacity (or the same capacity in ~11 MiB), and ~6x fewer dependent loads in `tile_fs`.
-- Size the pool from the peak measured in step 0 ; do it after step 4 and 5 since both change the node count.
 
 ## Step 8 : minor
 
@@ -335,7 +349,7 @@ the `tile_bin` work is wasted.
 | 2 no indices clear | low | - | binning |
 | 4 tile_bin traffic | low | - | binning |
 | 3 fused scan | medium | -11 MiB | binning |
-| 5 occlusion culling (skipped, no occlusion in the scene) | - | - | - |
+| 5 occlusion culling (aabox cover) | medium | - | rasterization (cache off) |
 | 6 two frames in flight | medium | -2 MiB | frame time |
 | 7 chunked nodes | high | up to -21 MiB | rasterization |
 | 8 minor | low | small | small |
