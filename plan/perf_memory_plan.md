@@ -142,7 +142,7 @@ kernel void region_bin(constant draw_cmd_arguments& input [[buffer(0)]],
 
 - `od_bin_commands` : the three dispatches become one, same shape as today's scan :
   `threads_per_region = optimal_num_threads(count, SIMD_GROUP_SIZE, MAX_THREADS_PER_THREADGROUP)`,
-  `setThreadgroupMemoryLength((SIMD_GROUP_SIZE + 1) * sizeof(uint32_t), 0)`,
+  `setThreadgroupMemoryLength((SIMD_GROUP_SIZE + 8) * sizeof(uint32_t), 0)` (33 entries used, padded : the length must be a multiple of 16 bytes, the metal debug layer asserts on it),
   `dispatchThreads(MTL::Size(threads_per_region, regions.count, 1), MTL::Size(threads_per_region, 1, 1))`, buffers 0 (draw args) and 1 (`regions.indices`).
 - Delete `regions.predicate_pso`, `regions.exclusive_scan_pso`, `regions.predicate`, `regions.scan` and their create / release / stats lines
   (`od_build_pso`, the null check of `od_bin_commands`, `od_resize`, `od_terminate`, `od_get_stats`).
@@ -162,7 +162,8 @@ kernel void region_bin(constant draw_cmd_arguments& input [[buffer(0)]],
 - Memory : -11.25 MiB at 1440p, -25 MiB at 4K (`gpu_memory_usage`).
 - `binning_time_ms` down ; reference images unchanged (`--compare`), `--validate` clean.
 - Regression test : a frame with more than 1024 commands spread over several regions (exercises the carry between steps), and a count that is not a
-  multiple of 32. The test scene peaks at 843 commands (one loop step), so the multi-step carry is not covered by the current test.
+  multiple of 32. The test scene peaks at 843 commands (one loop step), so the carry is not covered by the current test ;
+  checked manually with a temporary 1000-discs scene (peak 1844 commands, `--autoexit --validate`, cache on and off) : clean.
 
 Measured, same machine and scene, reference identical :
 

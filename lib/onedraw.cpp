@@ -810,7 +810,7 @@ void od_bin_commands(struct onedraw* r)
     compute_encoder->setBuffer(r->commands.draw_arg.GetBuffer(r->stats.frame_index), 0, 0);
     compute_encoder->setBuffer(r->regions.indices, 0, 1);
     compute_encoder->useResource(r->commands.aabb_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
-    compute_encoder->setThreadgroupMemoryLength((SIMD_GROUP_SIZE + 1) * sizeof(uint32_t), 0);
+    compute_encoder->setThreadgroupMemoryLength((SIMD_GROUP_SIZE + 8) * sizeof(uint32_t), 0);    // 33 entries used, 160 bytes : must be a multiple of 16
     compute_encoder->dispatchThreads(MTL::Size(threads_per_region, r->regions.count, 1), MTL::Size(threads_per_region, 1, 1));
 
     // tile binning
