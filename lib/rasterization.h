@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t rasterization_shader_size = 27678;
+static const size_t rasterization_shader_size = 27615;
 static const char rasterization_shader[] =
     "#include <metal_stdlib>\n"
     "#define RASTERIZER_SHADER\n"
@@ -191,10 +191,8 @@ static const char rasterization_shader[] =
     "    uint32_t num_tile_height;\n"
     "    uint32_t num_region_width;\n"
     "    uint32_t num_region_height;\n"
-    "    uint32_t num_groups;\n"
     "    float aa_width;\n"
     "    float2 screen_div;\n"
-    "    uint32_t num_elements_per_thread;\n"
     "    bool culling_debug;\n"
     "    bool srgb_backbuffer;\n"
     "    bool cache;\n"

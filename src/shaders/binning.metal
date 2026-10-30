@@ -506,131 +506,66 @@ kernel void hash_commands(constant draw_cmd_arguments& input [[buffer(0)]],
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// for each draw command, test aabb vs aabb of the region and put 1 if visible (otherwise 0)
-// ---------------------------------------------------------------------------------------------------------------------------
-kernel void predicate(constant draw_cmd_arguments& input [[buffer(0)]],
-                      device uint8_t* predicate [[buffer(1)]],
-                      uint index [[thread_position_in_grid]])
-{
-    if (index >= input.num_commands)
-        return;
-
-    // reverse order for the tile linked list 
-    uint cmd_index = input.num_commands - index - 1;
-
-    quantized_aabb aabb = input.commands_aabb[cmd_index];
-    aabb.min_x /= REGION_SIZE; aabb.min_y /= REGION_SIZE;
-    aabb.max_x /= REGION_SIZE; aabb.max_y /= REGION_SIZE;
-
-    for(uint y=0; y<input.num_region_height; ++y)
-    {
-        for(uint x=0; x<input.num_region_width; ++x)
-        {
-            bool visible = (x >= aabb.min_x && x <= aabb.max_x && y >= aabb.min_y && y <= aabb.max_y);
-            uint region_index = y * input.num_region_width + x;
-            uint region_offset = region_index * input.num_commands;
-            predicate[region_offset + index] = visible ? 1 : 0;
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------------------------------------------------------
-// one-pass exclusive scan, using simd_prefix, threadgroup memory
-// ---------------------------------------------------------------------------------------------------------------------------
-kernel void exclusive_scan(constant draw_cmd_arguments& input [[buffer(0)]],
-                           device const uint8_t* predicate [[buffer(1)]],
-                           device uint16_t* scan [[buffer(2)]],
-                           device uint16_t* regions_indices [[buffer(3)]],
-                           threadgroup uint16_t* simd_totals [[threadgroup(0)]],
-                           threadgroup uint16_t* simd_offsets [[threadgroup(1)]],
-                           uint tid_in_tg [[thread_index_in_threadgroup]],
-                           uint2 tg_size [[threads_per_threadgroup]],
-                           uint simd_group_id [[simdgroup_index_in_threadgroup]],
-                           uint2 index [[thread_position_in_grid]])
-{
-    const uint threads_per_line = tg_size.x;
-    const uint region_index = index.y;
-    const uint region_offset = region_index * input.num_commands;
-    const uint thread_index = tid_in_tg;
-
-    // Compute where this thread starts reading/writing
-    const uint thread_base_idx = thread_index * input.num_elements_per_thread;
-
-    // Local prefix sum
-    uint16_t local_sum = 0;
-
-    for (uint i = 0; i < input.num_elements_per_thread; ++i) 
-    {
-        uint idx = thread_base_idx + i;
-        if (idx < input.num_commands)
-        {
-            scan[region_offset + idx] = local_sum;
-            local_sum += predicate[region_offset + idx];
-        }
-    }
-
-    // Compute SIMD-group total and store
-    uint16_t group_sum = simd_sum(local_sum);
-    if (simd_is_first()) 
-        simd_totals[simd_group_id] = group_sum;
-
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-
-    // Prefix sum across SIMD group totals
-    const uint num_simd_groups = (threads_per_line + SIMD_GROUP_SIZE - 1) / SIMD_GROUP_SIZE;
-    if (thread_index < num_simd_groups) 
-    {
-        uint16_t v = simd_totals[thread_index];
-        simd_offsets[thread_index] = simd_prefix_exclusive_sum(v);
-    }
-
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    uint16_t simd_offset = simd_offsets[simd_group_id];
-
-    // Final output write
-    uint16_t thread_offset = simd_offset + simd_prefix_exclusive_sum(local_sum);
-    for (uint i = 0; i < input.num_elements_per_thread; ++i) 
-    {
-        uint idx = thread_base_idx + i;
-        if (idx < input.num_commands) 
-            scan[region_offset + idx] += thread_offset;
-    }
-
-    // write the region list terminator : tile_bin stops at LAST_COMMAND, so the positions
-    // past the last visible command keep their previous content, only the terminator is refreshed
-    if (thread_index == 0)
-    {
-        uint16_t total = 0;
-        for (uint g = 0; g < num_simd_groups; ++g)
-            total += simd_totals[g];
-        if (total < input.num_commands)
-            regions_indices[region_offset + total] = LAST_COMMAND;
-    }
-}
-
-// ---------------------------------------------------------------------------------------------------------------------------
-// bin commands for region
+// bin commands for region : fused predicate / exclusive scan / bin, one threadgroup per region
+// the threadgroup walks the command list in steps of its size, each thread tests one command per step,
+// neighbour threads read neighbour aabbs (coalesced), every region threadgroup streams the same aabb
+// buffer which stays in cache. the lists are identical to the 3-kernel chain : reverse order
+// (top-most first) and a LAST_COMMAND terminator, tile_bin stops there
 // ---------------------------------------------------------------------------------------------------------------------------
 kernel void region_bin(constant draw_cmd_arguments& input [[buffer(0)]],
                        device uint16_t* regions_indices [[buffer(1)]],
-                       device const uint16_t* scan [[buffer(2)]],
-                       device const uint8_t* predicate [[buffer(3)]],
-                       uint2 index [[thread_position_in_grid]])
+                       threadgroup uint32_t* simd_offsets [[threadgroup(0)]],          // SIMD_GROUP_SIZE + 1 entries
+                       uint thread_index [[thread_index_in_threadgroup]],
+                       uint2 tg_size [[threads_per_threadgroup]],
+                       uint simd_group_id [[simdgroup_index_in_threadgroup]],
+                       uint simd_lane [[thread_index_in_simdgroup]],
+                       uint num_simd_groups [[simdgroups_per_threadgroup]],
+                       uint2 group_position [[threadgroup_position_in_grid]])
 {
-    uint cmd_index = index.x;
-    uint region_index = index.y;
-
-    if (cmd_index >= input.num_commands)
-        return;
-
+    uint region_index = group_position.y;
+    uint2 region_xy = uint2(region_index % input.num_region_width, region_index / input.num_region_width);
     uint region_offset = region_index * input.num_commands;
+    uint running_total = 0;
 
-    if (predicate[region_offset + cmd_index] == 1)
+    for (uint base = 0; base < input.num_commands; base += tg_size.x)
     {
-        uint16_t position = scan[region_offset + cmd_index];
-        if (position < input.num_commands)
-            regions_indices[region_offset + position] = input.num_commands - cmd_index - 1;
+        uint index = base + thread_index;
+        uint cmd_index = input.num_commands - index - 1;    // reverse order for the tile linked list
+        bool visible = false;
+        if (index < input.num_commands)
+        {
+            quantized_aabb aabb = input.commands_aabb[cmd_index];
+            visible = all(region_xy >= uint2(aabb.min_x, aabb.min_y) / REGION_SIZE) &&
+                      all(region_xy <= uint2(aabb.max_x, aabb.max_y) / REGION_SIZE);
+        }
+
+        uint lane_offset = simd_prefix_exclusive_sum((uint) visible);
+        uint simd_count = simd_sum((uint) visible);
+        if (simd_is_first())
+            simd_offsets[simd_group_id] = simd_count;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        if (simd_group_id == 0)
+        {
+            uint count = (simd_lane < num_simd_groups) ? simd_offsets[simd_lane] : 0;
+            uint total = simd_sum(count);
+            simd_offsets[simd_lane] = simd_prefix_exclusive_sum(count);
+            if (simd_lane == 0)
+                simd_offsets[SIMD_GROUP_SIZE] = total;
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        if (visible)
+            regions_indices[region_offset + running_total + simd_offsets[simd_group_id] + lane_offset] = (uint16_t) cmd_index;
+
+        running_total += simd_offsets[SIMD_GROUP_SIZE];
+        threadgroup_barrier(mem_flags::mem_threadgroup);   // simd_offsets is rewritten by the next step
     }
+
+    // the terminator of the region list, tile_bin stops at LAST_COMMAND, so the positions
+    // past the last visible command keep their previous content
+    if (thread_index == 0 && running_total < input.num_commands)
+        regions_indices[region_offset + running_total] = LAST_COMMAND;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

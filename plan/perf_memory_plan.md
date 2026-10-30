@@ -162,7 +162,17 @@ kernel void region_bin(constant draw_cmd_arguments& input [[buffer(0)]],
 - Memory : -11.25 MiB at 1440p, -25 MiB at 4K (`gpu_memory_usage`).
 - `binning_time_ms` down ; reference images unchanged (`--compare`), `--validate` clean.
 - Regression test : a frame with more than 1024 commands spread over several regions (exercises the carry between steps), and a count that is not a
-  multiple of 32.
+  multiple of 32. The test scene peaks at 843 commands (one loop step), so the multi-step carry is not covered by the current test.
+
+Measured, same machine and scene, reference identical :
+
+| cache | gpu | binning | rasterization | gpu memory |
+|-------|-----|---------|---------------|------------|
+| off   | 1.00 ms | 0.31 ms | 0.63 ms | 63141 kb |
+| on    | 0.74 ms | 0.40 ms | 0.27 ms | 78117 kb |
+
+(before : 1.19/0.36/0.60 and 0.60/0.36/0.20 ms, 74661/89637 kb). Memory drops exactly the 11520 kb (11.25 MiB) of the two removed region buffers ;
+the time is within the machine's run to run variance. The step is kept for the memory and for one kernel instead of three.
 
 ## Step 4 : `tile_bin` traffic
 

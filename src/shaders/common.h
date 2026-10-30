@@ -182,10 +182,8 @@ typedef struct draw_cmd_arguments
     uint32_t num_tile_height;
     uint32_t num_region_width;
     uint32_t num_region_height;
-    uint32_t num_groups;
     float aa_width;
     float2 screen_div;
-    uint32_t num_elements_per_thread;
     bool culling_debug;
     bool srgb_backbuffer;
     bool cache;
