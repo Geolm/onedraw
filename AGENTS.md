@@ -59,6 +59,7 @@ Don't modify this file.
 - Run `./build/test --autoexit --compare` as the regression gate: it exits non-zero if PSNR falls below threshold.
 - After any intentional scene change, regenerate the reference with `./build/test --autoexit --update-refs` and commit the updated reference in the same change.
 - Every bug fix requires a regression test. Adding new tests is allowed.
+- Any change in the renderer (shaders, GPU resources, or their host-side setup) must run ./build/test --autoexit --validate and exit without errors (the metal validation layer aborts on the first violation).
 - Never modify/weaken tests to make them pass.
 - Verify tests actually run before claiming success.
 - Test behavior/results, not implementation details; don't enforce a specific implementation.
