@@ -16,7 +16,7 @@ A naïve command×tile pass could easily cost more than the actual rasterization
 
 The first optimization is to store an **AABB** (axis-aligned bounding box) per command and use it as a cheap pre-test before any heavier intersection math. The boxes are **quantized** to the tile resolution (16 px): each edge is a single byte holding a *tile* index (`0…255`), which also caps the viewport at 256 × 16 = 4096 px.
 
-The AABBs are also kept in a **separate buffer** from the draw commands, avoiding cache thrash and giving the predicate pass a tight, coalesced read.
+The AABBs are also kept in a **separate buffer** from the draw commands, avoiding cache thrash and giving the region bin pass a tight, coalesced read.
 
 ---
 
@@ -28,41 +28,39 @@ Even with AABB pre-tests, many commands still force each tile to do a lot of wor
 
 A region covers **16 × 16 tiles**, and each region keeps a list of the commands that affect it. When binning individual tiles, we only consider the commands from that region's list instead of all global commands.
 
-The catch: if we assign one thread per *region*, the pass is slow — there are few regions but many commands, and GPUs run best with a **large number of lightweight threads**, not a few heavy ones. So we **invert the process**: each thread handles a single command and adds it to every region its AABB touches. Doing that in parallel loses the guaranteed **command ordering**, which is critical in 2D rendering. That ordering problem is what the predicate + scan solves next.
+The catch: one thread per *region* would be too few threads — there are few regions but many commands, and GPUs run best with a **large number of lightweight threads**, not a few heavy ones. `onedraw` splits the difference: the region's list is built by **one threadgroup of up to 1,024 threads per region**, which walks the command list and keeps it in **command ordering** via a per-step prefix sum — the next section.
 
-## Predicate + exclusive scan
+## Fused region bin
 
-To restore order, we use the classic pattern:
+Earlier designs built each region's list with three separate kernels — a per-command **predicate**, an **exclusive scan**, and a **scatter** — going through two region-sized buffers. `onedraw` fuses all three into a **single kernel** (`region_bin`). One **threadgroup per region** (up to 1,024 threads, 32 waves) walks the command list in steps of its size; each thread tests one command per step, reading neighbour AABBs in a coalesced pattern so the (shared) AABB buffer stays in cache. The visibility is recomputed each step rather than stored, so there is no predicate or scan buffer to allocate.
 
-![Predicate + exclusive scan](predicate.png)
+![The fused region bin: one pass builds one ordered list](onepass-scan.png)
 
-* A **predicate** kernel evaluates the visibility of each command (one thread per command) and writes a `0` / `1` mask.
-* An **exclusive scan** turns that mask into a compact position for each visible command.
-* A scatter pass uses the mask + indices to write the visible commands into the region lists, in order.
+Each step runs the same three-stage compacting that the separate-kernel design needed — a test, a prefix sum, and a scatter:
 
-This keeps a **thread-per-command** model while filtering out invisible commands. The same sequence is applied for every region. With real values for one region, a visible command's scan value is exactly its slot in the compact list, and hidden commands fall through:
+![Test, scan, scatter — in draw order](predicate.png)
+
+* a **test** of the command's AABB against the region gives a `0` / `1` visibility,
+* an **exclusive scan** (the prefix sum below) turns the `1`s into a compact slot,
+* a **scatter** writes the visible commands into the region's list, in order.
+
+With real values for one region, a visible command's scan value is exactly its slot in the compact list, and hidden commands fall through:
 
 ![One region, with real values](scan-example.png)
 
-## One-pass exclusive scan
+The prefix sum runs in one dispatch per region, collapsed by two facts:
 
-Building a compact, ordered list from a per-command visibility mask is a textbook **exclusive scan**. The standard solution is *cascaded* — a block-level prefix sum, a scan over the per-block totals, then adding the offsets back — which means three or four kernel launches.
+1. **The scan is per region.** Each threadgroup is one region's line of threads. The list is built in steps of the threadgroup size, so each step's prefix fits in a dispatch of at most **1,024 threads** (a multiple of the 32-lane wavefront, which `simd_prefix_exclusive_sum` requires).
+2. **SIMD intrinsics collapse the middle level.** Each 32-lane wave reduces with `simd_sum` / `simd_prefix_exclusive_sum`, which operate on registers — no global-memory round trip and no extra kernel.
 
-![One-pass exclusive scan](onepass-scan.png)
+Inside each step the prefix sum runs four levels:
 
-`onedraw` does the whole thing in **one dispatch**, thanks to two facts:
+1. **Lane.** `simd_prefix_exclusive_sum` over the 32 lanes of a wave gives each command its in-wave offset.
+2. **Wave.** `simd_sum` hands every lane the wave's visible count; the first lane stores it to threadgroup memory. → **barrier**
+3. **Threadgroup.** The first `num_waves` lanes run `simd_prefix_exclusive_sum` over the per-wave totals to compute each wave's offset. → **barrier**
+4. **Combine.** Each visible command is scattered at `running_total + wave_offset + lane_offset`, where `running_total` carries the count from the previous step.
 
-1. **The scan is per region.** The kernel is dispatched as a `(threads_per_region, num_regions)` grid with a `(threads_per_region, 1)` threadgroup, so *each threadgroup is one region's line of threads*. With up to 65,536 commands and `num_elements_per_thread = ⌈count / 1024⌉`, a region's entire prefix fits in a single threadgroup of at most **1,024 threads** (a multiple of the 32-lane wavefront, which `simd_prefix_exclusive_sum` requires).
-2. **SIMD intrinsics collapse the middle level.** Within the threadgroup, each 32-lane wave reduces with `simd_sum` / `simd_prefix_exclusive_sum`, which operate on registers — no global-memory round trip and no extra kernel.
-
-Inside that single dispatch the kernel runs four levels:
-
-1. **Local (per thread).** Each thread walks its block of `num_elements_per_thread` elements, writing the running exclusive sum to `scan[]` and keeping `local_sum` — the visible count in its block.
-2. **Wave (32 lanes).** `simd_sum(local_sum)` hands every lane the sum of the whole wave; the first lane stores it to threadgroup memory. → **barrier**
-3. **Threadgroup (≤ 32 waves).** The first `num_waves` lanes run `simd_prefix_exclusive_sum` over the per-wave totals to compute each wave's offset. → **barrier**
-4. **Combine.** Every lane adds `wave_offset + simd_prefix_exclusive_sum(its local_sum)` to each element of its block.
-
-The only shared-memory traffic is the ≤ 32 per-wave totals, so a region's entire prefix sum finishes in one compute dispatch with two barriers. The following `region_bin` kernel then scatters each visible command into its region's slot at the scanned position — using a **reversed index** so that the later tile linked-list (built by prepending) ends up front-to-back.
+The only shared-memory traffic is the ≤ 32 per-wave totals. The `region_bin` writes indices in a **reversed** order (top-most first) and ends each list with a `LAST_COMMAND` terminator, so the output lists are byte-identical to the older three-kernel chain — but the predicate and scan buffers, and two kernel launches, are gone.
 
 You can look at the [binning shader](../src/shaders/binning.metal).
 

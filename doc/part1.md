@@ -42,7 +42,7 @@ Each begin/end group command carries a **global bounding box** that encompasses 
 
 ![Empty groups are cleaned per tile](group-empty.png)
 
-On the CPU side, `od_begin_group()` reserves one slot in the quantized-AABB buffer, every shape drawn while the group is open is merged into it, and `od_end_group()` copies the accumulated box onto the end command. On the GPU, the `tile_bin` kernel walks the (reverse-order) list while tracking the current group's extra margin, and a final `clean_list()` step drops any `begin`/`end` pair that wraps zero primitives for that tile.
+On the CPU side, `od_begin_group()` reserves one slot in the quantized-AABB buffer, every shape drawn while the group is open is merged into it, and `od_end_group()` copies the accumulated box onto the end command. On the GPU, the `tile_bin` kernel walks the (reverse-order) list while tracking the current group's extra margin. It defers a group's `end` command and only emits the `begin`/`end` pair once a primitive in the group actually reaches the tile, so a group that wraps zero primitives for that tile produces no nodes — no separate clean-up pass.
 
 ---
 
