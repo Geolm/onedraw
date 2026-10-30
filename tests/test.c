@@ -55,6 +55,12 @@ static const uint32_t miya_light_green = FROM_HTML(0xa1bf41);
 static const uint32_t miya_yellow = FROM_HTML(0xe3c054);
 
 //-----------------------------------------------------------------------------------------------------------------------------
+static inline draw_color patch_color_alpha(draw_color input, uint8_t alpha)
+{
+    return (input&0x00ffffff) | (alpha<<24);
+}  
+
+//-----------------------------------------------------------------------------------------------------------------------------
 static inline uint32_t lerp_color(uint32_t a, uint32_t b, float t)
 {
     int tt = (int)(t * 256.f);
@@ -435,7 +441,7 @@ void frame(void)
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "ring", miya_brown);
 
     slot(2, &cx, &cy, &radius);
-    od_draw_box(renderer, cx - radius, cy - radius*.5f, cx + radius, cy + radius*.5f, radius * 0.05f, miya_grey);
+    od_draw_box(renderer, cx - radius, cy - radius*.5f, cx + radius, cy + radius*.5f, radius * 0.05f, patch_color_alpha(miya_grey, 224));
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "box", miya_brown);
 
     slot(3, &cx, &cy, &radius);
@@ -449,12 +455,12 @@ void frame(void)
 
     slot(5, &cx, &cy, &radius);
     od_draw_oriented_box(renderer, cx + cosf(angle) * radius, cy - sinf(angle) * radius, cx - cosf(angle) * radius, cy + sinf(angle) * radius,
-                         radius * 0.5f, radius * 0.05f, miya_red);
+                         radius * 0.5f, radius * 0.05f, patch_color_alpha(miya_red, 224));
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "oriented_box", miya_brown);
 
     slot(6, &cx, &cy, &radius);
     od_draw_triangle(renderer, (float[]){cx, cy, cx - cosf(angle) * radius, cy + sinf(angle) * radius,
-                     cx + cosf(angle) * radius, cy +sinf(angle) * radius}, radius * 0.1f, miya_dark_green);
+                     cx + cosf(angle) * radius, cy +sinf(angle) * radius}, radius * 0.1f, patch_color_alpha(miya_dark_green, 224));
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "triangle", miya_brown);
 
     slot(7, &cx, &cy, &radius);
@@ -464,7 +470,7 @@ void frame(void)
 
     slot(8, &cx, &cy, &radius);
     od_draw_ellipse(renderer, cx + cosf(angle) * radius, cy - sinf(angle) * radius, cx - cosf(angle) * radius, cy + sinf(angle) * radius,
-                    radius, miya_yellow);
+                    radius, patch_color_alpha(miya_yellow, 224));
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "ellipse", miya_brown);
 
     slot(9, &cx, &cy, &radius);
@@ -493,23 +499,23 @@ void frame(void)
 
     slot(14, &cx, &cy, &radius);
     od_begin_group(renderer, true, radius * 0.25f, radius * 0.05f);
-    od_draw_disc(renderer, cx, cy, radius*0.25f, miya_light_green);
-    od_draw_disc(renderer, cx + cosf(angle) * radius * .5f, cy - sinf(angle) * radius * .5f, radius*0.25f, miya_light_green);
-    od_draw_box(renderer, cx-radius*.7f, cy-radius*.7f, cx-radius*.3f, cy+radius*.7f, 0.f, miya_yellow);
+    od_draw_disc(renderer, cx, cy, radius*0.25f, patch_color_alpha(miya_light_green, 224));
+    od_draw_disc(renderer, cx + cosf(angle) * radius * .5f, cy - sinf(angle) * radius * .5f, radius*0.25f, patch_color_alpha(miya_light_green, 224));
+    od_draw_box(renderer, cx-radius*.7f, cy-radius*.7f, cx-radius*.3f, cy+radius*.7f, 0.f, patch_color_alpha(miya_yellow, 224));
     od_end_group(renderer, miya_brown);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "smoothmin", miya_brown);
 
     slot(15, &cx, &cy, &radius);
     od_push_cliprect_rounded(renderer, cx - radius*.5f, cy - radius*.5f, cx + radius*.5f, cy + radius*.5f, radius*.25f);
-    od_draw_quad(renderer, cx-radius, cy-radius, cx, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 0, 0x7fffffff);
-    od_draw_quad(renderer, cx, cy-radius, cx+radius, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 1, 0x7fffffff);
-    od_draw_quad(renderer, cx-radius, cy, cx, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 2, 0x7fffffff);
-    od_draw_quad(renderer, cx, cy, cx+radius, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 3, 0x7fffffff);
+    od_draw_quad(renderer, cx-radius, cy-radius, cx, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 0, 0xafffffff);
+    od_draw_quad(renderer, cx, cy-radius, cx+radius, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 1, 0xafffffff);
+    od_draw_quad(renderer, cx-radius, cy, cx, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 2, 0xafffffff);
+    od_draw_quad(renderer, cx, cy, cx+radius, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 3, 0xafffffff);
     od_pop_clip(renderer);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "quad\nrounded clip", miya_brown);
 
     slot(16, &cx, &cy, &radius);
-    od_draw_oriented_quad(renderer, cx, cy, radius, radius*.5f, angle * 0.75f, (od_quad_uv){0.f, 0.f, 1.f, 0.5f}, 2, 0x7fffffff);
+    od_draw_oriented_quad(renderer, cx, cy, radius, radius*.5f, angle * 0.75f, (od_quad_uv){0.f, 0.f, 1.f, 0.5f}, 2, 0xafffffff);
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "oriented_quad", miya_brown);
 
     slot(17, &cx, &cy, &radius);
@@ -569,11 +575,12 @@ void frame(void)
         float ax = fmodf(s + (float) frame_count * sapp_widthf() * 0.01f, sapp_widthf() + 2.f * s) - s;
         float ay = sapp_heightf() * 0.295f;
 
-        od_begin_group(renderer, false, 0.f, 0.f);
-        od_draw_box(renderer, ax - s, ay - s * 0.12f, ax + s * 0.3f, ay + s * 0.12f, 0.f, miya_red);
+        od_begin_group(renderer, false, 0.f, 2.f);
+        draw_color arrow_color = patch_color_alpha(miya_red, 224);
+        od_draw_box(renderer, ax - s, ay - s * 0.12f, ax + s * 0.3f, ay + s * 0.12f, 0.f, arrow_color);
         // the pie's apex is at its center : put it at the tip (ax + 0.7s) and point the bisector back towards the shaft
-        od_draw_sector(renderer, ax + s * 0.7f, ay, s * 0.4f, 3.14159265f - 0.6f, 1.2f, miya_red);
-        od_end_group(renderer, miya_red);
+        od_draw_sector(renderer, ax + s * 0.6f, ay, s * 0.4f, 3.14159265f - 0.6f, 1.2f, arrow_color);
+        od_end_group(renderer, patch_color_alpha(miya_dark_grey, 224));
     }
 
     slot(22, &cx, &cy, &radius);
