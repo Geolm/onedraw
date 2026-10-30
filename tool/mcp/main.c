@@ -7,6 +7,9 @@
 
 #include "../../lib/onedraw.h"
 
+// tool/mcp/window.mm (AppKit shim, see that file)
+void mcp_set_window_points(int w, int h);
+
 struct onedraw* renderer;
 
 #define FROM_HTML(html)   ((html&0xff)<<16) | ((html>>16)&0xff) | (html&0x00ff00) | 0xff000000
@@ -52,6 +55,11 @@ void frame(void)
 {
     if (renderer == NULL)
         return;
+
+    // the stdin-driven window resize (T5) must run before sapp_acquire_swapchain() : that call
+    // returns a drawable of the *current* size, so a resize requested this frame has to land in
+    // the RESIZED event (od_resize + swapchain pool rebuild) before the next drawable is pulled,
+    // or od_end_frame would draw into a stale-size drawable (onedraw size assert)
 
     // fully obscured window : macOS provides no drawable (the nil drawable reads as a 0x0
     // swapchain and would fail onedraw's size assert), so skip the frame until visible again
