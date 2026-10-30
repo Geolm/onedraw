@@ -10,9 +10,7 @@ Figures below are for 2560x1440 (160x90 tiles, 10x6 = 60 regions) unless noted, 
 | Consumer (1440p)        | Size      | Notes                                                    |
 |-------------------------|-----------|----------------------------------------------------------|
 | `tiles.nodes`           | 32 MiB    | fixed, `MAX_NODES_COUNT` x 8 bytes                       |
-| `regions.indices`       | 7.5 MiB   | `regions.count * MAX_COMMANDS * 2`                       |
-| `regions.scan`          | 7.5 MiB   | `regions.count * MAX_COMMANDS * 2`                       |
-| `regions.predicate`     | 3.75 MiB  | `regions.count * MAX_COMMANDS * 1`                       |
+| `regions.indices`       | 7.5 MiB   | `regions.count * MAX_COMMANDS * 2` (`scan` / `predicate` removed in step 3) |
 | screenshot texture      | 14 MiB    | only with `allow_screenshot`                             |
 | CPU ring (x3)           | 6 MiB     | commands, colors, data, aabb, clips ; step 6 goes to x2  |
 
@@ -21,16 +19,20 @@ Figures below are for 2560x1440 (160x90 tiles, 10x6 = 60 regions) unless noted, 
 The fine GPU timings (`binning_time_ms`, `rasterization_time_ms`) are implemented (commit d709c04) and `./build/test --autoexit` prints them at exit ;
 `--validate` enables the Metal validation layer.
 
-Baseline, MacBook Pro 2x (1280x720 window -> 2560x1440 framebuffer, 160x90 tiles, 10x6 = 60 regions), averaged over the last 40 frames, scene ~790 commands :
+Baseline, MacBook Pro 2x (1280x720 window -> 2560x1440 framebuffer, 160x90 tiles, 10x6 = 60 regions), averaged over the full session
+(14448 / 10744 frames), beefed scene of 06c0ec3 / 08b1028 (peak 2044 commands), current tree with steps 1 to 4 :
 
 | cache | gpu | binning | rasterization | gpu memory |
 |-------|-----|---------|---------------|------------|
-| off   | 1.91 ms | 1.04 ms | 0.80 ms | 74661 kb (72.9 MiB) |
-| on    | 1.72 ms | 0.94 ms | 0.72 ms | 89637 kb (87.5 MiB) |
+| off   | 2.82 ms | 0.41 ms | 2.40 ms | 63141 kb (61.7 MiB) |
+| on    | 1.04 ms | 0.45 ms | 0.59 ms | 78117 kb (76.3 MiB) |
 
-The few "out of draw commands" lines are the step 1 regression frame (pads one command over the ring on
-frame 10, outside the averaged window). Recorded on the step 1 tree : the cap and the stats null check add
-no buffer and no work to the averaged frames, so the numbers equal the pre-fix baseline.
+The scene beef up invalidated the pre-beef baseline (1.91 / 1.04 / 0.80 ms off, 1.72 / 0.94 / 0.72 ms on, at 74661 / 89637 kb,
+scene ~790 commands, 40 frame averages ; the few "out of draw commands" lines were the step 1 regression frame) and the absolute
+numbers of the step 2 to 4 tables below, measured pre-beef : they stay as history, the baseline is re-anchored here.
+`gpu_memory_usage` does not move with the scene density (the buffers are sized from `LAST_COMMAND` and `MAX_NODES_COUNT`, not the peak) :
+the memory only changes in step 3 (the two region buffers) and step 7 (the pool sized from the peak).
+Rasterization is now the dominant cost (2.40 of the 2.82 ms, cache off) : the cache cut it 2.40 -> 0.59 ms, steps 5 and 9 attack the rest.
 
 ## Step 1 : bug fixes
 
@@ -162,8 +164,9 @@ kernel void region_bin(constant draw_cmd_arguments& input [[buffer(0)]],
 - Memory : -11.25 MiB at 1440p, -25 MiB at 4K (`gpu_memory_usage`).
 - `binning_time_ms` down ; reference images unchanged (`--compare`), `--validate` clean.
 - Regression test : a frame with more than 1024 commands spread over several regions (exercises the carry between steps), and a count that is not a
-  multiple of 32. The test scene peaks at 843 commands (one loop step), so the carry is not covered by the current test ;
-  checked manually with a temporary 1000-discs scene (peak 1844 commands, `--autoexit --validate`, cache on and off) : clean.
+  multiple of 32. The scene then peaked at 843 commands (one loop step, the carry not covered by the regular test), checked manually
+  with a temporary 1000-discs scene (peak 1844 commands, `--autoexit --validate`, cache on and off), clean ; the beefed scene now peaks
+  at 2044 commands, the carry is in the regular test.
 
 Measured, same machine and scene, reference identical :
 
@@ -204,10 +207,13 @@ which helps group-heavy scenes the test scene doesn't have.
 
 ## Step 5 : occlusion culling in `tile_bin`
 
+Skipped, not implemented : the test scene has no occlusion (the non-colliding background of 06c0ec3 hides nothing), so the step would have
+nothing to measure. The spec stays below for a scene with stacked opaque content.
+
 - `tile_bin` walks the commands top-most first. When an added command fully covers the tile with alpha 1, add it and `break` : everything below is
   hidden in this tile.
-- The binning pass is already ~40% of the frame : the check is limited to a few cheap shapes, and ordered so almost every command leaves at the
-  first (integer) test :
+- Rasterization is the dominant cost on the beefed scene (2.40 of the 2.82 ms, cache off) : every culled node is fewer pixels to shade. The
+  check stays a few cheap tests, ordered so almost every command leaves at the first (integer) test, keeping the binning cost negligible :
   1. type is `primitive_aabox`, `primitive_disc`, `primitive_triangle`, or `primitive_oriented_box` with `width == 0` (capsule)
   2. `cmd_aabb.max_x > tile_xy.x && cmd_aabb.max_y > tile_xy.y`
   3. `fillmode == fill_solid`
@@ -318,7 +324,7 @@ the `tile_bin` work is wasted.
 | 2 no indices clear | low | - | binning |
 | 4 tile_bin traffic | low | - | binning |
 | 3 fused scan | medium | -11 MiB | binning |
-| 5 occlusion culling | medium | nodes | rasterization |
+| 5 occlusion culling (skipped, no occlusion in the scene) | - | - | - |
 | 6 two frames in flight | medium | -2 MiB | frame time |
 | 7 chunked nodes | high | up to -21 MiB | rasterization |
 | 8 minor | low | small | small |
