@@ -43,6 +43,27 @@ target_link_libraries(minimal
     "-framework QuartzCore"
 )
 
+# --- MCP ---
+add_executable(mcp
+    ./lib/onedraw.cpp
+    ./tool/mcp/main.c
+    ./tests/sokol_app.mm
+)
+
+target_include_directories(mcp PRIVATE ./third_party)
+
+if(TARGET build_lib)
+    add_dependencies(mcp build_lib)
+endif()
+
+target_link_libraries(mcp
+    "-framework Metal"
+    "-framework MetalKit"
+    "-framework AppKit"
+    "-framework Foundation"
+    "-framework QuartzCore"
+)
+
 # --- Test ---
 add_executable(test
     ./lib/onedraw.cpp
