@@ -156,6 +156,93 @@ static inline float iq_random_float(int* seed)
     return float2int.fres - 1.0f;
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// SplitMix32 PRNG implementation
+static inline uint32_t splitmix32(uint32_t* state)
+{
+    uint32_t z = (*state += 0x9E3779B9u);
+    z = (z ^ (z >> 16)) * 0x85EBCA6Bu;
+    z = (z ^ (z >> 13)) * 0xC2B2AE35u;
+    return z ^ (z >> 16);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Returns a random float in [0; 1[
+static inline float splitmix32_float(uint32_t* state)
+{
+    union
+    {
+        uint32_t i;
+        float f;
+    } u;
+
+    *state += 0x9e3779b9u;
+    uint64_t z = *state;
+    z = (z ^ (z >> 15)) * 0x85ebca6bULL;
+    z = (z ^ (z >> 13)) * 0xc2b2ae35ULL;
+    z ^= z >> 16;
+
+    uint32_t mant = (uint32_t)(z >> 9) & 0x007FFFFFu;
+    u.i = mant | 0x3f800000u;
+    return u.f - 1.0f;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A faint, non-overlapping field of triangles/discs behind the feature shapes, to give the scene
+// density (command, tile and node counts) for the memory & binning plan steps. One shape per grid
+// cell, kept inside its cell so neighbours never touch ; a fixed seed keeps the reference stable.
+static void draw_background(void)
+{
+    if (renderer == NULL)
+        return;
+
+    const float w = sapp_widthf();
+    const float h = sapp_heightf();
+    const float cell = 56.f;
+    const float max_jitter = cell * 0.16f;
+    const float min_r = cell * 0.22f;
+    const float max_r = cell * 0.30f;
+
+    const uint32_t alpha = 0x30;
+    const uint32_t colors[] =
+    {
+        (miya_dark_blue & 0x00ffffffu) | (alpha << 24),
+        (miya_green & 0x00ffffffu) | (alpha << 24),
+        (miya_yellow & 0x00ffffffu) | (alpha << 24),
+        (miya_red & 0x00ffffffu) | (alpha << 24),
+        (miya_dark_grey & 0x00ffffffu) | (alpha << 24),
+    };
+    const uint32_t num_colors = (uint32_t)(sizeof(colors) / sizeof(colors[0]));
+
+    uint32_t state = 0x5eed5eedu;
+
+    for (float gy = 0.f; gy < h; gy += cell)
+    {
+        for (float gx = 0.f; gx < w; gx += cell)
+        {
+            float cx = gx + cell * .5f + (splitmix32_float(&state) * 2.f - 1.f) * max_jitter;
+            float cy = gy + cell * .5f + (splitmix32_float(&state) * 2.f - 1.f) * max_jitter;
+            float radius = min_r + splitmix32_float(&state) * (max_r - min_r);
+            uint32_t color = colors[splitmix32(&state) % num_colors];
+
+            if (splitmix32(&state) & 1u)
+            {
+                float base = splitmix32_float(&state) * 6.2831853f;
+                float verts[6];
+                for (int i = 0; i < 3; i++)
+                {
+                    float a = base + i * 2.0943951f;
+                    verts[i*2]   = cx + cosf(a) * radius;
+                    verts[i*2+1] = cy + sinf(a) * radius;
+                }
+                od_draw_triangle(renderer, verts, radius * 0.15f, color);
+            }
+            else
+                od_draw_disc(renderer, cx, cy, radius, color);
+        }
+    }
+}
+
 //----------------------------------------------------------------------------------------------------------------------------
 static void bgra_to_rgba(uint8_t *pixels, uint32_t width, uint32_t height)
 {
@@ -336,6 +423,8 @@ void frame(void)
     char string[256];
 
     od_begin_frame(renderer);
+
+    draw_background();
 
     slot(0, &cx, &cy, &radius);
     od_draw_disc_gradient(renderer, cx, cy, radius, miya_dark_blue, miya_light_blue);
