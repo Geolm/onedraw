@@ -47,7 +47,7 @@ template<typename T>
 class DynamicBuffer
 {
 public:
-    enum {MaxInflightBuffers = 3};
+    enum {MaxInflightBuffers = 2};
 
 private:
     uint32_t GetIndex(uint32_t currentFrameIndex) {return currentFrameIndex % DynamicBuffer::MaxInflightBuffers;}
@@ -155,7 +155,7 @@ struct onedraw
 {
     MTL::Device* device;
     MTL::CommandQueue* command_queue;
-    MTL::CommandBuffer* command_buffer;
+    MTL::CommandBuffer* command_buffer {nullptr};
     dispatch_semaphore_t semaphore;
     MTL::CounterSampleBuffer* sample_buffer {nullptr};
 
@@ -776,11 +776,12 @@ void od_bin_commands(struct onedraw* r)
     MTL::ComputeCommandEncoder* compute_encoder = nullptr;
     if (r->sample_buffer != nullptr)
     {
+        const uint32_t sample_base = (r->stats.frame_index % DynamicBuffer<float>::MaxInflightBuffers) * 4;
         MTL::ComputePassDescriptor* pass_desc = MTL::ComputePassDescriptor::alloc()->init();
         MTL::ComputePassSampleBufferAttachmentDescriptor* attachment = pass_desc->sampleBufferAttachments()->object(0);
         attachment->setSampleBuffer(r->sample_buffer);
-        attachment->setStartOfEncoderSampleIndex(0);
-        attachment->setEndOfEncoderSampleIndex(1);
+        attachment->setStartOfEncoderSampleIndex(sample_base);
+        attachment->setEndOfEncoderSampleIndex(sample_base + 1);
         compute_encoder = r->command_buffer->computeCommandEncoder(pass_desc);
         pass_desc->release();
     }
@@ -850,9 +851,8 @@ void od_flush(struct onedraw* r, void* drawable)
     assert_msg((uint16_t)((CA::MetalDrawable*)drawable)->texture()->width() == r->rasterizer.width, "drawable/renderer size mismatch");
     assert_msg((uint16_t)((CA::MetalDrawable*)drawable)->texture()->height() == r->rasterizer.height, "drawable/renderer size mismatch");
 
+    SAFE_RELEASE(r->command_buffer);
     r->command_buffer = r->command_queue->commandBuffer();
-
-    dispatch_semaphore_wait(r->semaphore, DISPATCH_TIME_FOREVER);
 
     if (r->commands.count)
         od_bin_commands(r);
@@ -864,13 +864,16 @@ void od_flush(struct onedraw* r, void* drawable)
     cd->setClearColor(MTL::ClearColor(r->rasterizer.clear_color.x, r->rasterizer.clear_color.y, r->rasterizer.clear_color.z, r->rasterizer.clear_color.w));
     cd->setStoreAction(MTL::StoreActionStore);
 
+    // one 4-sample range per in flight frame, resolved by the completion handler of that frame
+    const uint32_t sample_base = (r->stats.frame_index % DynamicBuffer<float>::MaxInflightBuffers) * 4;
+
     const bool timed = (r->sample_buffer != nullptr) && (r->commands.count != 0);
     if (timed)
     {
         MTL::RenderPassSampleBufferAttachmentDescriptor* attachment = renderPassDescriptor->sampleBufferAttachments()->object(0);
         attachment->setSampleBuffer(r->sample_buffer);
-        attachment->setStartOfVertexSampleIndex(2);
-        attachment->setEndOfFragmentSampleIndex(3);
+        attachment->setStartOfVertexSampleIndex(sample_base + 2);
+        attachment->setEndOfFragmentSampleIndex(sample_base + 3);
     }
 
     MTL::RenderCommandEncoder* render_encoder = r->command_buffer->renderCommandEncoder(renderPassDescriptor);
@@ -923,7 +926,7 @@ void od_flush(struct onedraw* r, void* drawable)
         {
             NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
 
-            NS::Data* samples = r->sample_buffer->resolveCounterRange(NS::Range(0, 4));
+            NS::Data* samples = r->sample_buffer->resolveCounterRange(NS::Range(sample_base, 4));
             const MTL::CounterResultTimestamp* s = (const MTL::CounterResultTimestamp*)samples->bytes();
             const bool valid = (samples->length() >= 4 * sizeof(MTL::CounterResultTimestamp)) &&
                                (s[0].timestamp != MTL::CounterErrorValue) && (s[1].timestamp != MTL::CounterErrorValue) &&
@@ -969,7 +972,11 @@ void od_flush(struct onedraw* r, void* drawable)
 
     r->command_buffer->presentDrawable((CA::MetalDrawable*)drawable);
     r->command_buffer->commit();
-    r->command_buffer->waitUntilCompleted();
+    r->command_buffer->retain();
+
+    // the cpu reads the screenshot pixels when od_end_frame returns, that one frame must be waited on
+    if (take_screenshot)
+        r->command_buffer->waitUntilCompleted();
 
     renderPassDescriptor->release();
 }
@@ -1059,7 +1066,9 @@ struct onedraw* od_init(onedraw_def* def)
 
     r->semaphore = dispatch_semaphore_create(DynamicBuffer<float>::MaxInflightBuffers);
 
-    // a single counter sample buffer is enough : od_flush ends with waitUntilCompleted(), frames never overlap on the gpu
+    // 4 samples per in flight frame (compute pass start/end, render pass start/end) : the sample
+    // buffer is a ring, a frame must not wrap over a range the completion handler of the frame
+    // before it has not resolved yet
     NS::Array* counter_sets = r->device->counterSets();
     MTL::CounterSet* timestamp_set = nullptr;
     for (NS::UInteger i = 0; i < counter_sets->count(); ++i)
@@ -1076,7 +1085,7 @@ struct onedraw* od_init(onedraw_def* def)
         MTL::CounterSampleBufferDescriptor* sample_desc = MTL::CounterSampleBufferDescriptor::alloc()->init();
         sample_desc->setCounterSet(timestamp_set);
         sample_desc->setStorageMode(MTL::StorageModeShared);
-        sample_desc->setSampleCount(4);
+        sample_desc->setSampleCount(4 * DynamicBuffer<float>::MaxInflightBuffers);
         r->sample_buffer = r->device->newCounterSampleBuffer(sample_desc, nullptr);
         sample_desc->release();
         if (r->sample_buffer == nullptr)
@@ -1233,6 +1242,8 @@ void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
 void od_begin_frame(struct onedraw* r)
 {
     assert_msg(r->commands.group_aabb == nullptr, "previous frame was not ended properly with od_end_frame");
+
+    dispatch_semaphore_wait(r->semaphore, DISPATCH_TIME_FOREVER);
     r->stats.frame_index++;
     r->commands.buffer.Map(r->stats.frame_index);
     r->commands.colors.Map(r->stats.frame_index);
@@ -1274,6 +1285,12 @@ float od_get_average_gputime(struct onedraw* r)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_terminate(struct onedraw* r)
 {
+    if (r->command_buffer != nullptr)
+    {
+        r->command_buffer->waitUntilCompleted();
+        SAFE_RELEASE(r->command_buffer);
+    }
+
     r->commands.buffer.Terminate();
     r->commands.colors.Terminate();
     r->commands.data_buffer.Terminate();

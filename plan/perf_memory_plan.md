@@ -12,7 +12,7 @@ Figures below are for 2560x1440 (160x90 tiles, 10x6 = 60 regions) unless noted, 
 | `tiles.nodes`           | 32 MiB    | fixed, `MAX_NODES_COUNT` x 8 bytes                       |
 | `regions.indices`       | 7.5 MiB   | `regions.count * MAX_COMMANDS * 2` (`scan` / `predicate` removed in step 3) |
 | screenshot texture      | 14 MiB    | only with `allow_screenshot`                             |
-| CPU ring (x3)           | 6 MiB     | commands, colors, data, aabb, clips ; step 6 goes to x2  |
+| CPU ring (x2)           | 4 MiB     | commands, colors, data, aabb, clips                       |
 
 ## Step 0 : measurement first
 
@@ -274,6 +274,17 @@ frame N's reads. Confirm that this also covers the resources reached through arg
 Threading : the completion handler runs on another thread ; `gpu_time` is already atomic and `r->screenshot` is only touched on frames the CPU waits on.
 
 Validation : CPU time (`od_begin_frame` to `commit`) and frame time before/after ; expected frame time ~ max(CPU, GPU) instead of CPU + GPU, -2 MiB.
+
+Measured, same machine and scene, reference identical, `--validate` clean : full session averages (35645 / 9655 frames), peak 2044 commands.
+
+| cache | gpu | binning | rasterization | gpu memory |
+|-------|-----|---------|---------------|------------|
+| off   | 2.49 ms | 0.39 ms | 2.09 ms | 61087 kb |
+| on    | 1.13 ms | 0.46 ms | 0.67 ms | 76063 kb |
+
+(before : 2.82/0.41/2.40 and 1.04/0.45/0.59 ms, 63141/78117 kb). Memory drops exactly the ~2 MiB of the rings going x3 -> x2.
+The reported gpu time is the per frame gpu span, which this step does not change : the off drop and the on rise are the machine's variance
+and the gpu now running back to back frames instead of with a per frame idle gap. The step's win is the cpu/gpu overlap in wall clock time.
 
 ## Step 7 : node pool layout (largest change)
 
