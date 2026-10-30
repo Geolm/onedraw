@@ -5,17 +5,17 @@
 #define SOKOL_METAL
 #include "sokol_app.h"
 
-#include "../../lib/onedraw.h"
+#include "mcp.h"
 
 // tool/mcp/window.mm (AppKit shim, see that file)
 void mcp_set_window_points(int w, int h);
 
 struct onedraw* renderer;
+mcp_scene scene;
 
 #define FROM_HTML(html)   ((html&0xff)<<16) | ((html>>16)&0xff) | (html&0x00ff00) | 0xff000000
 
 static const uint32_t miya_black = FROM_HTML(0x232228);
-static const uint32_t miya_white = FROM_HTML(0xebecdc);
 static const uint32_t miya_blue = FROM_HTML(0x2485a6);
 static const uint32_t miya_red = FROM_HTML(0xc65046);
 static const uint32_t miya_green = FROM_HTML(0x55a058);
@@ -47,7 +47,12 @@ void init(void)
     if (renderer == NULL)
         return;
 
-    od_set_clear_color(renderer, miya_white);
+    // static demo scene (T3), replayed every frame through the fit transform
+    mcp_scene_init(&scene);
+    mcp_scene_append(&scene, &(mcp_op) { .type = MCP_OP_BOX, .f = { 102, 115, 461, 422, 16 }, .color = miya_blue });
+    mcp_scene_append(&scene, &(mcp_op) { .type = MCP_OP_DISC, .f = { 666, 269, 115 }, .color = miya_red });
+    mcp_scene_append(&scene, &(mcp_op) { .type = MCP_OP_RING, .f = { 358, 576, 77, 12 }, .color = miya_green });
+    mcp_scene_append(&scene, &(mcp_op) { .type = MCP_OP_TEXT, .f = { 102, 500 }, .text = mcp_scene_intern(&scene, "onedraw mcp"), .color = miya_black });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -67,19 +72,16 @@ void frame(void)
     if (sc.invalid)
         return;
 
-    float w = sapp_widthf();
-    float h = sapp_heightf();
+    mcp_transform t = mcp_fit_transform(scene.canvas_w, scene.canvas_h, sapp_widthf(), sapp_heightf());
 
     od_begin_frame(renderer);
 
-    // the 2x atlas (high_dpi) is sampled at native size, scale the font to the current dpi
-    // so text stays proportionate when the framebuffer size changes
-    od_set_font_scale(renderer, sapp_dpi_scale());
+    od_set_clear_color(renderer, scene.background);
+    // the 2x atlas (high_dpi) is sampled at native size, so the font scale follows the
+    // point->pixel scale (the 48px glyphs at 2x are sized for a 2.0 scale)
+    od_set_font_scale(renderer, t.scale / 2.0f);
 
-    od_draw_box(renderer, w * 0.10f, h * 0.15f, w * 0.45f, h * 0.55f, 16.f, miya_blue);
-    od_draw_disc(renderer, w * 0.65f, h * 0.35f, fminf(w, h) * 0.15f, miya_red);
-    od_draw_ring(renderer, w * 0.35f, h * 0.75f, fminf(w, h) * 0.10f, 12.f, miya_green);
-    od_draw_text(renderer, w * 0.10f, h * 0.65f, "onedraw mcp - T1 skeleton", miya_black);
+    mcp_scene_replay(renderer, &scene, t);
 
     od_end_frame(renderer, (void*)sc.metal.current_drawable);
 }

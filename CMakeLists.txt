@@ -47,6 +47,7 @@ target_link_libraries(minimal
 add_executable(mcp
     ./lib/onedraw.cpp
     ./tool/mcp/main.c
+    ./tool/mcp/scene.c
     ./tool/mcp/window.mm
     ./tests/sokol_app.mm
 )
