@@ -179,16 +179,11 @@ struct onedraw
     // region binning
     struct
     {
-        MTL::ComputePipelineState* predicate_pso {nullptr};
-        MTL::ComputePipelineState* exclusive_scan_pso {nullptr};
         MTL::ComputePipelineState* binning_pso {nullptr};
         MTL::Buffer* indices {nullptr};
-        MTL::Buffer* predicate {nullptr};
-        MTL::Buffer* scan {nullptr};
         uint16_t num_width;
         uint16_t num_height;
         uint16_t count;
-        uint32_t num_groups;
     } regions;
 
     // tile binning
@@ -567,7 +562,6 @@ void od_build_pso(struct onedraw* r)
     SAFE_RELEASE(r->rasterizer.pso);
     SAFE_RELEASE(r->rasterizer.clean_pso);
     SAFE_RELEASE(r->tiles.write_icb_pso);
-    SAFE_RELEASE(r->regions.exclusive_scan_pso);
 
     NS::Error* pError = nullptr;
     MTL::Library* pLibrary = r->device->newLibrary( NS::String::string(binning_shader, NS::UTF8StringEncoding), nullptr, &pError );
@@ -606,8 +600,6 @@ void od_build_pso(struct onedraw* r)
         pWriteIcbFunction->release();
 
         r->regions.binning_pso = create_pso(r, pLibrary, "region_bin");
-        r->regions.predicate_pso = create_pso(r, pLibrary, "predicate");
-        r->regions.exclusive_scan_pso = create_pso(r, pLibrary, "exclusive_scan");
         r->tiles.hash_pso = create_pso(r, pLibrary, "hash_commands");
         pLibrary->release();
     }
@@ -715,7 +707,7 @@ static void od_upload_font_glyphs(struct onedraw* r)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_bin_commands(struct onedraw* r)
 {
-    if (r->tiles.binning_pso == nullptr || r->regions.binning_pso == nullptr || r->regions.exclusive_scan_pso == nullptr)
+    if (r->tiles.binning_pso == nullptr || r->regions.binning_pso == nullptr)
         return;
 
     assert(r->commands.buffer.GetNumElements() == r->commands.colors.GetNumElements());
@@ -724,8 +716,6 @@ void od_bin_commands(struct onedraw* r)
     // clear buffers
     MTL::BlitCommandEncoder* blit_encoder = r->command_buffer->blitCommandEncoder();
     blit_encoder->fillBuffer(r->tiles.counters_buffer, NS::Range(0, r->tiles.counters_buffer->length()), 0);
-    blit_encoder->fillBuffer(r->tiles.head, NS::Range(0, r->tiles.head->length()), 0xff);
-    blit_encoder->fillBuffer(r->regions.indices, NS::Range(0, r->regions.indices->length()), 0xff);
     blit_encoder->endEncoding();
 
 
@@ -758,11 +748,9 @@ void od_bin_commands(struct onedraw* r)
     args->num_tile_width = r->tiles.num_width;
     args->num_region_width = r->regions.num_width;
     args->num_region_height = r->regions.num_height;
-    args->num_groups = r->regions.num_groups;
     args->screen_div = (float2) {.x = 1.f / (float)r->rasterizer.width, .y = 1.f / (float) r->rasterizer.height};
     args->culling_debug = r->tiles.culling_debug;
     args->srgb_backbuffer = r->rasterizer.srgb_backbuffer;
-    args->num_elements_per_thread = (r->commands.count + MAX_THREADS_PER_THREADGROUP-1) / MAX_THREADS_PER_THREADGROUP;
     args->cache = r->cache;
     args->num_draw_data = (uint32_t) r->commands.data_buffer.GetNumElements();
     args->command_hashes = (uint32_t*) r->commands.command_hashes->gpuAddress();
@@ -783,7 +771,6 @@ void od_bin_commands(struct onedraw* r)
     seed = hash_combine(seed, (uint32_t) r->rasterizer.srgb_backbuffer);
     args->frame_seed = seed;
 
-    const uint32_t simd_group_count = MAX_THREADS_PER_THREADGROUP / SIMD_GROUP_SIZE;
     const uint32_t threads_for_commands = optimal_num_threads(r->commands.count, SIMD_GROUP_SIZE, MAX_THREADS_PER_THREADGROUP);
 
     MTL::ComputeCommandEncoder* compute_encoder = nullptr;
@@ -814,28 +801,16 @@ void od_bin_commands(struct onedraw* r)
         compute_encoder->dispatchThreads(MTL::Size(r->commands.count, 1, 1), MTL::Size(threads_for_commands, 1, 1));
     }
 
-    // predicate
-    compute_encoder->setComputePipelineState(r->regions.predicate_pso);
-    compute_encoder->setBuffer(r->commands.draw_arg.GetBuffer(r->stats.frame_index), 0, 0);
-    compute_encoder->setBuffer(r->regions.predicate, 0, 1);
-    compute_encoder->useResource(r->commands.aabb_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
-    compute_encoder->dispatchThreads(MTL::Size(r->commands.count, 1, 1), MTL::Size(threads_for_commands, 1, 1));
-
     // must be a multiple of SIMD_GROUP_SIZE (simd_prefix_exclusive_sum requires a full simdgroup)
-    uint32_t threads_per_region = optimal_num_threads((r->commands.count + args->num_elements_per_thread - 1) / args->num_elements_per_thread,
-                                                      SIMD_GROUP_SIZE, MAX_THREADS_PER_THREADGROUP);
+    uint32_t threads_per_region = optimal_num_threads(r->commands.count, SIMD_GROUP_SIZE, MAX_THREADS_PER_THREADGROUP);
 
-    compute_encoder->setComputePipelineState(r->regions.exclusive_scan_pso);
-    compute_encoder->setBuffer(r->regions.scan, 0, 2);
-    compute_encoder->setThreadgroupMemoryLength(simd_group_count * sizeof(uint16_t), 0);
-    compute_encoder->setThreadgroupMemoryLength(simd_group_count * sizeof(uint16_t), 1);
-    compute_encoder->dispatchThreads(MTL::Size(threads_per_region, r->regions.count, 1), MTL::Size(threads_per_region, 1, 1));
-
-    // region binning
+    // region binning : fused predicate / exclusive scan / bin, one threadgroup per region
     compute_encoder->setComputePipelineState(r->regions.binning_pso);
+    compute_encoder->setBuffer(r->commands.draw_arg.GetBuffer(r->stats.frame_index), 0, 0);
     compute_encoder->setBuffer(r->regions.indices, 0, 1);
-    compute_encoder->setBuffer(r->regions.predicate, 0, 3);
-    compute_encoder->dispatchThreads(MTL::Size(r->commands.count, r->regions.count, 1), MTL::Size(16, 16, 1));
+    compute_encoder->useResource(r->commands.aabb_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
+    compute_encoder->setThreadgroupMemoryLength((SIMD_GROUP_SIZE + 8) * sizeof(uint32_t), 0);    // 33 entries used, 160 bytes : must be a multiple of 16
+    compute_encoder->dispatchThreads(MTL::Size(threads_per_region, r->regions.count, 1), MTL::Size(threads_per_region, 1, 1));
 
     // tile binning
     compute_encoder->setComputePipelineState(r->tiles.binning_pso);
@@ -1059,10 +1034,12 @@ struct onedraw* od_init(onedraw_def* def)
         return nullptr;
     }
 
-    r->commands.buffer.Init(r->device, sizeof(draw_command) * MAX_COMMANDS);
-    r->commands.colors.Init(r->device, sizeof(draw_color) * MAX_COMMANDS);
+    // sized on LAST_COMMAND, not MAX_COMMANDS : the region lists are terminated with LAST_COMMAND,
+    // which must never be a real command index, so the newest command is LAST_COMMAND - 1
+    r->commands.buffer.Init(r->device, sizeof(draw_command) * LAST_COMMAND);
+    r->commands.colors.Init(r->device, sizeof(draw_color) * LAST_COMMAND);
     r->commands.data_buffer.Init(r->device, sizeof(float) * MAX_DRAWDATA);
-    r->commands.aabb_buffer.Init(r->device, sizeof(quantized_aabb) * MAX_COMMANDS);
+    r->commands.aabb_buffer.Init(r->device, sizeof(quantized_aabb) * LAST_COMMAND);
     r->commands.clipshapes_buffer.Init(r->device, sizeof(clip_shape) * MAX_CLIPS);
     r->tiles.counters_buffer = r->device->newBuffer(sizeof(counters), MTL::ResourceStorageModePrivate);
     r->tiles.nodes = r->device->newBuffer(sizeof(tile_node) * MAX_NODES_COUNT, MTL::ResourceStorageModePrivate);
@@ -1203,13 +1180,9 @@ void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
     r->regions.count = r->regions.num_width * r->regions.num_height;
 
     SAFE_RELEASE(r->regions.indices);
-    SAFE_RELEASE(r->regions.predicate);
-    SAFE_RELEASE(r->regions.scan);
 
     size_t num_indices = r->regions.count * MAX_COMMANDS;
     r->regions.indices = r->device->newBuffer(num_indices * sizeof(uint16_t), MTL::ResourceStorageModePrivate);
-    r->regions.predicate = r->device->newBuffer(num_indices * sizeof(uint8_t), MTL::ResourceStorageModePrivate);
-    r->regions.scan = r->device->newBuffer(num_indices * sizeof(uint16_t), MTL::ResourceStorageModePrivate);
 
     SAFE_RELEASE(r->tiles.head);
     SAFE_RELEASE(r->tiles.indices);
@@ -1238,9 +1211,11 @@ void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
     // the generation is mixed into the frame seed : a resize must change every tile hash to force a full redraw
     r->tiles.invalidate_generation++;
 
-    // a fresh tile hash buffer must read as "never cached" : fill it with the sentinel the shader checks for
+    // a fresh head buffer must read as an empty list and a fresh tile hash buffer as "never cached" : fill
+    // both with their sentinels, from the next frame on tile_bin writes every head by itself
     MTL::CommandBuffer* fill_cb = r->command_queue->commandBuffer();
     MTL::BlitCommandEncoder* fill_blit = fill_cb->blitCommandEncoder();
+    fill_blit->fillBuffer(r->tiles.head, NS::Range(0, r->tiles.head->length()), 0xff);
     fill_blit->fillBuffer(r->tiles.hashes, NS::Range(0, r->tiles.hashes->length()), 0xff);
     fill_blit->endEncoding();
     fill_cb->commit();
@@ -1286,7 +1261,6 @@ void od_end_frame(struct onedraw* r, void* drawable)
     gpu_timer_end_frame(&r->stats.total, r->stats.frame_index);
     gpu_timer_end_frame(&r->stats.binning, r->stats.frame_index);
     gpu_timer_end_frame(&r->stats.rasterization, r->stats.frame_index);
-    r->regions.num_groups = (r->commands.count + SIMD_GROUP_SIZE - 1) / SIMD_GROUP_SIZE;
 
     od_flush(r, drawable);
 }
@@ -1317,11 +1291,7 @@ void od_terminate(struct onedraw* r)
     SAFE_RELEASE(r->tiles.clean_indices);
     SAFE_RELEASE(r->commands.command_hashes);
     SAFE_RELEASE(r->tiles.indirect_arg);
-    SAFE_RELEASE(r->regions.predicate_pso);
-    SAFE_RELEASE(r->regions.exclusive_scan_pso);
     SAFE_RELEASE(r->regions.indices);
-    SAFE_RELEASE(r->regions.predicate);
-    SAFE_RELEASE(r->regions.scan);
     SAFE_RELEASE(r->tiles.write_icb_pso);
     SAFE_RELEASE(r->rasterizer.pso);
     SAFE_RELEASE(r->rasterizer.clean_pso);
@@ -1359,10 +1329,8 @@ void od_get_stats(struct onedraw* r, od_stats* stats)
     gpu_mem += r->commands.draw_arg.GetTotalSize();
     gpu_mem += r->font.texture->allocatedSize();
     gpu_mem += r->font.glyphs->allocatedSize();
-    gpu_mem += r->rasterizer.atlas->allocatedSize();
+    gpu_mem += (r->rasterizer.atlas != nullptr) ? r->rasterizer.atlas->allocatedSize() : 0;
     gpu_mem += r->regions.indices->allocatedSize();
-    gpu_mem += r->regions.predicate->allocatedSize();
-    gpu_mem += r->regions.scan->allocatedSize();
     gpu_mem += (r->screenshot.texture != nullptr) ? r->screenshot.texture->allocatedSize() : 0;
     gpu_mem += r->tiles.counters_buffer->allocatedSize();
     gpu_mem += r->tiles.head->allocatedSize();

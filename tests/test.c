@@ -633,6 +633,10 @@ void cleanup(void)
             }
         }
 
+        od_stats stats;
+        od_get_stats(renderer, &stats);
+        fprintf(stdout, "gpu memory : %zu kb (peak num commands : %u)\n", stats.gpu_memory_usage >> 10, stats.peak_num_draw_cmd);
+
         od_terminate(renderer);
     }
     free(renderer);

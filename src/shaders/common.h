@@ -96,8 +96,7 @@ typedef struct tile_node
 {
     uint32_t next;
     uint16_t command_index;
-    uint8_t command_type;
-    uint8_t padding;
+    uint16_t pad;    // keep the 8-byte node stride explicit
 } tile_node;
 
 typedef struct counters
@@ -182,10 +181,8 @@ typedef struct draw_cmd_arguments
     uint32_t num_tile_height;
     uint32_t num_region_width;
     uint32_t num_region_height;
-    uint32_t num_groups;
     float aa_width;
     float2 screen_div;
-    uint32_t num_elements_per_thread;
     bool culling_debug;
     bool srgb_backbuffer;
     bool cache;
