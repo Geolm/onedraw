@@ -716,7 +716,6 @@ void od_bin_commands(struct onedraw* r)
     // clear buffers
     MTL::BlitCommandEncoder* blit_encoder = r->command_buffer->blitCommandEncoder();
     blit_encoder->fillBuffer(r->tiles.counters_buffer, NS::Range(0, r->tiles.counters_buffer->length()), 0);
-    blit_encoder->fillBuffer(r->tiles.head, NS::Range(0, r->tiles.head->length()), 0xff);
     blit_encoder->endEncoding();
 
 
@@ -1212,9 +1211,11 @@ void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
     // the generation is mixed into the frame seed : a resize must change every tile hash to force a full redraw
     r->tiles.invalidate_generation++;
 
-    // a fresh tile hash buffer must read as "never cached" : fill it with the sentinel the shader checks for
+    // a fresh head buffer must read as an empty list and a fresh tile hash buffer as "never cached" : fill
+    // both with their sentinels, from the next frame on tile_bin writes every head by itself
     MTL::CommandBuffer* fill_cb = r->command_queue->commandBuffer();
     MTL::BlitCommandEncoder* fill_blit = fill_cb->blitCommandEncoder();
+    fill_blit->fillBuffer(r->tiles.head, NS::Range(0, r->tiles.head->length()), 0xff);
     fill_blit->fillBuffer(r->tiles.hashes, NS::Range(0, r->tiles.hashes->length()), 0xff);
     fill_blit->endEncoding();
     fill_cb->commit();

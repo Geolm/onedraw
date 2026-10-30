@@ -184,7 +184,23 @@ the time is within the machine's run to run variance. The step is kept for the m
    on the first primitive added to the tile inside the group, add the pending `end_group` node first ; on `begin_group`, add it only if the
    `end_group` was added. No node is removed and none is wasted ; groups don't nest, so a single pending index is enough.
 
-After 4.2, `tile_node.command_type` has no reader (the fragment shader reads the type from the command).
+After 4.2, `tile_node.command_type` has no reader (the fragment shader reads the type from the command) : the field and its padding come out,
+replaced by an explicit `uint16_t pad` (the stride stays 8 bytes : `next` is a `uint32_t`).
+
+The per-frame `tiles.head` clear goes with 4.1, with one catch : the head register must start at `INVALID_INDEX` and never read the buffer -
+the node pool is reused in place every frame, a read would dangle the new chain on the previous frame's (half-overwritten) nodes and the
+fragment walk can loop forever (gpu hang, found on the first test run). The head is filled once with the sentinel on resize.
+
+Measured, same machine and scene, reference identical :
+
+| cache | gpu | binning | rasterization | gpu memory |
+|-------|-----|---------|---------------|------------|
+| off   | 0.78 ms | 0.30 ms | 0.44 ms | 63141 kb |
+| on    | 0.92 ms | 0.46 ms | 0.41 ms | 78117 kb |
+
+(before : 1.00/0.31/0.63 and 0.74/0.40/0.27 ms, same memory). The time is within the machine's run to run variance, no measured win : the step
+is kept as a simplification - the `clean_list` second list walk and the per-node head read/write are deleted, each tile does one head write,
+which helps group-heavy scenes the test scene doesn't have.
 
 ## Step 5 : occlusion culling in `tile_bin`
 

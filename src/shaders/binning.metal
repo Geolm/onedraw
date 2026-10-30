@@ -569,53 +569,6 @@ kernel void region_bin(constant draw_cmd_arguments& input [[buffer(0)]],
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// linked-list cleaning
-//      * detect combination with no primitive and skip it
-// ---------------------------------------------------------------------------------------------------------------------------
-void clean_list(device tiles_data& tiles, uint16_t tile_index)
-{
-    uint32_t node_index = tiles.head[tile_index];
-    uint32_t previous_index = INVALID_INDEX;
-    uint32_t before_begin = INVALID_INDEX;
-    uint32_t num_primitives = 0;
-
-    while (node_index != INVALID_INDEX)
-    {
-        tile_node node = tiles.nodes[node_index];
-    
-        if (node.command_type == begin_group)
-        {
-            before_begin = previous_index;
-            previous_index = node_index;
-            num_primitives = 0;
-        }
-        else if (node.command_type == end_group)
-        {
-            // no primitive
-            if (num_primitives == 0)
-            {
-                // change head
-                if (before_begin == INVALID_INDEX)
-                    tiles.head[tile_index] = node.next;
-                else
-                    tiles.nodes[before_begin].next = node.next;
-
-                previous_index = before_begin;
-            }
-            else
-                previous_index = node_index;
-        }
-        else
-        {
-            num_primitives++;
-            previous_index = node_index;
-        }
-
-        node_index = node.next;
-    }
-}
-
-// ---------------------------------------------------------------------------------------------------------------------------
 // conservative cull : drops tiles that are entirely outside the clip.
 // the clip rect culling uses the bounding rect (not shrunk by the corner radius) and the
 // 1px anti-aliased fringe only makes the rejection looser, so the same bounds are correct
@@ -638,6 +591,27 @@ static inline bool clip_tile(aabb tile, clip_shape clip)
     }
     }
     return false;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// allocate one node for the command and prepend it to the tile list, the head is kept in a register
+// by the caller and written to the device memory once at the end of the tile
+// ---------------------------------------------------------------------------------------------------------------------------
+static inline void add_node(device tiles_data& output, device counters& counter, uint max_nodes, uint32_t command_index, thread uint32_t& head)
+{
+    uint new_node_index = atomic_fetch_add_explicit(&counter.num_nodes, 1, memory_order_relaxed);
+
+    // avoid access beyond the end of the buffer
+    if (new_node_index < max_nodes)
+    {
+        output.nodes[new_node_index] = (tile_node)
+        {
+            .command_index = (uint16_t)command_index,
+            .next = head
+        };
+
+        head = new_node_index;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -671,6 +645,13 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
     constant const uint16_t* indices = &regions_indices[region_index * input.num_commands];
 
     uint tile_hash = input.frame_seed;
+
+    // the node pool is reused in place every frame and the tile list is rebuilt from scratch : the head
+    // must start at the sentinel (reading the buffer would dangle the new chain on the previous frame's
+    // nodes), it is kept in a register and written to the device memory once at the end of the tile
+    uint32_t head = INVALID_INDEX;
+    uint32_t pending_end = INVALID_INDEX;
+    bool end_added = false;
 
     for(uint32_t i=0; i<input.num_commands; ++i)
     {
@@ -715,31 +696,45 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
             group_op = (sdf_operator) cmd.extra;
         }
 
-        if (to_be_added)
+        // a group only counts when one of its primitives counts : the end node is deferred until the
+        // first primitive of the group, the begin node is added only if the end was, groups don't
+        // nest so a single pending index is enough
+        if (cmd.type == end_group)
+        {
+            pending_end = to_be_added ? cmd_index : INVALID_INDEX;
+            end_added = false;
+        }
+        else if (cmd.type == begin_group)
+        {
+            if (end_added)
+            {
+                if (input.cache)
+                    tile_hash = pcg_hash(tile_hash ^ input.command_hashes[cmd_index]);
+                add_node(output, counter, input.max_nodes, cmd_index, head);
+            }
+            pending_end = INVALID_INDEX;
+            end_added = false;
+        }
+        else if (to_be_added)
         {
             if (input.cache)
                 tile_hash = pcg_hash(tile_hash ^ input.command_hashes[cmd_index]);
 
-            // allocate one node
-            uint new_node_index = atomic_fetch_add_explicit(&counter.num_nodes, 1, memory_order_relaxed);
-
-            // avoid access beyond the end of the buffer
-            if (new_node_index<input.max_nodes)
+            // the deferred end node is prepended first : the walk is top-most first, it must stay above the primitive
+            if (pending_end != INVALID_INDEX)
             {
-                // insert in the linked list the new node
-                output.nodes[new_node_index] = (tile_node)
-                {
-                    .command_index = (uint16_t)cmd_index,
-                    .next  = output.head[tile_index],
-                    .command_type = (uint8_t) cmd.type
-                };
-
-                output.head[tile_index] = new_node_index;
+                if (input.cache)
+                    tile_hash = pcg_hash(tile_hash ^ input.command_hashes[pending_end]);
+                add_node(output, counter, input.max_nodes, pending_end, head);
+                pending_end = INVALID_INDEX;
+                end_added = true;
             }
+
+            add_node(output, counter, input.max_nodes, cmd_index, head);
         }
     }
 
-    clean_list(output, tile_index);
+    output.head[tile_index] = head;
 
     // a tile is dirty when its hash changed since it was last drawn ; with the cache off, every tile is dirty
     bool dirty = true;
@@ -754,7 +749,7 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
     }
 
     // if the tile has some draw command to proceed
-    if (output.head[tile_index] != INVALID_INDEX)
+    if (head != INVALID_INDEX)
     {
         if (dirty)
         {

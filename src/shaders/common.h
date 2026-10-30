@@ -96,8 +96,7 @@ typedef struct tile_node
 {
     uint32_t next;
     uint16_t command_index;
-    uint8_t command_type;
-    uint8_t padding;
+    uint16_t pad;    // keep the 8-byte node stride explicit
 } tile_node;
 
 typedef struct counters
