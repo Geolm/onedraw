@@ -66,4 +66,21 @@ You can look at the [binning shader](../src/shaders/binning.metal).
 
 ---
 
+## Occlusion culling
+
+The region's list is kept in draw order, and the `tile_bin` walk goes from the top-most command down — so as soon as it meets a command that **completely hides the tile**, everything below it can be dropped: those commands cannot contribute a single pixel, and the walk stops.
+
+Only **axis-aligned boxes** can occlude, and only when all of these hold — the test is deliberately conservative, a false negative just costs a little extra rasterization:
+
+* **solid** fill — a blurred or dashed box is not a solid cover;
+* **opaque** (alpha 255) — and not inside a **group**, whose global color and outline are composited at the end and could still lighten it;
+* **not clipped** — a clip could cut part of the cover away;
+* **strictly containing the tile** — tested against the box's own parameters shrunk inward by its **corner radius** (a rounded box is not opaque inside its corners) plus a `0.01` px epsilon, rather than against the quantized AABB, which is grown by the anti-aliasing margin and would occlude tiles the box only grazes.
+
+Other shape kinds (discs, triangles, ...) could be tested the same way, but a full 16×16 tile cover happens almost exclusively with boxes in practice, so the extra math is not worth it.
+
+The output is bit-exact either way — a hidden command would have blended nothing on top of an opaque cover. The win scales with how much content sits under opaque shapes, which is the common UI case: a window over a busy background.
+
+---
+
 [Next part](part3.md) : Rasterization

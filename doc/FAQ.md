@@ -26,8 +26,10 @@ The origin `(0, 0)` is the **top-left** corner of the back buffer. There is no i
 
 ### Does the library cull objects?
 
-Objects outside the screen are not rasterized, but draw commands are still issued. We recommend implementing a high-level culling system if many objects fall outside the screen to avoid wasting draw calls and GPU resources. Note: There is currently no mechanism to detect redundant primitives that will be completely overwritten by an opaque primitive, but we are exploring optimizations to address this.
+Objects outside the screen are not rasterized, but draw commands are still issued. We recommend implementing a high-level culling system if many objects fall outside the screen to avoid wasting draw calls and GPU resources.
+
+As for primitives that are on the screen but completely covered, there is a limited built-in mechanism: during tile binning, a fully opaque, solid, unclipped axis-aligned box that strictly contains a tile stops the tile's command walk, so whatever was drawn under that box is skipped ([occlusion culling](part2.md)). Redundant primitives hidden under anything else — a semi-transparent, clipped, or grouped box, or a non-rectangular shape — are still evaluated.
 
 ### Does the library work on iOS?
 
-It should but it has not been tested, so one should not expect a smooth experience on iOS.
+It should but it has not been tested, so one should not expect a smooth experience on iOS. Especially BC4 texture might not be supported, one should convert the font texture in R8 format.
