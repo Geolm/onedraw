@@ -2,7 +2,7 @@
 
 ## Binning commands
 
-Binning is the step that generates the **per-tile linked lists** of draw commands. It works by testing each draw command against the bounding box of every tile, using a classic intersection method per shape type:
+Binning is the step that generates the **per-tile lists** of draw commands. It works by testing each draw command against the bounding box of every tile, using a classic intersection method per shape type:
 
 * **oriented boxes / lines / capsules** → Separating Axis Theorem (SAT)
 * **discs** → distance-to-nearest-point (plus a "ring" test for hollow ones)
@@ -40,9 +40,9 @@ A group is defined by wrapping shapes between **begin group** and **end group** 
 
 Each begin/end group command carries a **global bounding box** that encompasses every shape in the group, so both commands are included whenever the group's box touches a tile. If a group has no shapes reaching a given tile, its begin/end pair is removed from that tile's list to avoid pointless work:
 
-![Empty groups are cleaned per tile](group-empty.png)
+![Empty groups are cleaned per tile](group-empty.svg)
 
-On the CPU side, `od_begin_group()` reserves one slot in the quantized-AABB buffer, every shape drawn while the group is open is merged into it, and `od_end_group()` copies the accumulated box onto the end command. On the GPU, the `tile_bin` kernel walks the (reverse-order) list while tracking the current group's extra margin. It defers a group's `end` command and only emits the `begin`/`end` pair once a primitive in the group actually reaches the tile, so a group that wraps zero primitives for that tile produces no nodes — no separate clean-up pass.
+On the CPU side, `od_begin_group()` reserves one slot in the quantized-AABB buffer, every shape drawn while the group is open is merged into it, and `od_end_group()` copies the accumulated box onto the end command. On the GPU, the `tile_bin` kernel walks the (reverse-order) list while tracking the current group's extra margin. It defers a group's `end` command and only emits the `begin`/`end` pair once a primitive in the group actually reaches the tile, so a group that wraps zero primitives for that tile produces no chunks — no separate clean-up pass.
 
 ---
 

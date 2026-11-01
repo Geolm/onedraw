@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 840" width="1280" height="840" role="img">
+<rect x="0" y="0" width="1280" height="840" rx="16" fill="white" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="640.0" y="42.0" font-size="20" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">How onedraw works</text>
+<text x="640.0" y="68.0" font-size="13.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">a flat command list becomes per-tile lists, then per-tile fragments</text>
+<rect x="60.0" y="110.0" width="560.0" height="300.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="340.0" y="136.0" font-size="15" fill="#7B72E3" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">1 · CPU writes draw commands</text>
+<rect x="110.0" y="168.0" width="460.0" height="218.0" rx="10" fill="white" stroke="#1E293B" stroke-width="1.8"/>
+<text x="340.0" y="196.0" font-size="13" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">command ring buffer (double-buffered)</text>
+<rect x="140.0" y="212.0" width="400.0" height="28.0" rx="14.0" fill="#DBEAFE" stroke="#3D6BD1" stroke-width="1.6"/>
+<text x="340.0" y="230.5" font-size="12.5" fill="#3D6BD1" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">#0 box</text>
+<rect x="140.0" y="245.0" width="400.0" height="28.0" rx="14.0" fill="#E9E6FB" stroke="#7B72E3" stroke-width="1.6"/>
+<text x="340.0" y="263.5" font-size="12.5" fill="#7B72E3" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">#1 text</text>
+<rect x="140.0" y="278.0" width="400.0" height="28.0" rx="14.0" fill="#D7F0E2" stroke="#2F9E63" stroke-width="1.6"/>
+<text x="340.0" y="296.5" font-size="12.5" fill="#2F9E63" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">#2 disc</text>
+<rect x="140.0" y="311.0" width="400.0" height="28.0" rx="14.0" fill="#D6F0ED" stroke="#2A9D8F" stroke-width="1.6"/>
+<text x="340.0" y="329.5" font-size="12.5" fill="#2A9D8F" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">#3 ellipse</text>
+<rect x="140.0" y="344.0" width="400.0" height="28.0" rx="14.0" fill="#EEF1F5" stroke="#64748B" stroke-width="1.6"/>
+<text x="340.0" y="362.5" font-size="12.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">#4 quad</text>
+<rect x="660.0" y="110.0" width="560.0" height="300.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="940.0" y="136.0" font-size="15" fill="#3D6BD1" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">2 · build per-tile lists</text>
+<rect x="801.0" y="169.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="827.0" y="169.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="853.0" y="169.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="879.0" y="169.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="905.0" y="169.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="931.0" y="169.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="801.0" y="195.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="827.0" y="195.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<circle cx="839.0" cy="207.0" r="4" fill="#3D6BD1"/>
+<rect x="853.0" y="195.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<circle cx="865.0" cy="207.0" r="4" fill="#3D6BD1"/>
+<rect x="879.0" y="195.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="905.0" y="195.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="931.0" y="195.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="801.0" y="221.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="827.0" y="221.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="853.0" y="221.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="879.0" y="221.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="905.0" y="221.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<circle cx="917.0" cy="233.0" r="4" fill="#3D6BD1"/>
+<rect x="931.0" y="221.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="801.0" y="247.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="827.0" y="247.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<circle cx="839.0" cy="259.0" r="4" fill="#3D6BD1"/>
+<rect x="853.0" y="247.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="879.0" y="247.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<circle cx="891.0" cy="259.0" r="4" fill="#3D6BD1"/>
+<rect x="905.0" y="247.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="931.0" y="247.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="801.0" y="273.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="827.0" y="273.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="853.0" y="273.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="879.0" y="273.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="905.0" y="273.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="931.0" y="273.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<circle cx="943.0" cy="285.0" r="4" fill="#3D6BD1"/>
+<rect x="801.0" y="299.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="827.0" y="299.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="853.0" y="299.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="879.0" y="299.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<circle cx="891.0" cy="311.0" r="4" fill="#3D6BD1"/>
+<rect x="905.0" y="299.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<rect x="931.0" y="299.0" width="24.0" height="24.0" rx="2" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1"/>
+<text x="878.0" y="342.0" font-size="12.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">each tile holds only the commands that touch it</text>
+<line x1="622.0" y1="260.0" x2="658.0" y2="260.0" stroke="#1E293B" stroke-width="2.2"/>
+<polygon points="658.0,260.0 651.7,263.0 651.7,257.0" fill="#1E293B"/>
+<text x="640.0" y="246.0" font-size="12" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">GPU compute</text>
+<rect x="60.0" y="440.0" width="560.0" height="330.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="340.0" y="466.0" font-size="15" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">why per-tile lookup matters</text>
+<text x="100.0" y="492.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">Without it, every fragment would test</text>
+<text x="100.0" y="512.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">every command against its pixel.</text>
+<text x="100.0" y="556.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">With it, a fragment only evaluates the</text>
+<text x="100.0" y="576.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">handful of commands that actually</text>
+<text x="100.0" y="596.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">reach its 16×16 tile — so expensive</text>
+<text x="100.0" y="616.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">SDFs are computed only where needed.</text>
+<rect x="660.0" y="440.0" width="560.0" height="330.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="940.0" y="466.0" font-size="15" fill="#2F9E63" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">3 · rasterize the per-tile list</text>
+<rect x="700.0" y="500.0" width="150.0" height="150.0" rx="4" fill="white" stroke="#1E293B" stroke-width="1.8"/>
+<circle cx="760" cy="570" r="34" fill="#D7F0E2" stroke="#2F9E63" stroke-width="2"/>
+<rect x="780.0" y="590.0" width="70.0" height="55.0" rx="2" fill="#DBEAFE" stroke="#3D6BD1" stroke-width="2"/>
+<rect x="800.0" y="648.0" width="110.0" height="6.0" rx="2" fill="#DD8500"/>
+<text x="912.0" y="512.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">node_chunk (16 B)</text>
+<text x="912.0" y="528.0" font-size="11" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">6 command slots + next link</text>
+<rect x="908.0" y="536.0" width="240.0" height="26.0" rx="13.0" fill="#D7F0E2" stroke="#2F9E63" stroke-width="1.6"/>
+<text x="1028.0" y="553.5" font-size="12.5" fill="#2F9E63" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">#0 disc</text>
+<rect x="908.0" y="566.0" width="240.0" height="26.0" rx="13.0" fill="#D6F0ED" stroke="#2A9D8F" stroke-width="1.6"/>
+<text x="1028.0" y="583.5" font-size="12.5" fill="#2A9D8F" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">#1 ellipse</text>
+<rect x="908.0" y="596.0" width="240.0" height="26.0" rx="13.0" fill="#DBEAFE" stroke="#3D6BD1" stroke-width="1.6"/>
+<text x="1028.0" y="613.5" font-size="12.5" fill="#3D6BD1" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">#2 box</text>
+<circle cx="1028" cy="632" r="3" fill="#64748B"/>
+<text x="1030.0" y="626.0" font-size="11" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">next</text>
+<text x="908.0" y="664.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">SDFs evaluated in order · alpha blended · group ops</text>
+<line x1="940.0" y1="412.0" x2="940.0" y2="438.0" stroke="#1E293B" stroke-width="2.2"/>
+<polygon points="940.0,438.0 937.0,431.7 943.0,431.7" fill="#1E293B"/>
+<text x="952.0" y="422.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">one indirect draw of active tiles</text>
+<text x="952.0" y="436.0" font-size="11" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">(a second one redraws cached tiles when the cache is on)</text>
+</svg>

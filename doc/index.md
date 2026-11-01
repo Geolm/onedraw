@@ -28,24 +28,25 @@ The project set out with four objectives that shape every design decision:
 
 Because shapes are rendered with [SDFs](https://iquilezles.org/articles/distfunctions2d/) — which can be comparatively expensive to evaluate — efficient culling is essential to keep fragment work low.
 
-`onedraw` achieves that by dividing the screen into **16×16 pixel tiles** and, in a **compute shader**, building a **linked list of draw commands per tile**. When a tile is rasterized, the fragment shader reads exactly that tile's list, so it only evaluates the handful of shapes that actually reach it instead of testing every command against every pixel. That small per-tile lookup is a large win at fragment time.
+`onedraw` achieves that by dividing the screen into **16×16 pixel tiles** and, in a **compute shader**, building a **per-tile list of draw commands** (packed in 16-byte chunks of 6, linked together). When a tile is rasterized, the fragment shader reads exactly that tile's list, so it only evaluates the handful of shapes that actually reach it instead of testing every command against every pixel. That small per-tile lookup is a large win at fragment time.
 
-![How onedraw works](overview.png)
+![How onedraw works](overview.svg)
 
 ---
 
 ## GPU-Driven Pipeline
 
-The whole binning phase runs **on the GPU** as a short chain of compute kernels that ends in a single **indirect draw call**:
+The whole binning phase runs **on the GPU** as a short chain of compute kernels that ends in **one indirect draw call** (a second one redraws cached tiles when the [tile cache](part1.md) is on):
 
-![The full GPU pipeline](pipeline.png)
+![The full GPU pipeline](pipeline.svg)
 
 | Stage | What it does |
 |-------|--------------|
 | **draw commands** | The CPU writes a flat list of commands (type, color, quantized AABB, `data[]`) into a double-buffered ring. |
+| **hash commands** | Computes one content hash per command (its type, color, data floats, clip, quantized bounds — deliberately not its position in the list), feeding the [tile cache](part1.md). |
 | **region bin** | One threadgroup per region walks the command list, testing each command's AABB against the region and scattering the visible, order-preserving indices into the region's list — a fused predicate + scan + scatter in a single kernel. |
-| **tile bin** | For every tile, walks its region's list and appends the matching commands to the per-tile linked list, keeping each tile's head in a register; the walk stops at the first fully opaque box that covers the tile ([occlusion culling](part2.md)). |
-| **write indirect args** | Counts the tiles to shade and the tiles to copy, and writes the two indirect draw buffers. |
+| **tile bin** | For every tile, walks its region's list in reverse and builds the per-tile list as linked 16-byte chunks (6 command slots each), keeping each tile's head in a register; the walk stops at the first fully opaque box that covers the tile ([occlusion culling](part2.md)). |
+| **write ICB** | Counts the tiles to shade (dirty) and the tiles to redraw from the cache (clean), and writes the two indirect draw buffers. |
 
 Because every tile with at least one command is appended to a list of tiles to render, the **indirect draw** rasterizes *only* the tiles that need it — no full-screen pass, and no CPU work after `od_end_frame()`. With the [tile cache](part1.md) on, only the tiles that changed this frame are shaded; unchanged tiles are appended to a second list and redrawn from the cache by a second indirect draw.
 
@@ -58,7 +59,9 @@ Because every tile with at least one command is appended to a list of tiles to r
 | `MAX_COMMANDS` | `65,536` | draw commands per frame (including begin/end group) |
 | `MAX_CLIPS` | `256` | clip shapes per frame |
 | `SIMD_GROUP_SIZE` | `32` | Apple Silicon wavefront size |
-| `MAX_NODES_COUNT` | `4,194,304` | headroom for per-tile linked-list nodes |
+| `MAX_NODES_COUNT` | `4,194,304` | command slots in the per-tile lists (packed in chunks of 6) |
+| `NODES_PER_CHUNK` | `6` | command slots per 16-byte `node_chunk` (plus the link to the next chunk) |
+| `MAX_NODE_CHUNKS` | `699,051` | size of the per-tile chunk pool, `ceil(MAX_NODES_COUNT / NODES_PER_CHUNK)` |
 | `MAX_SCREEN_SIZE` | `4096` | max viewport (the quantized AABB stores tile indices on 8 bits) |
 
 ---

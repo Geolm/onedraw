@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 680" width="1440" height="680" role="img">
+<rect x="0" y="0" width="1440" height="680" rx="16" fill="white" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="720.0" y="42.0" font-size="20" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">GPU-driven pipeline</text>
+<text x="720.0" y="68.0" font-size="13.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">a short chain of compute kernels, ending in one indirect draw (two when the tile cache is on)</text>
+<text x="720.0" y="658.0" font-size="13" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">no full-screen pass and no CPU work after od_end_frame() — the GPU decides what to draw</text>
+<rect x="70.0" y="150.0" width="300.0" height="110.0" rx="12" fill="#E9E6FB" stroke="#7B72E3" stroke-width="1.8"/>
+<circle cx="90" cy="170" r="10" fill="#7B72E3"/>
+<text x="90.0" y="174.0" font-size="11.5" fill="white" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">0</text>
+<text x="108.0" y="175.0" font-size="15.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">draw commands</text>
+<text x="108.0" y="200.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">CPU writes a flat list</text>
+<text x="108.0" y="216.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">into a double-buffered ring</text>
+<rect x="400.0" y="150.0" width="300.0" height="110.0" rx="12" fill="#D6F0ED" stroke="#2A9D8F" stroke-width="1.8"/>
+<circle cx="420" cy="170" r="10" fill="#2A9D8F"/>
+<text x="420.0" y="174.0" font-size="11.5" fill="white" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">1</text>
+<text x="438.0" y="175.0" font-size="15.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">hash commands</text>
+<text x="438.0" y="200.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">one content hash per command,</text>
+<text x="438.0" y="216.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">feeds the tile cache</text>
+<rect x="730.0" y="150.0" width="300.0" height="110.0" rx="12" fill="#D7F0E2" stroke="#2F9E63" stroke-width="1.8"/>
+<circle cx="750" cy="170" r="10" fill="#2F9E63"/>
+<text x="750.0" y="174.0" font-size="11.5" fill="white" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">2</text>
+<text x="768.0" y="175.0" font-size="15.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">region bin</text>
+<text x="768.0" y="200.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">fused predicate + scan + scatter,</text>
+<text x="768.0" y="216.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">one threadgroup per region</text>
+<rect x="1060.0" y="150.0" width="300.0" height="110.0" rx="12" fill="#FDEBD3" stroke="#DD8500" stroke-width="1.8"/>
+<circle cx="1080" cy="170" r="10" fill="#DD8500"/>
+<text x="1080.0" y="174.0" font-size="11.5" fill="white" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">3</text>
+<text x="1098.0" y="175.0" font-size="15.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">tile bin</text>
+<text x="1098.0" y="200.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">walk the region list per tile,</text>
+<text x="1098.0" y="216.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">build the chunk list, head in a register</text>
+<line x1="372.0" y1="205.0" x2="398.0" y2="205.0" stroke="#1E293B" stroke-width="2.2"/>
+<polygon points="398.0,205.0 391.7,208.0 391.7,202.0" fill="#1E293B"/>
+<line x1="702.0" y1="205.0" x2="728.0" y2="205.0" stroke="#1E293B" stroke-width="2.2"/>
+<polygon points="728.0,205.0 721.7,208.0 721.7,202.0" fill="#1E293B"/>
+<line x1="1032.0" y1="205.0" x2="1058.0" y2="205.0" stroke="#1E293B" stroke-width="2.2"/>
+<polygon points="1058.0,205.0 1051.7,208.0 1051.7,202.0" fill="#1E293B"/>
+<rect x="1060.0" y="380.0" width="300.0" height="110.0" rx="12" fill="#F9DCD9" stroke="#D25B53" stroke-width="1.8"/>
+<circle cx="1080" cy="400" r="10" fill="#D25B53"/>
+<text x="1080.0" y="404.0" font-size="11.5" fill="white" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">4</text>
+<text x="1098.0" y="405.0" font-size="15.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">write ICB</text>
+<text x="1098.0" y="430.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">count the dirty and the clean tiles,</text>
+<text x="1098.0" y="446.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">write the two indirect buffers</text>
+<line x1="1210.0" y1="262.0" x2="1210.0" y2="378.0" stroke="#1E293B" stroke-width="2.2"/>
+<polygon points="1210.0,378.0 1207.0,371.7 1213.0,371.7" fill="#1E293B"/>
+<rect x="790.0" y="530.0" width="230.0" height="100.0" rx="12" fill="#F9DCD9" stroke="#D25B53" stroke-width="1.8"/>
+<text x="905.0" y="563.0" font-size="14.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">indirect draw</text>
+<text x="905.0" y="583.0" font-size="13" fill="#D25B53" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">dirty tiles</text>
+<text x="905.0" y="603.0" font-size="11.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">re-shade every tile that changed</text>
+<text x="905.0" y="619.0" font-size="11.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">and store it in the cache (when on)</text>
+<rect x="1080.0" y="530.0" width="230.0" height="100.0" rx="12" fill="#D7F0E2" stroke="#2F9E63" stroke-width="1.8" stroke-dasharray="7 5"/>
+<text x="1195.0" y="563.0" font-size="14.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">indirect draw</text>
+<text x="1195.0" y="583.0" font-size="13" fill="#2F9E63" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">clean tiles (opt-in cache)</text>
+<text x="1195.0" y="603.0" font-size="11.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">redraw the unchanged tiles from</text>
+<text x="1195.0" y="619.0" font-size="11.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">the cache, the walk is skipped</text>
+<line x1="1130.0" y1="492.0" x2="905.0" y2="528.0" stroke="#1E293B" stroke-width="2.2"/>
+<polygon points="905.0,528.0 910.7,524.0 911.7,530.0" fill="#1E293B"/>
+<line x1="1290.0" y1="492.0" x2="1195.0" y2="528.0" stroke="#1E293B" stroke-width="2.2"/>
+<polygon points="1195.0,528.0 1199.8,522.9 1202.0,528.6" fill="#1E293B"/>
+</svg>

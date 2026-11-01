@@ -2,7 +2,7 @@
 
 ## Font
 
-![Font pipeline](font-pipeline.png)
+![Font pipeline](font-pipeline.svg)
 
 Font rendering is currently quite basic and built on top of [stb_truetype.h](https://github.com/nothings/stb), though it could be adapted to another library.
 

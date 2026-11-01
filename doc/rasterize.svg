@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 660" width="1200" height="660" role="img">
+<rect x="0" y="0" width="1200" height="660" rx="16" fill="white" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="600.0" y="42.0" font-size="21" fill="#1E293B" text-anchor="bold" font-family="Helvetica, Arial, sans-serif" font-weight="middle">The rasterizer, per tile</text>
+<rect x="40.0" y="80.0" width="700.0" height="540.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="390.0" y="106.0" font-size="15" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">one tile: 8x8 quads, one draw per dirty/clean pass</text>
+<text x="160.0" y="134.0" font-size="14" fill="#64748B" text-anchor="bold" font-family="Helvetica, Arial, sans-serif" font-weight="middle">instances of tile (1, 1)</text>
+<rect x="70.0" y="146.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="100.0" y="146.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="130.0" y="146.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="160.0" y="146.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="190.0" y="146.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="220.0" y="146.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="70.0" y="176.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="100.0" y="176.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="130.0" y="176.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="160.0" y="176.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="190.0" y="176.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="220.0" y="176.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="70.0" y="206.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="100.0" y="206.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="130.0" y="206.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="160.0" y="206.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="190.0" y="206.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="220.0" y="206.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="70.0" y="236.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="100.0" y="236.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="130.0" y="236.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="160.0" y="236.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="190.0" y="236.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="220.0" y="236.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="70.0" y="266.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="100.0" y="266.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="130.0" y="266.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="160.0" y="266.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="190.0" y="266.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="220.0" y="266.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="70.0" y="296.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="100.0" y="296.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="130.0" y="296.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="160.0" y="296.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<rect x="190.0" y="296.0" width="30.0" height="30.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="1"/>
+<rect x="220.0" y="296.0" width="30.0" height="30.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="1"/>
+<text x="160.0" y="348.0" font-size="13" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">129 quads</text>
+<text x="160.0" y="368.0" font-size="13" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">one per command</text>
+<text x="160.0" y="388.0" font-size="13" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">that touches the tile</text>
+<line x1="300.0" y1="236.0" x2="360.0" y2="236.0" stroke="#1E293B" stroke-width="2"/>
+<polygon points="360.0,236.0 353.7,239.0 353.7,233.0" fill="#1E293B"/>
+<text x="400.0" y="134.0" font-size="14" fill="#64748B" text-anchor="bold" font-family="Helvetica, Arial, sans-serif" font-weight="middle">one quad (8 x 8 px)</text>
+<rect x="364.0" y="146.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="373.0" y="146.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="382.0" y="146.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="391.0" y="146.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="400.0" y="146.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="409.0" y="146.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="418.0" y="146.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="427.0" y="146.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="364.0" y="155.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="373.0" y="155.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="382.0" y="155.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="391.0" y="155.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="400.0" y="155.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="409.0" y="155.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="418.0" y="155.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="427.0" y="155.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="364.0" y="164.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="373.0" y="164.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="382.0" y="164.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="391.0" y="164.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="400.0" y="164.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="409.0" y="164.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="418.0" y="164.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="427.0" y="164.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="364.0" y="173.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="373.0" y="173.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="382.0" y="173.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="391.0" y="173.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="400.0" y="173.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="409.0" y="173.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="418.0" y="173.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="427.0" y="173.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="364.0" y="182.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="373.0" y="182.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="382.0" y="182.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="391.0" y="182.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="400.0" y="182.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="409.0" y="182.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="418.0" y="182.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="427.0" y="182.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="364.0" y="191.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="373.0" y="191.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="382.0" y="191.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="391.0" y="191.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="400.0" y="191.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="409.0" y="191.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="418.0" y="191.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="427.0" y="191.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="364.0" y="200.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="373.0" y="200.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="382.0" y="200.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="391.0" y="200.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="400.0" y="200.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="409.0" y="200.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="418.0" y="200.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="427.0" y="200.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="364.0" y="209.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="373.0" y="209.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="382.0" y="209.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="391.0" y="209.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="400.0" y="209.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="409.0" y="209.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<rect x="418.0" y="209.0" width="9.0" height="9.0" rx="8" fill="#EEF2F7" stroke="#64748B" stroke-width="0.7"/>
+<rect x="427.0" y="209.0" width="9.0" height="9.0" rx="8" fill="#E0E7EF" stroke="#64748B" stroke-width="0.7"/>
+<text x="400.0" y="240.0" font-size="12.5" fill="#DD8500" text-anchor="bold" font-family="Helvetica, Arial, sans-serif" font-weight="middle">v0  v1  v2  v3</text>
+<text x="400.0" y="262.0" font-size="12.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">u: 0..1, v: 0..1</text>
+<text x="400.0" y="282.0" font-size="12.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">(strip topology, 4 vertices)</text>
+<text x="440.0" y="322.0" font-size="13" fill="#64748B" text-anchor="bold" font-family="Helvetica, Arial, sans-serif" font-weight="middle">the fragment program does</text>
+<text x="352.0" y="344.0" font-size="12.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">1.  read the tile's chunk list</text>
+<text x="352.0" y="363.0" font-size="12.5" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">       (6 commands per 16-byte chunk)</text>
+<text x="352.0" y="382.0" font-size="12.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">2.  for each command: evaluate its</text>
+<text x="352.0" y="401.0" font-size="12.5" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">       SDF at the fragment position</text>
+<text x="352.0" y="420.0" font-size="12.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">3.  anti-alias at 1-px steps along</text>
+<text x="352.0" y="439.0" font-size="12.5" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">       the normal direction</text>
+<text x="352.0" y="458.0" font-size="12.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">4.  combine: min / smoothmin</text>
+<text x="352.0" y="477.0" font-size="12.5" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">5.  alpha-blend into the screenshot</text>
+<text x="352.0" y="496.0" font-size="12.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">6.  write the tile cache</text>
+<line x1="505.0" y1="512.0" x2="580.0" y2="512.0" stroke="#1E293B" stroke-width="2"/>
+<polygon points="580.0,512.0 573.7,515.0 573.7,509.0" fill="#1E293B"/>
+<rect x="580.0" y="430.0" width="150.0" height="150.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="655.0" y="462.0" font-size="14" fill="#1E293B" text-anchor="bold" font-family="Helvetica, Arial, sans-serif" font-weight="middle">screenshot</text>
+<text x="655.0" y="486.0" font-size="12" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">2560 x 1440</text>
+<text x="655.0" y="506.0" font-size="12" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">(or the cached</text>
+<text x="655.0" y="524.0" font-size="12" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">tile's 8 x 8 block)</text>
+<rect x="810.0" y="80.0" width="350.0" height="300.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="985.0" y="106.0" font-size="15" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">why no derivatives</text>
+<text x="835.0" y="128.0" font-size="13" fill="#3D6BD1" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">rendering happens at pixel level:</text>
+<text x="835.0" y="150.0" font-size="13" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">one fragment per pixel, so edge</text>
+<text x="835.0" y="172.0" font-size="13" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">quality is controlled directly</text>
+<text x="835.0" y="194.0" font-size="13" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">and ddx/ddy are never needed</text>
+<text x="835.0" y="216.0" font-size="13" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal"></text>
+<text x="835.0" y="238.0" font-size="13" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">one tile is covered by at most a</text>
+<text x="835.0" y="260.0" font-size="13" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">few hundred 8-vertex quads, which</text>
+<text x="835.0" y="282.0" font-size="13" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">a fragment shader can loop over</text>
+<text x="835.0" y="304.0" font-size="13" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">comfortably</text>
+<rect x="810.0" y="420.0" width="350.0" height="200.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="835.0" y="462.0" font-size="13" fill="#2F9E63" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">the same pass runs on a cached</text>
+<text x="835.0" y="484.0" font-size="13" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">tile to verify it is still valid;</text>
+<text x="835.0" y="506.0" font-size="13" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">only the dirty pass writes the</text>
+<text x="835.0" y="528.0" font-size="13" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">screenshot, only the clean pass</text>
+<text x="835.0" y="550.0" font-size="13" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">writes the cache</text>
+</svg>

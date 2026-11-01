@@ -1,14 +1,14 @@
 # onedraw
 **GPU-driven sdf 2D renderer drop-in library**
 
-`onedraw` is designed to render everything in a single draw call, maximizing GPU efficiency for 2D graphics. More details can be found in the [documentation](doc/index.md). It relies on Apple Metal API, wave instructions, and indirect draw calls, so adapting it to other graphics APIs would require significant changes (but feel free to contact me if you want to do a port).
+`onedraw` is designed to render everything in a single indirect draw call (plus one more for cached tiles when the opt-in tile cache is on), maximizing GPU efficiency for 2D graphics. More details can be found in the [documentation](doc/index.md). It relies on Apple Metal API, wave instructions, and indirect draw calls, so adapting it to other graphics APIs would require significant changes (but feel free to contact me if you want to do a port).
 
 ### Screenshot
 ![all primitives screenshot](reference_highdpi.png)
 
 
 ### Features
-* **Single draw call rendering** – as the name suggests, all primitives are drawn in one draw call.
+* **Single draw call rendering** – as the name suggests, all primitives are rasterized by a single indirect draw call; when the tile cache is on, unchanged tiles are redrawn from the cache by a second one.
 * **Hierarchical tile-based binning** – the compute shader processes only the primitives that influence each tile, reducing wasted work.
 * **Tile cache** – opt-in via the `cache` flag of `onedraw_def`: unchanged tiles are redrawn from a full-screen cache texture instead of being re-shaded (4 extra bytes per pixel).
 * **Occlusion culling** – while building the per-tile command lists, the walk stops at the first fully opaque box that covers a tile, so content hidden under a window never reaches the fragment shader.

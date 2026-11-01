@@ -77,5 +77,7 @@ _deps
 
 # project specific
 screenshot.png
+
 # doc diagram tooling
 .docgen/venv
+doc/__pycache__

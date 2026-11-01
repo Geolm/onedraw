@@ -2,7 +2,7 @@
 
 ## Rasterization shaders
 
-![Tile rasterization](rasterize.png)
+![The rasterizer, per tile](rasterize.svg)
 
 The compute stage produces an array of active tile indices. An **indirect draw call** uses that array to decide how many instances to render; each instance is one tile, drawn as a **triangle strip** with four vertices.
 
@@ -28,7 +28,7 @@ The tile index is also passed to each vertex with **no interpolation** (`[[flat]
 
 #### Fragment shader
 
-In the fragment shader, the **tile index** selects the linked list of draw commands, which are processed in order. The output color starts at the clear color and standard **alpha blending** accumulates the final result. For **groups of shapes**, the selected operator (`min` or `smoothmin`) is used to fold the distances and blend the colors before the group contributes to the tile.
+In the fragment shader, the **tile index** selects the tile's list of draw commands — a chain of 16-byte chunks holding 6 command indices each — which are evaluated in order. The output color starts at the clear color and standard **alpha blending** accumulates the final result. For **groups of shapes**, the selected operator (`min` or `smoothmin`) is used to fold the distances and blend the colors before the group contributes to the tile.
 
 ##### Intrinsics
 
@@ -61,9 +61,9 @@ We eventually switched (reluctantly!) to a tessellation-based scheme, which brou
 
 ![Bézier tessellation](bezier.png)
 
-![Bézier binning: one curve, scattered across tiles](bezier-tiles.png)
+![Bézier binning: one curve, scattered across tiles](bezier-tiles.svg)
 
-The numbers make the win concrete: the whole curve is a single draw command of capsules, but binning scatters it so each tile keeps only the capsules that reach it (1–3 here). A fragment shader then evaluates just a few SDFs per tile instead of every capsule in the curve — that is the payoff that makes tessellation affordable.
+The numbers make the win concrete: the tessellation emits one capsule draw command per segment, and binning scatters them so each tile keeps only the capsules that reach it (1–3 here). A fragment shader then evaluates just a few SDFs per tile instead of every capsule in the curve — that is the payoff that makes tessellation affordable.
 
 
 ##### Tessellation details

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 660" width="1160" height="660" role="img">
+<rect x="0" y="0" width="1160" height="660" rx="16" fill="white" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="580.0" y="42.0" font-size="20" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">GPU memory at 1440p (2560×1440)</text>
+<text x="580.0" y="68.0" font-size="13.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">every buffer is fixed-capacity, so this is a stable upper bound (measured with od_get_stats)</text>
+<text x="580.0" y="638.0" font-size="13" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">the screenshot buffer is optional — the first thing to drop · with the tile cache on the total grows to ≈ 53 MB</text>
+<text x="60.0" y="112.0" font-size="15" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">≈ 39 MB total (38,943 kb)</text>
+<rect x="60.0" y="126.0" width="384.8" height="34.0" rx="0" fill="#D25B53"/>
+<text x="252.4" y="148.0" font-size="12.5" fill="white" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">37%</text>
+<rect x="444.8" y="126.0" width="291.2" height="34.0" rx="0" fill="#7B72E3"/>
+<text x="590.4" y="148.0" font-size="12.5" fill="white" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">28%</text>
+<rect x="736.0" y="126.0" width="208.0" height="34.0" rx="0" fill="#3D6BD1"/>
+<text x="840.0" y="148.0" font-size="12.5" fill="white" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">20%</text>
+<rect x="944.0" y="126.0" width="114.4" height="34.0" rx="0" fill="#2F9E63"/>
+<text x="1001.2" y="148.0" font-size="12.5" fill="white" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">11%</text>
+<rect x="1058.4" y="126.0" width="52.0" height="34.0" rx="0" fill="#DD8500"/>
+<rect x="60.0" y="126.0" width="1040.0" height="34.0" rx="8" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="60.0" y="196.0" width="1040.0" height="72.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="84.0" y="226.0" font-size="15.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">screenshot</text>
+<text x="84.0" y="248.0" font-size="12.5" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">framebuffer capture (only if allow_screenshot)</text>
+<rect x="600.0" y="224.0" width="360.0" height="16.0" rx="8" fill="#D25B53"/>
+<text x="974.0" y="237.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">14 MB · 37%</text>
+<rect x="60.0" y="276.0" width="1040.0" height="72.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="84.0" y="306.0" font-size="15.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">per-tile node pool</text>
+<text x="84.0" y="328.0" font-size="12.5" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">699,051 × 16-byte chunks (6 command slots each), fixed</text>
+<rect x="600.0" y="304.0" width="275.1" height="16.0" rx="8" fill="#7B72E3"/>
+<text x="889.1" y="317.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">10.7 MB · 28%</text>
+<rect x="60.0" y="356.0" width="1040.0" height="72.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="84.0" y="386.0" font-size="15.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">region lists</text>
+<text x="84.0" y="408.0" font-size="12.5" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">indices (scales with resolution)</text>
+<rect x="600.0" y="384.0" width="192.9" height="16.0" rx="8" fill="#3D6BD1"/>
+<text x="806.9" y="397.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">7.5 MB · 20%</text>
+<rect x="60.0" y="436.0" width="1040.0" height="72.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="84.0" y="466.0" font-size="15.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">per-frame CPU ring</text>
+<text x="84.0" y="488.0" font-size="12.5" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">commands, colors, data, AABBs, clips · 2 in flight</text>
+<rect x="600.0" y="464.0" width="102.9" height="16.0" rx="8" fill="#2F9E63"/>
+<text x="716.9" y="477.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">4 MB · 11%</text>
+<rect x="60.0" y="516.0" width="1040.0" height="72.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="84.0" y="546.0" font-size="15.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">other</text>
+<text x="84.0" y="568.0" font-size="12.5" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">texture array, command hashes, tile bookkeeping, font atlas</text>
+<rect x="600.0" y="544.0" width="48.9" height="16.0" rx="8" fill="#DD8500"/>
+<text x="662.9" y="557.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">1.9 MB · 5%</text>
+</svg>

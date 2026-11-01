@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 720" width="1120" height="720" role="img">
+<rect x="0" y="0" width="1120" height="720" rx="16" fill="white" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="560.0" y="42.0" font-size="20" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">Bézier binning: one curve, scattered across tiles</text>
+<text x="560.0" y="68.0" font-size="13.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">each tile stores only the capsules it touches</text>
+<rect x="111.5" y="131.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="169.5" y="131.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="227.5" y="131.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="285.5" y="131.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="343.5" y="131.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="401.5" y="131.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="459.5" y="131.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="487.0" y="164.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">1</text>
+<rect x="517.5" y="131.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="545.0" y="164.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">1</text>
+<rect x="111.5" y="189.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="169.5" y="189.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="227.5" y="189.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="285.5" y="189.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="343.5" y="189.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="371.0" y="222.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">2</text>
+<rect x="401.5" y="189.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="429.0" y="222.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">3</text>
+<rect x="459.5" y="189.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="487.0" y="222.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">1</text>
+<rect x="517.5" y="189.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="545.0" y="222.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">1</text>
+<rect x="111.5" y="247.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="169.5" y="247.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="227.5" y="247.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="285.5" y="247.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="313.0" y="280.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">2</text>
+<rect x="343.5" y="247.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="371.0" y="280.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">2</text>
+<rect x="401.5" y="247.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="429.0" y="280.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">1</text>
+<rect x="459.5" y="247.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="517.5" y="247.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="111.5" y="305.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="169.5" y="305.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="227.5" y="305.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="255.0" y="338.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">1</text>
+<rect x="285.5" y="305.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="313.0" y="338.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">2</text>
+<rect x="343.5" y="305.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="371.0" y="338.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">2</text>
+<rect x="401.5" y="305.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="459.5" y="305.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="517.5" y="305.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="111.5" y="363.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="139.0" y="396.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">1</text>
+<rect x="169.5" y="363.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="197.0" y="396.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">1</text>
+<rect x="227.5" y="363.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="255.0" y="396.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">3</text>
+<rect x="285.5" y="363.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="313.0" y="396.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">2</text>
+<rect x="343.5" y="363.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="401.5" y="363.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="459.5" y="363.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="517.5" y="363.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="111.5" y="421.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="139.0" y="454.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">1</text>
+<rect x="169.5" y="421.5" width="55.0" height="55.0" rx="3" fill="#EFF9F2" stroke="#2F9E63" stroke-width="1.8"/>
+<text x="197.0" y="454.0" font-size="13" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">1</text>
+<rect x="227.5" y="421.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="285.5" y="421.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="343.5" y="421.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="401.5" y="421.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="459.5" y="421.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<rect x="517.5" y="421.5" width="55.0" height="55.0" rx="3" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+<path d="M 170.9,414.2 C 373.9,414.2 310.1,193.8 513.1,193.8" fill="none" stroke="#2F9E63" stroke-width="13" stroke-linecap="round" opacity="0.55"/>
+<path d="M 170.9,414.2 C 373.9,414.2 310.1,193.8 513.1,193.8" fill="none" stroke="#2F9E63" stroke-width="4" stroke-linecap="round"/>
+<circle cx="170.9" cy="414.2" r="6" fill="#1E293B"/>
+<circle cx="513.1" cy="193.8" r="6" fill="#1E293B"/>
+<text x="378.0" y="512.0" font-size="13" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">number = capsules kept by that tile</text>
+<rect x="700.0" y="130.0" width="360.0" height="380.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="730.0" y="170.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">the curve is tessellated on the CPU</text>
+<text x="730.0" y="190.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">into many capsule draw commands</text>
+<text x="730.0" y="210.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">(one per segment). binning scatters</text>
+<text x="730.0" y="230.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">them so each tile keeps only the</text>
+<text x="730.0" y="250.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">capsules that reach it (1–3 here).</text>
+<text x="730.0" y="290.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">a fragment then evaluates just</text>
+<text x="730.0" y="310.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">a few SDFs per tile instead of</text>
+<text x="730.0" y="330.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">every capsule of the curve —</text>
+<text x="730.0" y="350.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">that is the payoff that makes</text>
+<text x="730.0" y="370.0" font-size="13.5" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">tessellation affordable.</text>
+</svg>

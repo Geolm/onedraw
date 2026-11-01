@@ -79,7 +79,7 @@ typedef struct onedraw_def
     void (*log_func)(const char* string);
     bool allow_screenshot;
     bool srgb_backbuffer;
-    bool high_dpi;            // use the 2x resolution (64px) built-in font, for retina displays
+    bool high_dpi;            // use the 2x resolution (48 px) built-in font, for retina displays
     bool cache;               // enable the tile cache, skip the fragment work of the tiles that didn't change
 
     struct
@@ -115,8 +115,8 @@ size_t od_min_memory_size(void);
 //      [viewport_height]       must be non-zero
 //      [log_func]              pointer to the log function, can be NULL if no log required
 //      [allow_screenshot]      if true buffers are allocated for screenshot
-//      [high_dpi]              if true the 2x resolution (64px) built-in font is used, sharper on retina displays.
-//                               the 1x font (32px) is the default; on a retina screen the 1x text appears
+//      [high_dpi]              if true the 2x resolution (48 px) built-in font is used, sharper on retina displays.
+//                               the 1x font (24 px) is the default; on a retina screen the 1x text appears
 //                               blurry unless you also call od_set_font_scale() with the framebuffer scale
 //      [cache]                 if true, a persistent tile cache skips the fragment work of unchanged tiles.
 //                               opt-in : the cache is a full-screen texture in the backbuffer format
@@ -245,7 +245,7 @@ float od_text_width(struct onedraw* r, const char* text);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Sets the scale factor applied to the built-in font (glyphs, bearings and advances)
-//      [scale]     scale factor, 1.0 = the native size of the baked atlas (32px)
+//      [scale]     scale factor, 1.0 = the native size of the baked atlas (24 px)
 // 
 // Warning : this variable is store in frame params, it cannot change in a frame
 void od_set_font_scale(struct onedraw* r, float scale);
