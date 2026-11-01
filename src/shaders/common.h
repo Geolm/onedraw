@@ -111,20 +111,10 @@ typedef struct counters
     uint32_t pad;
 } counters;
 
-enum clip_type 
-{
-    clip_rect = 0, 
-    clip_disc = 1
-};
-
+// a disc is the degenerate case where radius == half_x == half_y
 typedef struct clip_shape
 {
-    union
-    {
-        struct {float center_x, center_y, half_x, half_y, radius;} rect;
-        struct {float center_x, center_y, radius;} disc;
-    };
-    enum clip_type type;
+    float center_x, center_y, half_x, half_y, radius;
 } clip_shape;
 
 typedef struct quantized_aabb

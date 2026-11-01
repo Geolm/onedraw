@@ -141,21 +141,9 @@ static inline float sd_segment(float2 p, float2 a, float2 b )
 // (pixel-aligned edges stay crisp, edges get a 1px anti-aliased fringe)
 static inline float clip_distance(constant clip_shape& clip, float2 pos, float aa_width)
 {
-    float sdf;
-    switch(clip.type)
-    {
-    case clip_rect:
-    {
-        float2 center = float2(clip.rect.center_x, clip.rect.center_y);
-        float2 half_extents = float2(clip.rect.half_x, clip.rect.half_y);
-        sdf = sd_aabox(pos, center, half_extents, clip.rect.radius);
-        break;
-    }
-    case clip_disc:
-        sdf = sd_disc(pos, float2(clip.disc.center_x, clip.disc.center_y), clip.disc.radius);
-        break;
-    }
-    return aa_width * (sdf + 0.5f);
+    float2 center = float2(clip.center_x, clip.center_y);
+    float2 half_extents = float2(clip.half_x, clip.half_y);
+    return aa_width * (sd_aabox(pos, center, half_extents, clip.radius) + 0.5f);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

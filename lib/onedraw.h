@@ -37,7 +37,7 @@
 
 #define ONEDRAW_MAJOR_VERSION   (2)
 #define ONEDRAW_MINOR_VERSION   (2)
-#define ONEDRAW_PATCH           (4)
+#define ONEDRAW_PATCH           (5)
 
 //----------------------------------------------------------------------------------------------------------------------------
 // Structures
@@ -210,7 +210,7 @@ void od_push_cliprect_rounded(struct onedraw* r, float min_x, float min_y, float
 // A pushed clip is not intersected with its parent (a pushed clip replaces the current clip).
 // You can push a maximum of 256 distinct clip shapes per frame.
 //      [cx, cy]        center of the disc
-//      [radius]        radius of the disc
+//      [radius]        radius of the disc, clamped to zero if negative
 void od_push_clipdisc(struct onedraw* r, float cx, float cy, float radius);
 
 //-----------------------------------------------------------------------------------------------------------------------------

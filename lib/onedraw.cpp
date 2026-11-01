@@ -2035,12 +2035,8 @@ void od_set_clear_color(struct onedraw* r, draw_color srgb_color)
 //----------------------------------------------------------------------------------------------------------------------------
 static inline bool clip_shape_equal(const clip_shape* a, const clip_shape* b)
 {
-    if (a->type == clip_rect)
-        return a->type == b->type && a->rect.center_x == b->rect.center_x && a->rect.center_y == b->rect.center_y &&
-               a->rect.half_x == b->rect.half_x && a->rect.half_y == b->rect.half_y && a->rect.radius == b->rect.radius;
-
-    return a->type == b->type && a->disc.center_x == b->disc.center_x && a->disc.center_y == b->disc.center_y &&
-           a->disc.radius == b->disc.radius;
+    return a->center_x == b->center_x && a->center_y == b->center_y && a->half_x == b->half_x &&
+           a->half_y == b->half_y && a->radius == b->radius;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2081,15 +2077,11 @@ static void push_cliprect(struct onedraw* r, float min_x, float min_y, float max
 
     clip_shape clip =
     {
-        .rect =
-        {
-            .center_x = min_x + half_x,
-            .center_y = min_y + half_y,
-            .half_x = half_x,
-            .half_y = half_y,
-            .radius = radius
-        },
-        .type = clip_rect
+        .center_x = min_x + half_x,
+        .center_y = min_y + half_y,
+        .half_x = half_x,
+        .half_y = half_y,
+        .radius = radius
     };
 
     push_clip(r, clip);
@@ -2110,13 +2102,9 @@ void od_push_cliprect_rounded(struct onedraw* r, float min_x, float min_y, float
 //----------------------------------------------------------------------------------------------------------------------------
 void od_push_clipdisc(struct onedraw* r, float cx, float cy, float radius)
 {
-    clip_shape clip =
-    {
-        .disc = {.center_x = cx, .center_y = cy, .radius = radius},
-        .type = clip_disc
-    };
-
-    push_clip(r, clip);
+    // a negative radius would leave the rounded rect shape undefined, so it is clamped to the degenerate point
+    radius = max(radius, 0.f);
+    push_cliprect(r, cx - radius, cy - radius, cx + radius, cy + radius, radius);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

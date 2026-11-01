@@ -482,21 +482,11 @@ kernel void hash_commands(constant draw_cmd_arguments& input [[buffer(0)]],
     if (cmd.clip_index != 0)
     {
         clip_shape clip = input.clips[cmd.clip_index];
-        if (clip.type == clip_rect)
-        {
-            hash = pcg_hash(hash ^ as_type<uint>(clip.rect.center_x));
-            hash = pcg_hash(hash ^ as_type<uint>(clip.rect.center_y));
-            hash = pcg_hash(hash ^ as_type<uint>(clip.rect.half_x));
-            hash = pcg_hash(hash ^ as_type<uint>(clip.rect.half_y));
-            hash = pcg_hash(hash ^ as_type<uint>(clip.rect.radius));
-        }
-        else
-        {
-            hash = pcg_hash(hash ^ as_type<uint>(clip.disc.center_x));
-            hash = pcg_hash(hash ^ as_type<uint>(clip.disc.center_y));
-            hash = pcg_hash(hash ^ as_type<uint>(clip.disc.radius));
-        }
-        hash = pcg_hash(hash ^ (uint) clip.type);
+        hash = pcg_hash(hash ^ as_type<uint>(clip.center_x));
+        hash = pcg_hash(hash ^ as_type<uint>(clip.center_y));
+        hash = pcg_hash(hash ^ as_type<uint>(clip.half_x));
+        hash = pcg_hash(hash ^ as_type<uint>(clip.half_y));
+        hash = pcg_hash(hash ^ as_type<uint>(clip.radius));
     }
 
     quantized_aabb aabb = input.commands_aabb[index];
@@ -574,23 +564,10 @@ kernel void region_bin(constant draw_cmd_arguments& input [[buffer(0)]],
 // 1px anti-aliased fringe only makes the rejection looser, so the same bounds are correct
 static inline bool clip_tile(aabb tile, clip_shape clip)
 {
-    switch(clip.type)
-    {
-    case clip_rect:
-    {
-        float2 rect_min = float2(clip.rect.center_x, clip.rect.center_y) - float2(clip.rect.half_x, clip.rect.half_y);
-        float2 rect_max = float2(clip.rect.center_x, clip.rect.center_y) + float2(clip.rect.half_x, clip.rect.half_y);
-        return (tile.max.x < rect_min.x || tile.max.y < rect_min.y ||
-                tile.min.x > rect_max.x || tile.min.y > rect_max.y);
-    }
-    case clip_disc:
-    {
-        float2 center = float2(clip.disc.center_x, clip.disc.center_y);
-        float2 nearest_point = clamp(center, tile.min, tile.max);
-        return distance_squared(nearest_point, center) > square(clip.disc.radius);
-    }
-    }
-    return false;
+    float2 rect_min = float2(clip.center_x, clip.center_y) - float2(clip.half_x, clip.half_y);
+    float2 rect_max = float2(clip.center_x, clip.center_y) + float2(clip.half_x, clip.half_y);
+    return (tile.max.x < rect_min.x || tile.max.y < rect_min.y ||
+            tile.min.x > rect_max.x || tile.min.y > rect_max.y);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
