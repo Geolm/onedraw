@@ -427,10 +427,10 @@ void od_log(struct onedraw* r, const char* string, ...)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_init_screenshot_resources(struct onedraw* r)
 {
+    SAFE_RELEASE(r->screenshot.texture);
+
     if (r->screenshot.allocate_resources)
     {
-        SAFE_RELEASE(r->screenshot.texture);
-
         MTL::TextureDescriptor* pTextureDesc = MTL::TextureDescriptor::alloc()->init();
         pTextureDesc->setWidth(r->rasterizer.width);
         pTextureDesc->setHeight(r->rasterizer.height);
@@ -447,7 +447,8 @@ void od_init_screenshot_resources(struct onedraw* r)
             .region_x = 0,
             .region_y = 0,
             .region_width = r->rasterizer.width,
-            .region_height = r->rasterizer.height
+            .region_height = r->rasterizer.height,
+            .allocate_resources = true
         };
 
         pTextureDesc->release();
@@ -1172,7 +1173,6 @@ void od_take_screenshot(struct onedraw* r, void* out_pixels)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
 {
-    // see MAX_SCREEN_SIZE: the aabb buffer stores tile indices on 8 bits
     if (width > MAX_SCREEN_SIZE || height > MAX_SCREEN_SIZE)
         od_log(r, "warning: resolution clamped to %ux%u (max supported resolution)", MAX_SCREEN_SIZE, MAX_SCREEN_SIZE);
     width = min(width, MAX_SCREEN_SIZE);
