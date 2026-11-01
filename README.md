@@ -10,7 +10,7 @@
 ### Features
 * **Single draw call rendering** – as the name suggests, all primitives are drawn in one draw call.
 * **Hierarchical tile-based binning** – the compute shader processes only the primitives that influence each tile, reducing wasted work.
-* **Tile cache** – opt-in via the `cache` flag of `onedraw_def`: unchanged tiles are redrawn from a full-screen cache texture instead of being re-shaded (4 extra bytes per pixel). We measured a -34 % on test scene which is mostly static.
+* **Tile cache** – opt-in via the `cache` flag of `onedraw_def`: unchanged tiles are redrawn from a full-screen cache texture instead of being re-shaded (4 extra bytes per pixel).
 * **Occlusion culling** – while building the per-tile command lists, the walk stops at the first fully opaque box that covers a tile, so content hidden under a window never reaches the fragment shader.
 * **Shader-based alpha blending** – all blending operations are handled in the shader, no framebuffer read/write required.
 * **Anti-aliasing** – smooth edges using signed distance functions.

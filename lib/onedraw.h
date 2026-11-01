@@ -121,7 +121,6 @@ size_t od_min_memory_size(void);
 //      [cache]                 if true, a persistent tile cache skips the fragment work of unchanged tiles.
 //                               opt-in : the cache is a full-screen texture in the backbuffer format
 //                               (4 bytes per pixel, up to ~64 MiB at the 4096x4096 max resolution).
-//                               on a mostly static 1440p scene : 1.69 ms -> 1.11 ms of GPU time (M5 Pro, 20 cores).
 //                               the sRGB backbuffer path is not tested yet (no sRGB setup available)
 //      [atlas]
 //          [width]             width of all textures in the array, if 0 (undefined) the array won't be created
