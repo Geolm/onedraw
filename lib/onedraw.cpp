@@ -195,7 +195,7 @@ struct onedraw
         MTL::Buffer* counters_buffer {nullptr};
         MTL::Buffer* indirect_arg {nullptr};
         MTL::Buffer* indices {nullptr};
-        MTL::Buffer* nodes {nullptr};
+        MTL::Buffer* chunks {nullptr};
         uint16_t num_width;
         uint16_t num_height;
         uint32_t count;
@@ -743,7 +743,7 @@ void od_bin_commands(struct onedraw* r)
     args->glyphs = (font_char*) r->font.glyphs->gpuAddress();
     args->font = r->font.texture->gpuResourceID()._impl;
     args->atlas = r->rasterizer.atlas->gpuResourceID()._impl;
-    args->max_nodes = MAX_NODES_COUNT;
+    args->max_chunks = MAX_NODE_CHUNKS;
     args->num_commands = r->commands.count;
     args->num_tile_height = r->tiles.num_height;
     args->num_tile_width = r->tiles.num_width;
@@ -819,7 +819,7 @@ void od_bin_commands(struct onedraw* r)
 
     tiles_data* output = (tiles_data*) r->commands.bin_output_arg.Map(r->stats.frame_index);
     output->head = (uint32_t*) r->tiles.head->gpuAddress();
-    output->nodes = (tile_node*) r->tiles.nodes->gpuAddress();
+    output->chunks = (node_chunk*) r->tiles.chunks->gpuAddress();
     output->tile_indices = (uint16_t*) r->tiles.indices->gpuAddress();
     output->clean_indices = (uint16_t*) r->tiles.clean_indices->gpuAddress();
     output->tile_hashes = (uint32_t*) r->tiles.hashes->gpuAddress();
@@ -834,7 +834,7 @@ void od_bin_commands(struct onedraw* r)
     compute_encoder->useResource(r->commands.command_hashes, MTL::ResourceUsageRead);
     compute_encoder->useResource(r->tiles.hashes, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
     compute_encoder->useResource(r->tiles.head, MTL::ResourceUsageRead|MTL::ResourceUsageWrite);
-    compute_encoder->useResource(r->tiles.nodes, MTL::ResourceUsageWrite);
+    compute_encoder->useResource(r->tiles.chunks, MTL::ResourceUsageWrite);
     compute_encoder->useResource(r->tiles.indices, MTL::ResourceUsageWrite);
     compute_encoder->useResource(r->tiles.clean_indices, MTL::ResourceUsageWrite);
     compute_encoder->dispatchThreads(MTL::Size(REGION_SIZE, REGION_SIZE, r->regions.count), MTL::Size(16, 16, 1));
@@ -893,7 +893,7 @@ void od_flush(struct onedraw* r, void* drawable)
         render_encoder->useResource(r->commands.data_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
         render_encoder->useResource(r->commands.clipshapes_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
         render_encoder->useResource(r->tiles.head, MTL::ResourceUsageRead);
-        render_encoder->useResource(r->tiles.nodes, MTL::ResourceUsageRead);
+        render_encoder->useResource(r->tiles.chunks, MTL::ResourceUsageRead);
         render_encoder->useResource(r->tiles.indices, MTL::ResourceUsageRead);
         render_encoder->useResource(r->tiles.clean_indices, MTL::ResourceUsageRead);
         MTL::Texture* cache_bound = r->cache ? r->rasterizer.cache_texture : r->rasterizer.cache_placeholder;
@@ -1050,7 +1050,7 @@ struct onedraw* od_init(onedraw_def* def)
     r->commands.aabb_buffer.Init(r->device, sizeof(quantized_aabb) * LAST_COMMAND);
     r->commands.clipshapes_buffer.Init(r->device, sizeof(clip_shape) * MAX_CLIPS);
     r->tiles.counters_buffer = r->device->newBuffer(sizeof(counters), MTL::ResourceStorageModePrivate);
-    r->tiles.nodes = r->device->newBuffer(sizeof(tile_node) * MAX_NODES_COUNT, MTL::ResourceStorageModePrivate);
+    r->tiles.chunks = r->device->newBuffer(sizeof(node_chunk) * MAX_NODE_CHUNKS, MTL::ResourceStorageModePrivate);
     r->commands.command_hashes = r->device->newBuffer(sizeof(uint32_t) * MAX_COMMANDS, MTL::ResourceStorageModePrivate);
 
     // 1x1 placeholder bound to the cache slot when the cache is off; the shader never dereferences it (uniform branch)
@@ -1302,7 +1302,7 @@ void od_terminate(struct onedraw* r)
     SAFE_RELEASE(r->tiles.binning_pso);
     SAFE_RELEASE(r->tiles.hash_pso);
     SAFE_RELEASE(r->tiles.head);
-    SAFE_RELEASE(r->tiles.nodes);
+    SAFE_RELEASE(r->tiles.chunks);
     SAFE_RELEASE(r->tiles.indices);
     SAFE_RELEASE(r->tiles.hashes);
     SAFE_RELEASE(r->tiles.clean_indices);
@@ -1353,7 +1353,7 @@ void od_get_stats(struct onedraw* r, od_stats* stats)
     gpu_mem += r->tiles.head->allocatedSize();
     gpu_mem += r->tiles.indices->allocatedSize();
     gpu_mem += r->tiles.indirect_arg->allocatedSize();
-    gpu_mem += r->tiles.nodes->allocatedSize();
+    gpu_mem += r->tiles.chunks->allocatedSize();
     gpu_mem += r->tiles.hashes->allocatedSize();
     gpu_mem += r->tiles.clean_indices->allocatedSize();
     gpu_mem += r->commands.command_hashes->allocatedSize();

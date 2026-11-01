@@ -594,24 +594,38 @@ static inline bool clip_tile(aabb tile, clip_shape clip)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// allocate one node for the command and prepend it to the tile list, the head is kept in a register
-// by the caller and written to the device memory once at the end of the tile
+// The final partial chunk keeps the LAST_COMMAND sentinel in its unused slots, skipped by the fragment shader, so the
+// pool is reused in place every frame without a clear. The head is kept in a register by the
+// caller and written to the device memory once at the end of the tile
 // ---------------------------------------------------------------------------------------------------------------------------
-static inline void add_node(device tiles_data& output, device counters& counter, uint max_nodes, uint32_t command_index, thread uint32_t& head)
+static inline void flush_node_chunk(device tiles_data& output, device counters& counter, uint32_t max_chunks,
+                                    thread uint32_t& head, thread node_chunk& chunk, thread uint32_t& slot)
 {
-    uint new_node_index = atomic_fetch_add_explicit(&counter.num_nodes, 1, memory_order_relaxed);
+    uint32_t chunk_index = atomic_fetch_add_explicit(&counter.num_chunks, 1, memory_order_relaxed);
 
-    // avoid access beyond the end of the buffer
-    if (new_node_index < max_nodes)
+    // pool exhaustion drops the whole chunk (up to 6 commands), the coarsest drop of the pool
+    if (chunk_index < max_chunks)
     {
-        output.nodes[new_node_index] = (tile_node)
-        {
-            .command_index = (uint16_t)command_index,
-            .next = head
-        };
-
-        head = new_node_index;
+        chunk.next = head;
+        output.chunks[chunk_index] = chunk;
+        head = chunk_index;
     }
+
+    for (uint32_t i = 0; i < NODES_PER_CHUNK; ++i)
+        chunk.command_index[i] = (uint16_t) LAST_COMMAND;
+
+    slot = NODES_PER_CHUNK - 1;
+}
+
+static inline void add_command(device tiles_data& output, device counters& counter, uint32_t max_chunks,
+                               uint32_t command_index, thread uint32_t& head, thread node_chunk& chunk, thread uint32_t& slot)
+{
+    chunk.command_index[slot] = (uint16_t) command_index;
+
+    if (slot == 0)
+        flush_node_chunk(output, counter, max_chunks, head, chunk, slot);
+    else
+        --slot;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -674,6 +688,14 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
     uint32_t pending_end = INVALID_INDEX;
     bool end_added = false;
 
+    // the pending chunk, filled from the last slot down : the unused slots must hold the sentinel,
+    // a partially flushed chunk is written as-is and the fragment shader skips the sentinels
+    node_chunk chunk;
+    for (uint32_t i = 0; i < NODES_PER_CHUNK; ++i)
+        chunk.command_index[i] = (uint16_t) LAST_COMMAND;
+
+    uint32_t slot = NODES_PER_CHUNK - 1;
+
     for(uint32_t i=0; i<input.num_commands; ++i)
     {
         uint32_t cmd_index = simd_broadcast_first(indices[i]);
@@ -733,7 +755,7 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
             {
                 if (input.cache)
                     tile_hash = pcg_hash(tile_hash ^ input.command_hashes[cmd_index]);
-                add_node(output, counter, input.max_nodes, cmd_index, head);
+                add_command(output, counter, input.max_chunks, cmd_index, head, chunk, slot);
             }
             pending_end = INVALID_INDEX;
             end_added = false;
@@ -748,17 +770,21 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
             {
                 if (input.cache)
                     tile_hash = pcg_hash(tile_hash ^ input.command_hashes[pending_end]);
-                add_node(output, counter, input.max_nodes, pending_end, head);
+                add_command(output, counter, input.max_chunks, pending_end, head, chunk, slot);
                 pending_end = INVALID_INDEX;
                 end_added = true;
             }
 
-            add_node(output, counter, input.max_nodes, cmd_index, head);
+            add_command(output, counter, input.max_chunks, cmd_index, head, chunk, slot);
 
             if (covers_tile(tile_xy, cmd_aabb, tile_aabb, cmd, input.colors[cmd_index], in_group, data))
                 break;
         }
     }
+
+    // flush the pending chunk, even partial : its unused slots hold the sentinel the fragment skips
+    if (slot < NODES_PER_CHUNK - 1)
+        flush_node_chunk(output, counter, input.max_chunks, head, chunk, slot);
 
     output.head[tile_index] = head;
 

@@ -10,6 +10,8 @@
 #define TILE_SIZE (16)
 #define REGION_SIZE (16)
 #define MAX_NODES_COUNT (1<<22)
+#define NODES_PER_CHUNK (6)
+#define MAX_NODE_CHUNKS ((MAX_NODES_COUNT + NODES_PER_CHUNK - 1) / NODES_PER_CHUNK)
 #define INVALID_INDEX (0xffffffff)
 #define MAX_CLIPS (256)
 #define MAX_COMMANDS (1<<16)
@@ -92,16 +94,18 @@ typedef struct draw_command
 #endif
 } draw_command;
 
-typedef struct tile_node
+// 16-byte chunk: 6 command indices + the link to the next chunk, ~2.7 bytes per command
+// Slot 5 holds the first (top-most) command added, slot 0 the last (bottom-most). 
+// Unused slots of a partial chunk hold LAST_COMMAND and are skipped.
+typedef struct node_chunk
 {
     uint32_t next;
-    uint16_t command_index;
-    uint16_t pad;    // keep the 8-byte node stride explicit
-} tile_node;
+    uint16_t command_index[NODES_PER_CHUNK];
+} node_chunk;
 
 typedef struct counters
 {
-    atomic_uint num_nodes;
+    atomic_uint num_chunks;
     atomic_uint num_tiles;
     atomic_uint num_clean_tiles;
     uint32_t pad;
@@ -176,7 +180,7 @@ typedef struct draw_cmd_arguments
     texture_half_r cache_read;       // read view of the same surface, for the clean tiles redraw
     float4 clear_color;
     uint32_t num_commands;
-    uint32_t max_nodes;
+    uint32_t max_chunks;
     uint32_t num_tile_width;
     uint32_t num_tile_height;
     uint32_t num_region_width;
@@ -193,7 +197,7 @@ typedef struct draw_cmd_arguments
 typedef struct tiles_data
 {
     device uint32_t* head;
-    device tile_node* nodes;
+    device node_chunk* chunks;
     device uint16_t* tile_indices;
     device uint16_t* clean_indices;
     device uint32_t* tile_hashes;

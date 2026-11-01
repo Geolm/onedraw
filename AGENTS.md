@@ -69,10 +69,10 @@ Don't modify this file.
 
 When preparing a commit (CL), update the project version according to the following rules:
 
-1. **Major version**: Increment when the change introduces a breaking change.
-2. **Minor version**: Increment when the change introduces a new feature without breaking backward compatibility.
-3. **Patch version**: Increment for all other code changes, including bug fixes, performance optimizations, and refactoring.
-4. **No version change**: Do not update the version for non-code changes, such as documentation updates, comments, or formatting.
+- Major version: Increment when the change introduces a breaking change.
+- Minor version: Increment when the change introduces a new feature without breaking backward compatibility.
+- Patch version: Increment for all other code changes, including bug fixes, performance optimizations, and refactoring.
+- No version change: Do not update the version for non-code changes, such as documentation updates, comments, or formatting.
 
 Always apply the highest applicable version increment. Never increment more than one version component for a single CL.
 
