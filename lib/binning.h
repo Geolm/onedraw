@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t binning_shader_size = 41470;
+static const size_t binning_shader_size = 41472;
 static const char binning_shader[] =
     "#include <metal_stdlib>\n"
     "#ifndef __COMMON_H__\n"
@@ -802,8 +802,10 @@ static const char binning_shader[] =
     "    if (input.cache)\n"
     "    {\n"
     "        region_hash = simd_sum(region_hash);\n"
+    "\n"
     "        if (simd_is_first())\n"
     "            simd_offsets[simd_group_id] = region_hash;\n"
+    "\n"
     "        threadgroup_barrier(mem_flags::mem_threadgroup);\n"
     "\n"
     "        if (simd_group_id == 0)\n"
