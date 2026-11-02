@@ -90,7 +90,7 @@ typedef struct onedraw_def
 
 } onedraw_def;
 
-typedef uint32_t draw_color; // color is expected to be A8R8G8B8 and in sRGB color space
+typedef uint32_t draw_color; // in sRGB color space
 
 #ifdef __cplusplus
 extern "C" {
