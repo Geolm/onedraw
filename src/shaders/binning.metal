@@ -504,6 +504,8 @@ kernel void hash_commands(constant draw_cmd_arguments& input [[buffer(0)]],
 // ---------------------------------------------------------------------------------------------------------------------------
 kernel void region_bin(constant draw_cmd_arguments& input [[buffer(0)]],
                        device uint16_t* regions_indices [[buffer(1)]],
+                       device uint32_t* regions_hashes [[buffer(2)]],
+                       device uint8_t* regions_dirty [[buffer(3)]],
                        threadgroup uint32_t* simd_offsets [[threadgroup(0)]],          // SIMD_GROUP_SIZE + 1 entries
                        uint thread_index [[thread_index_in_threadgroup]],
                        uint2 tg_size [[threads_per_threadgroup]],
@@ -516,6 +518,7 @@ kernel void region_bin(constant draw_cmd_arguments& input [[buffer(0)]],
     uint2 region_xy = uint2(region_index % input.num_region_width, region_index / input.num_region_width);
     uint region_offset = region_index * input.num_commands;
     uint running_total = 0;
+    uint region_hash = 0;
 
     for (uint base = 0; base < input.num_commands; base += tg_size.x)
     {
@@ -546,7 +549,13 @@ kernel void region_bin(constant draw_cmd_arguments& input [[buffer(0)]],
         threadgroup_barrier(mem_flags::mem_threadgroup);
 
         if (visible)
-            regions_indices[region_offset + running_total + simd_offsets[simd_group_id] + lane_offset] = (uint16_t) cmd_index;
+        {
+            uint pos = running_total + simd_offsets[simd_group_id] + lane_offset;
+            regions_indices[region_offset + pos] = (uint16_t) cmd_index;
+
+            if (input.cache)
+                region_hash += pcg_hash(input.command_hashes[cmd_index] + pos);
+        }
 
         running_total += simd_offsets[SIMD_GROUP_SIZE];
         threadgroup_barrier(mem_flags::mem_threadgroup);   // simd_offsets is rewritten by the next step
@@ -556,6 +565,31 @@ kernel void region_bin(constant draw_cmd_arguments& input [[buffer(0)]],
     // past the last visible command keep their previous content
     if (thread_index == 0 && running_total < input.num_commands)
         regions_indices[region_offset + running_total] = LAST_COMMAND;
+
+    // the region list is the set of commands that can touch the region's tiles, so a stable hash means
+    // every tile list is unchanged and tile_bin can skip the walk. each visible command folds its
+    // content hash with its list position, the threadgroup sums the per-thread partials, then the seed and count
+    if (input.cache)
+    {
+        region_hash = simd_sum(region_hash);
+
+        if (simd_is_first())
+            simd_offsets[simd_group_id] = region_hash;
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        if (simd_group_id == 0)
+        {
+            uint total = simd_sum((simd_lane < num_simd_groups) ? simd_offsets[simd_lane] : 0);
+            uint new_hash = pcg_hash(total ^ input.frame_seed ^ (running_total * 747796405u));
+            if (simd_lane == 0)
+            {
+                uint stored = regions_hashes[region_index];
+                regions_dirty[region_index] = ((stored == INVALID_INDEX) || (new_hash != stored)) ? 1u : 0u;
+                regions_hashes[region_index] = new_hash;
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -633,6 +667,7 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
                      device tiles_data& output [[buffer(1)]],
                      device counters& counter [[buffer(2)]],
                      constant const uint16_t* regions_indices [[buffer(3)]],
+                     constant const uint8_t* regions_dirty [[buffer(4)]],
                      ushort3 thread_pos [[thread_position_in_grid]])
 {
     // index.xy = tile index relative to the region
@@ -646,6 +681,20 @@ kernel void tile_bin(constant draw_cmd_arguments& input [[buffer(0)]],
         return;
 
     ushort tile_index = tile_xy.y * input.num_tile_width + tile_xy.x;
+
+    // a clean region kept every tile list from last frame, so each tile is a cache hit and only the
+    // blit list matters : skip the walk, the nodes and the intersection tests. the branch is uniform
+    // per threadgroup (thread_pos.z is the region)
+    if (input.cache && regions_dirty[region_index] == 0)
+    {
+        // an empty tile stores tile_hash = frame_seed, it shows the background and is not a cache hit
+        if (output.tile_hashes[tile_index] != input.frame_seed)
+        {
+            uint pos = atomic_fetch_add_explicit(&counter.num_clean_tiles, 1, memory_order_relaxed);
+            output.clean_indices[pos] = (uint16_t) tile_index;
+        }
+        return;
+    }
 
     // compute tile bounding box
     aabb tile_aabb = {.min = float2(tile_xy), .max = float2(tile_xy.x + 1, tile_xy.y + 1)};

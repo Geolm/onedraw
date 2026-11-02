@@ -6,33 +6,7 @@
 - Screenshot : copy only the capture region instead of the whole drawable (`onedraw.cpp:991`).
 - Batch the per-frame `useResource` calls (`useResources` or a heap), only if a CPU profile shows them.
 
-## Step 9 : tile cache, skip the clean regions (after step 3)
 
-Today `tile_bin` builds the full list of every tile (intersection tests, node writes, atomics, `binning.metal:728-793`) and only then compares the
-tile hash (`:799-821`) : a clean tile is drawn by `clean_fs` from the cache texture, its list is never read. On a mostly static frame almost all
-the `tile_bin` work is wasted.
-
-1. Region hash in the fused kernel of step 3 (only when `input.cache`) : the region list is exactly the set of commands that can touch a tile of
-   the region. Each visible thread mixes `command_hashes[cmd_index]` with its position in the compacted list, the threadgroup combines them with
-   an order-independent reduction (xor or sum, `simd_sum` then the threadgroup totals already used by the scan) ; the position keeps the order in the hash.
-   At the end, mix `frame_seed` and the count, compare with the stored region hash and write the new one.
-2. New buffer `regions.hashes` (one `uint32_t` per region, 240 bytes at 1440p), filled with the sentinel at resize like `tiles.hashes` ; a
-   sentinel stored value is always dirty. The clean flag goes to `tile_bin` (one byte per region, or the hash comparison redone from the two buffers).
-3. `tile_bin` early out when the region is clean : every tile has the same list as last frame, its stored tile hash is still valid.
-   - stored tile hash == `frame_seed` : the tile was empty (an empty tile keeps the initial `tile_hash = frame_seed`), nothing to do ;
-   - otherwise : push it to `clean_indices` and return. No walk, no node, no intersection test.
-   - the branch is uniform per threadgroup (`thread_pos.z` is the region).
-4. A region that changed even partially takes today's per-tile path : the result is exact, only the work changes.
-
-- Cost : one hash and a reduction per visible command per region in the fused kernel, small next to `tile_bin`.
-- Gain : `tile_bin` is almost free in unchanged regions (static UI, a blinking cursor dirties one region). No memory gain : the node pool is still
-  sized for a fully dirty frame.
-- Measure on a static scene and a partly animated one (a fully animated test scene shows only the cost) ; `--compare` must not change.
-- Test : a scene animated in one region only renders the same as with the cache off, over several frames ; a region going from content to empty
-  and back.
-- Fallback if regions are too coarse (measure first) : a tile-level pre-pass hashing the commands whose quantized aabb touches the tile (a
-  superset of the added ones, so still exact), full walk only when dirty. Dirty tiles pay an extra loop, and a dirty tile with an empty list is
-  not drawn : its stored hash must be the sentinel so it is never seen as clean on stale cache content.
 
 ## Step 10 : `tile_bin` list + aabb in threadgroup memory (after step 9)
 

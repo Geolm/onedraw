@@ -181,6 +181,8 @@ struct onedraw
     {
         MTL::ComputePipelineState* binning_pso {nullptr};
         MTL::Buffer* indices {nullptr};
+        MTL::Buffer* hashes {nullptr};
+        MTL::Buffer* dirty {nullptr};
         uint16_t num_width;
         uint16_t num_height;
         uint16_t count;
@@ -810,7 +812,12 @@ void od_bin_commands(struct onedraw* r)
     compute_encoder->setComputePipelineState(r->regions.binning_pso);
     compute_encoder->setBuffer(r->commands.draw_arg.GetBuffer(r->stats.frame_index), 0, 0);
     compute_encoder->setBuffer(r->regions.indices, 0, 1);
+    compute_encoder->setBuffer(r->regions.hashes, 0, 2);
+    compute_encoder->setBuffer(r->regions.dirty, 0, 3);
     compute_encoder->useResource(r->commands.aabb_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
+    compute_encoder->useResource(r->commands.command_hashes, MTL::ResourceUsageRead);
+    compute_encoder->useResource(r->regions.hashes, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
+    compute_encoder->useResource(r->regions.dirty, MTL::ResourceUsageWrite);
     compute_encoder->setThreadgroupMemoryLength((SIMD_GROUP_SIZE + 8) * sizeof(uint32_t), 0);    // 33 entries used, 160 bytes : must be a multiple of 16
     compute_encoder->dispatchThreads(MTL::Size(threads_per_region, r->regions.count, 1), MTL::Size(threads_per_region, 1, 1));
 
@@ -827,7 +834,9 @@ void od_bin_commands(struct onedraw* r)
     compute_encoder->setBuffer(r->commands.bin_output_arg.GetBuffer(r->stats.frame_index), 0, 1);
     compute_encoder->setBuffer(r->tiles.counters_buffer, 0, 2);
     compute_encoder->setBuffer(r->regions.indices, 0, 3);
+    compute_encoder->setBuffer(r->regions.dirty, 0, 4);
     compute_encoder->useResource(r->commands.aabb_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
+    compute_encoder->useResource(r->regions.dirty, MTL::ResourceUsageRead);
     compute_encoder->useResource(r->commands.buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
     compute_encoder->useResource(r->commands.data_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
     compute_encoder->useResource(r->commands.clipshapes_buffer.GetBuffer(r->stats.frame_index), MTL::ResourceUsageRead);
@@ -1189,9 +1198,13 @@ void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
     r->regions.count = r->regions.num_width * r->regions.num_height;
 
     SAFE_RELEASE(r->regions.indices);
+    SAFE_RELEASE(r->regions.hashes);
+    SAFE_RELEASE(r->regions.dirty);
 
     size_t num_indices = r->regions.count * MAX_COMMANDS;
     r->regions.indices = r->device->newBuffer(num_indices * sizeof(uint16_t), MTL::ResourceStorageModePrivate);
+    r->regions.hashes = r->device->newBuffer(r->regions.count * sizeof(uint32_t), MTL::ResourceStorageModePrivate);
+    r->regions.dirty = r->device->newBuffer(r->regions.count * sizeof(uint8_t), MTL::ResourceStorageModePrivate);
 
     SAFE_RELEASE(r->tiles.head);
     SAFE_RELEASE(r->tiles.indices);
@@ -1220,12 +1233,14 @@ void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
     // the generation is mixed into the frame seed : a resize must change every tile hash to force a full redraw
     r->tiles.invalidate_generation++;
 
-    // a fresh head buffer must read as an empty list and a fresh tile hash buffer as "never cached" : fill
-    // both with their sentinels, from the next frame on tile_bin writes every head by itself
+    // a fresh head must read as an empty list, a fresh tile/region hash as "never cached" and a fresh region
+    // flag as dirty : fill them with their sentinels, from the next frame on the binning kernels maintain them
     MTL::CommandBuffer* fill_cb = r->command_queue->commandBuffer();
     MTL::BlitCommandEncoder* fill_blit = fill_cb->blitCommandEncoder();
     fill_blit->fillBuffer(r->tiles.head, NS::Range(0, r->tiles.head->length()), 0xff);
     fill_blit->fillBuffer(r->tiles.hashes, NS::Range(0, r->tiles.hashes->length()), 0xff);
+    fill_blit->fillBuffer(r->regions.hashes, NS::Range(0, r->regions.hashes->length()), 0xff);
+    fill_blit->fillBuffer(r->regions.dirty, NS::Range(0, r->regions.dirty->length()), 1);
     fill_blit->endEncoding();
     fill_cb->commit();
     fill_cb->waitUntilCompleted();
@@ -1309,6 +1324,8 @@ void od_terminate(struct onedraw* r)
     SAFE_RELEASE(r->commands.command_hashes);
     SAFE_RELEASE(r->tiles.indirect_arg);
     SAFE_RELEASE(r->regions.indices);
+    SAFE_RELEASE(r->regions.hashes);
+    SAFE_RELEASE(r->regions.dirty);
     SAFE_RELEASE(r->tiles.write_icb_pso);
     SAFE_RELEASE(r->rasterizer.pso);
     SAFE_RELEASE(r->rasterizer.clean_pso);
@@ -1348,6 +1365,8 @@ void od_get_stats(struct onedraw* r, od_stats* stats)
     gpu_mem += r->font.glyphs->allocatedSize();
     gpu_mem += (r->rasterizer.atlas != nullptr) ? r->rasterizer.atlas->allocatedSize() : 0;
     gpu_mem += r->regions.indices->allocatedSize();
+    gpu_mem += r->regions.hashes->allocatedSize();
+    gpu_mem += r->regions.dirty->allocatedSize();
     gpu_mem += (r->screenshot.texture != nullptr) ? r->screenshot.texture->allocatedSize() : 0;
     gpu_mem += r->tiles.counters_buffer->allocatedSize();
     gpu_mem += r->tiles.head->allocatedSize();
