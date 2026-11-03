@@ -36,8 +36,8 @@
 #include <stdbool.h>
 
 #define ONEDRAW_MAJOR_VERSION   (2)
-#define ONEDRAW_MINOR_VERSION   (2)
-#define ONEDRAW_PATCH           (6)
+#define ONEDRAW_MINOR_VERSION   (3)
+#define ONEDRAW_PATCH           (0)
 
 //----------------------------------------------------------------------------------------------------------------------------
 // Structures
@@ -165,6 +165,22 @@ void od_take_screenshot(struct onedraw* r, void* out_pixels);
 void od_resize(struct onedraw* r, uint32_t width, uint32_t height);
 
 //-----------------------------------------------------------------------------------------------------------------------------
+// Sets the canvas : the logical drawing space, mapped onto the framebuffer with a uniform scale.
+//      [x, y]                  origin of the canvas
+//      [width, height]         size of the canvas, in canvas units ([width] must be finite and > 0)
+//
+// * If [width]/[height] does not match the framebuffer aspect ratio, [height] is recomputed as
+// [width] * framebuffer_height / framebuffer_width (the width is kept) so the scale stays uniform.
+// * The canvas takes effect at the next od_begin_frame() : like the font scale, it is a per-frame
+// parameter and must not change between begin/end frame.
+// * Clip shapes have one push variant per space : od_push_cliprect()/_rounded and
+// od_push_clipdisc() take framebuffer pixels (like scissor rects in any graphics API),
+// od_canvas_cliprect()/_rounded and od_canvas_clipdisc() are mapped by the canvas transform so
+// the clip follows the canvas-scaled shapes. Text glyph sizes/advances are not scaled (screen pixels), only the text anchor
+// position is mapped.
+void od_set_canvas(struct onedraw* r, float x, float y, float width, float height);
+
+//-----------------------------------------------------------------------------------------------------------------------------
 // Begins a new frame. Must be called before any drawing functions is called.
 void od_begin_frame(struct onedraw* r);
 
@@ -191,30 +207,61 @@ void od_get_stats(struct onedraw* r, od_stats* stats);
 void od_set_clear_color(struct onedraw* r, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Pushes a clip rectangle, the clip edge is anti-aliased.
+// Pushes a clip rectangle in screen space (framebuffer pixels, not affected by the canvas), the clip edge is anti-aliased.
 // A pushed clip is not intersected with its parent (a pushed clip replaces the current clip).
 // You can push a maximum of 256 distinct clip shapes per frame.
-//      [min_x, min_y, max_x, max_y]    Coordinates of the clip rect
+//      [min_x, min_y, max_x, max_y]    Coordinates of the clip rect, in framebuffer pixels
 void od_push_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Pushes a rounded clip rectangle, the clip edge is anti-aliased.
+// Pushes a rounded clip rectangle in screen space (framebuffer pixels, not affected by the canvas), the clip edge is anti-aliased.
 // A pushed clip is not intersected with its parent (a pushed clip replaces the current clip).
 // You can push a maximum of 256 distinct clip shapes per frame.
-//      [min_x, min_y, max_x, max_y]    Coordinates of the clip rect
-//      [radius]                        Radius of the rounded corners, clamped to half of the smaller side
+//      [min_x, min_y, max_x, max_y]    Coordinates of the clip rect, in framebuffer pixels
+//      [radius]                        Radius of the rounded corners, in framebuffer pixels, clamped to half of the smaller side
 void od_push_cliprect_rounded(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Pushes a clip disc, the clip edge is anti-aliased.
+// Pushes a clip disc in screen space (framebuffer pixels, not affected by the canvas), the clip edge is anti-aliased.
 // A pushed clip is not intersected with its parent (a pushed clip replaces the current clip).
 // You can push a maximum of 256 distinct clip shapes per frame.
-//      [cx, cy]        center of the disc
-//      [radius]        radius of the disc, clamped to zero if negative
+//      [cx, cy]        center of the disc, in framebuffer pixels
+//      [radius]        radius of the disc, in framebuffer pixels, clamped to zero if negative
+// For a clip that follows the canvas-scaled shapes, use od_canvas_clipdisc()
 void od_push_clipdisc(struct onedraw* r, float cx, float cy, float radius);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Pops the current clip, restoring the previous clip state.
+// Pushes a clip rectangle in canvas space (see od_set_canvas) : the coordinates are mapped by the
+// canvas transform before reaching the screen-space clip buffer, so the clip follows the
+// canvas-scaled shapes (the natural choice when the scene is designed in canvas units).
+// The clip edge is anti-aliased.
+// A pushed clip is not intersected with its parent (a pushed clip replaces the current clip).
+// You can push a maximum of 256 distinct clip shapes per frame (shared with the regular clip functions).
+//      [min_x, min_y, max_x, max_y]    Coordinates of the clip rect, in canvas units
+void od_canvas_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Pushes a rounded clip rectangle in canvas space (see od_set_canvas) : the coordinates and the
+// radius are mapped by the canvas transform, so the clip follows the canvas-scaled shapes.
+// The clip edge is anti-aliased.
+// A pushed clip is not intersected with its parent (a pushed clip replaces the current clip).
+// You can push a maximum of 256 distinct clip shapes per frame (shared with the regular clip functions).
+//      [min_x, min_y, max_x, max_y]    Coordinates of the clip rect, in canvas units
+//      [radius]                        Radius of the rounded corners, in canvas units, clamped to half of the smaller side
+void od_canvas_cliprect_rounded(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Pushes a clip disc in canvas space (see od_set_canvas) : the center and the radius are mapped by
+// the canvas transform, so the clip follows the canvas-scaled shapes.
+// The clip edge is anti-aliased.
+// A pushed clip is not intersected with its parent (a pushed clip replaces the current clip).
+// You can push a maximum of 256 distinct clip shapes per frame (shared with the regular clip functions).
+//      [cx, cy]        center of the disc, in canvas units
+//      [radius]        radius of the disc, in canvas units, clamped to zero if negative
+void od_canvas_clipdisc(struct onedraw* r, float cx, float cy, float radius);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Pops the current clip, restoring the previous clip state (both push families share the same stack).
 // The clip stack starts with a full-screen base clip each frame; popping at the base is an error.
 // The stack must be balanced at the end of each frame (asserts in debug builds).
 void od_pop_clip(struct onedraw* r);
@@ -236,11 +283,13 @@ void od_begin_group(struct onedraw* r, bool smoothblend, float smooth_value, flo
 void od_end_group(struct onedraw* r, draw_color outline_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Returns the height of the font in pixels (already includes the font scale)
+// Returns the height of the rendered text in canvas units (includes the font scale : the
+// on-screen size in pixels divided by the canvas scale, see od_set_canvas)
 float od_text_height(struct onedraw* r);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Returns the width of the string [text] in pixels (already includes the font scale)
+// Returns the width of the rendered string [text] in canvas units (includes the font scale :
+// the on-screen size in pixels divided by the canvas scale, see od_set_canvas)
 float od_text_width(struct onedraw* r, const char* text);
 
 //-----------------------------------------------------------------------------------------------------------------------------
@@ -367,12 +416,16 @@ void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float half_width
 // Draws one character
 //      [x, y]                  top-left coordinates of the character
 //      [c]                     only [32-126] char are supported
+// The [x, y] anchor follows the canvas (see od_set_canvas); the glyph size and advances are not
+// scaled by it (they stay in screen pixels)
 void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a zero-terminated string, carriage return (\n) are taken in account
 //      [x, y]                  top-left coordinates of the string
 //      [text]                  string to be rendered
+// The [x, y] anchor follows the canvas (see od_set_canvas); the glyph size and advances are not
+// scaled by it (they stay in screen pixels)
 void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------

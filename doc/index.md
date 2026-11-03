@@ -8,6 +8,7 @@
 | [Part 3](part3.md) | Rasterization |
 | [Part 4](part4.md) | Font and textured quads |
 | [Part 5](part5.md) | Stats and next steps |
+| [Canvas](canvas.md) | The canvas : a logical drawing space mapped onto the framebuffer |
 | [API](../lib/onedraw.h) | The header documents the full API |
 | [FAQ](FAQ.md) | Frequently asked questions |
 
