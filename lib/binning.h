@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t binning_shader_size = 41472;
+static const size_t binning_shader_size = 41392;
 static const char binning_shader[] =
     "#include <metal_stdlib>\n"
     "#ifndef __COMMON_H__\n"
@@ -17,9 +17,8 @@ static const char binning_shader[] =
     "// renderer constants\n"
     "#define TILE_SIZE (16)\n"
     "#define REGION_SIZE (16)\n"
-    "#define MAX_NODES_COUNT (1<<22)\n"
     "#define NODES_PER_CHUNK (6)\n"
-    "#define MAX_NODE_CHUNKS ((MAX_NODES_COUNT + NODES_PER_CHUNK - 1) / NODES_PER_CHUNK)\n"
+    "#define MAX_NODE_CHUNKS (704U<<10U)\n"
     "#define INVALID_INDEX (0xffffffff)\n"
     "#define MAX_CLIPS (256)\n"
     "#define MAX_COMMANDS (1<<16)\n"

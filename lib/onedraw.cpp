@@ -239,6 +239,13 @@ struct onedraw
         uint32_t generation {0};
     } font;
 
+    struct
+    {
+        float x, y;
+        float width, height;
+        float scale {1.f};
+    } canvas;
+
     // screenshot service
     struct
     {
@@ -293,6 +300,18 @@ static inline float vec2_length(vec2 v) {return sqrtf(vec2_sq_length(v));}
 static inline bool vec2_similar(vec2 a, vec2 b, float epsilon) {return (fabsf(a.x - b.x) < epsilon) && (fabsf(a.y - b.y) < epsilon);}
 static inline vec2 vec2_direction(float angle) {return (vec2) {cosf(angle), sinf(angle)};}
 static inline float vec2_distance(vec2 a, vec2 b) {return vec2_length(vec2_sub(b, a));}
+
+// the canvas transform : branchless on purpose, with the default canvas it is a 1.0 multiply-add
+// which is an exact IEEE no-op, so the default output stays bit identical
+static inline vec2 canvas_xform_pos(const struct onedraw* r, vec2 p)
+{
+    return (vec2) {fmaf(p.x, r->canvas.scale, r->canvas.x), fmaf(p.y, r->canvas.scale, r->canvas.y)};
+}
+
+static inline float canvas_xform_dist(const struct onedraw* r, float d)
+{
+    return d * r->canvas.scale;
+}
 
 //----------------------------------------------------------------------------------------------------------------------------
 static inline float vec2_normalize(vec2* v)
@@ -1116,6 +1135,13 @@ struct onedraw* od_init(onedraw_def* def)
     od_build_pso(r);
     od_build_font(r);
     od_build_depthstencil_state(r);
+
+    r->canvas.x = 0.f;
+    r->canvas.y = 0.f;
+    r->canvas.width = (float)def->viewport_width;
+    r->canvas.height = (float)def->viewport_height;
+    r->canvas.scale = 1.f;
+
     od_resize(r, def->viewport_width, def->viewport_height);
 
     if (def->atlas.width != 0)
@@ -1190,6 +1216,10 @@ void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
     od_log(r, "resizing the framebuffer to %dx%d", width, height);
     r->rasterizer.width = (uint16_t) width;
     r->rasterizer.height = (uint16_t) height;
+
+    // the canvas height is derived from its width and the framebuffer ratio : a same-ratio resize
+    // yields the same value, a ratio change re-applies the compatibility rule of od_set_canvas
+    r->canvas.height = r->canvas.width * (float)height / (float)width;
     r->tiles.num_width = (uint16_t)((width + TILE_SIZE - 1) / TILE_SIZE);
     r->tiles.num_height = (uint16_t)((height + TILE_SIZE - 1) / TILE_SIZE);
     r->tiles.count = r->tiles.num_width * r->tiles.num_height;
@@ -1266,6 +1296,7 @@ void od_begin_frame(struct onedraw* r)
     r->commands.data_buffer.Map(r->stats.frame_index);
     r->commands.clipshapes_buffer.Map(r->stats.frame_index);
     r->commands.clip_depth = 0;
+    r->canvas.scale = (float)r->rasterizer.width / r->canvas.width;
     od_push_cliprect(r, 0, 0, (float)r->rasterizer.width, (float)r->rasterizer.height);
 }
 
@@ -1456,6 +1487,10 @@ void od_begin_group(struct onedraw* r, bool smoothblend, float group_smoothness,
     if (!smoothblend)
         group_smoothness = 0.f;
 
+    // the outline and smoothness feed the per-command aabb margin in framebuffer pixels (draw_cmd_aabb_bump)
+    group_smoothness = canvas_xform_dist(r, group_smoothness);
+    outline_width = canvas_xform_dist(r, outline_width);
+
     enum sdf_operator op = smoothblend ? op_blend : op_overwrite;
 
     // placeholder color, the rasterizer reads the color of every command (the begin_group sdf branch ignores it)
@@ -1525,19 +1560,19 @@ void private_draw_disc(struct onedraw* r, vec2 center, float radius, float thick
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_ring(struct onedraw* r, float cx, float cy, float radius, float thickness, draw_color color)
 {
-    private_draw_disc(r, vec2_set(cx, cy), radius, thickness, fill_hollow, color, 0);
+    private_draw_disc(r, canvas_xform_pos(r, vec2_set(cx, cy)), canvas_xform_dist(r, radius), canvas_xform_dist(r, thickness), fill_hollow, color, 0);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_disc(struct onedraw* r, float cx, float cy, float radius, draw_color color)
 {
-    private_draw_disc(r, vec2_set(cx, cy), radius, 0.f, fill_solid, color, 0);
+    private_draw_disc(r, canvas_xform_pos(r, vec2_set(cx, cy)), canvas_xform_dist(r, radius), 0.f, fill_solid, color, 0);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_disc_gradient(struct onedraw* r, float cx, float cy, float radius, draw_color outter_color, draw_color inner_color)
 {
-    private_draw_disc(r, vec2_set(cx, cy), radius, 0.f, fill_gradient, outter_color, inner_color);
+    private_draw_disc(r, canvas_xform_pos(r, vec2_set(cx, cy)), canvas_xform_dist(r, radius), 0.f, fill_gradient, outter_color, inner_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1566,32 +1601,34 @@ void private_draw_oriented_box(struct onedraw* r, vec2 p0, vec2 p1, float width,
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_oriented_box(struct onedraw* r, float ax, float ay, float bx, float by, float width, float roundness, draw_color color)
 {
-    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), width, roundness, 0.f, fill_solid, color, 0);
+    private_draw_oriented_box(r, canvas_xform_pos(r, vec2_set(ax, ay)), canvas_xform_pos(r, vec2_set(bx, by)),
+                              canvas_xform_dist(r, width), canvas_xform_dist(r, roundness), 0.f, fill_solid, color, 0);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_oriented_rect(struct onedraw* r, float ax, float ay, float bx, float by, float width, float roundness, float thickness, draw_color color)
 {
-    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), width, roundness, thickness, fill_hollow, color, 0);
+    private_draw_oriented_box(r, canvas_xform_pos(r, vec2_set(ax, ay)), canvas_xform_pos(r, vec2_set(bx, by)),
+                              canvas_xform_dist(r, width), canvas_xform_dist(r, roundness), canvas_xform_dist(r, thickness), fill_hollow, color, 0);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_line(struct onedraw* r, float ax, float ay, float bx, float by, float width, draw_color srgb_color)
 {
-    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), width, 0.f, 0.f, fill_solid, srgb_color, 0);
+    private_draw_oriented_box(r, canvas_xform_pos(r, vec2_set(ax, ay)), canvas_xform_pos(r, vec2_set(bx, by)), canvas_xform_dist(r, width), 0.f, 0.f, fill_solid, srgb_color, 0);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_capsule(struct onedraw* r, float ax, float ay, float bx, float by, float radius, draw_color srgb_color)
 {
     // capsule uses a specific sdf (see rasterizer shader) more efficient that oriented box
-    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), 0.f, radius, 0.f, fill_solid, srgb_color, 0);
+    private_draw_oriented_box(r, canvas_xform_pos(r, vec2_set(ax, ay)), canvas_xform_pos(r, vec2_set(bx, by)), 0.f, canvas_xform_dist(r, radius), 0.f, fill_solid, srgb_color, 0);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_capsule_gradient(struct onedraw* r, float ax, float ay, float bx, float by, float radius, draw_color primary_color, draw_color secondary_color)
 {
-    private_draw_oriented_box(r, vec2_set(ax, ay), vec2_set(bx, by), 0.f, radius, 0.f, fill_gradient, primary_color, secondary_color);
+    private_draw_oriented_box(r, canvas_xform_pos(r, vec2_set(ax, ay)), canvas_xform_pos(r, vec2_set(bx, by)), 0.f, canvas_xform_dist(r, radius), 0.f, fill_gradient, primary_color, secondary_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1624,13 +1661,13 @@ void private_draw_ellipse(struct onedraw* r, vec2 p0, vec2 p1, float width, floa
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_ellipse(struct onedraw* r, float ax, float ay, float bx, float by, float width, draw_color srgb_color)
 {
-    private_draw_ellipse(r, vec2_set(ax, ay), vec2_set(bx, by), width, 0.f, fill_solid, srgb_color);
+    private_draw_ellipse(r, canvas_xform_pos(r, vec2_set(ax, ay)), canvas_xform_pos(r, vec2_set(bx, by)), canvas_xform_dist(r, width), 0.f, fill_solid, srgb_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_ellipse_ring(struct onedraw* r, float ax, float ay, float bx, float by, float width, float thickness, draw_color srgb_color)
 {
-    private_draw_ellipse(r, vec2_set(ax, ay), vec2_set(bx, by), width, thickness, fill_hollow, srgb_color);
+    private_draw_ellipse(r, canvas_xform_pos(r, vec2_set(ax, ay)), canvas_xform_pos(r, vec2_set(bx, by)), canvas_xform_dist(r, width), canvas_xform_dist(r, thickness), fill_hollow, srgb_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1656,13 +1693,21 @@ void private_draw_triangle(struct onedraw* r, const vec2* v, float roundness, fl
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_triangle(struct onedraw* r, const float* vertices, float roundness, draw_color srgb_color)
 {
-    private_draw_triangle(r, (const vec2*) vertices, roundness, 0.f, fill_solid, srgb_color);
+    vec2 v[3];
+    v[0] = canvas_xform_pos(r, vec2_set(vertices[0], vertices[1]));
+    v[1] = canvas_xform_pos(r, vec2_set(vertices[2], vertices[3]));
+    v[2] = canvas_xform_pos(r, vec2_set(vertices[4], vertices[5]));
+    private_draw_triangle(r, v, canvas_xform_dist(r, roundness), 0.f, fill_solid, srgb_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_triangle_ring(struct onedraw* r, const float* vertices, float roundness, float thickness, draw_color srgb_color)
 {
-    private_draw_triangle(r, (const vec2*) vertices, roundness, thickness, fill_hollow, srgb_color);
+    vec2 v[3];
+    v[0] = canvas_xform_pos(r, vec2_set(vertices[0], vertices[1]));
+    v[1] = canvas_xform_pos(r, vec2_set(vertices[2], vertices[3]));
+    v[2] = canvas_xform_pos(r, vec2_set(vertices[4], vertices[5]));
+    private_draw_triangle(r, v, canvas_xform_dist(r, roundness), canvas_xform_dist(r, thickness), fill_hollow, srgb_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1691,26 +1736,28 @@ void private_draw_pie(struct onedraw* r, vec2 center, vec2 direction, float radi
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_sector(struct onedraw* r, float cx, float cy, float radius, float start_angle, float sweep_angle, draw_color srgb_color)
 {
-    vec2 center = {cx, cy};
+    vec2 center = canvas_xform_pos(r, vec2_set(cx, cy));
     float aperture = sweep_angle * .5f;
     vec2 direction = vec2_direction(start_angle + aperture);
-    private_draw_pie(r, center, direction, radius, fabs(aperture), 0.f, fill_solid, srgb_color);
+    private_draw_pie(r, center, direction, canvas_xform_dist(r, radius), fabs(aperture), 0.f, fill_solid, srgb_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_sector_ring(struct onedraw* r, float cx, float cy, float radius, float start_angle, float sweep_angle, float thickness, draw_color srgb_color)
 {
-    vec2 center = {cx, cy};
+    vec2 center = canvas_xform_pos(r, vec2_set(cx, cy));
     float aperture = sweep_angle * .5f;
     vec2 direction = vec2_direction(start_angle + aperture);
-    private_draw_pie(r, center, direction, radius, fabs(aperture), thickness, fill_hollow, srgb_color);
+    private_draw_pie(r, center, direction, canvas_xform_dist(r, radius), fabs(aperture), canvas_xform_dist(r, thickness), fill_hollow, srgb_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_arc(struct onedraw* r, float cx, float cy, float dx, float dy, float aperture, float radius, float thickness, draw_color srgb_color)
 {
-    vec2 center = {cx, cy};
+    vec2 center = canvas_xform_pos(r, vec2_set(cx, cy));
     vec2 direction = {dx, dy};
+    radius = canvas_xform_dist(r, radius);
+    thickness = canvas_xform_dist(r, thickness);
 
     aperture = float_clamp(aperture, 0.f, VEC2_PI);
     thickness = float_max(thickness, 0.f);
@@ -1731,7 +1778,10 @@ void od_draw_box(struct onedraw* r, float x0, float y0, float x1, float y1, floa
     if (x0>x1) swap(x0, x1);
     if (y0>y1) swap(y0, y1);
 
-    aabb box = {.min = {x0, y0}, .max = {x1, y1}};
+    vec2 lo = canvas_xform_pos(r, vec2_set(x0, y0));
+    vec2 hi = canvas_xform_pos(r, vec2_set(x1, y1));
+    aabb box = {.min = lo, .max = hi};
+    radius = canvas_xform_dist(r, radius);
 
     vec2 center = vec2_scale(vec2_add(box.min, box.max), .5f);
     vec2 half_extents = vec2_scale(vec2_sub(box.max, box.min), .5f);
@@ -1747,21 +1797,24 @@ void od_draw_box(struct onedraw* r, float x0, float y0, float x1, float y1, floa
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float width, float height, float roundness, draw_color srgb_color)
 {
-    float half_width = width * .5f;
-    float half_height = height * .5f;
+    vec2 center = canvas_xform_pos(r, vec2_set(cx, cy));
+    float half_width = canvas_xform_dist(r, width) * .5f;
+    float half_height = canvas_xform_dist(r, height) * .5f;
+    roundness = canvas_xform_dist(r, roundness);
 
-    aabb bb = {.min = vec2_set(cx - half_width - roundness, cy - half_height - roundness),
-               .max = vec2_set(cx + half_width + roundness, cy + half_height + roundness)};
+    aabb bb = {.min = vec2_set(center.x - half_width - roundness, center.y - half_height - roundness),
+               .max = vec2_set(center.x + half_width + roundness, center.y + half_height + roundness)};
 
     float* data = new_primitive(r, primitive_blurred_box, fill_solid, 0, srgb_color, 5, bb);
     if (data == nullptr)
         return;
 
-    write_float(data, cx, cy, half_width, half_height, roundness);
+    write_float(data, center.x, center.y, half_width, half_height, roundness);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_color)
+// the canvas maps the anchor only: the glyph quad comes from the baked atlas, its size is a screen property
+static void draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_color)
 {
     if (c < r->font.desc.first_glyph || c >= (r->font.desc.first_glyph + r->font.desc.num_glyphs))
         return;
@@ -1784,8 +1837,19 @@ void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_c
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
+void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_color)
+{
+    vec2 anchor = canvas_xform_pos(r, vec2_set(x, y));
+    draw_char(r, anchor.x, anchor.y, c, srgb_color);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
 void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_color srgb_color)
 {
+    vec2 anchor = canvas_xform_pos(r, vec2_set(x, y));
+    x = anchor.x;
+    y = anchor.y;
+
     float left = x;
     const float scale = r->font.scale;
     for(const char *c = text; *c != 0; c++)
@@ -1797,7 +1861,7 @@ void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_co
         }
         else if (*c >= r->font.desc.first_glyph && *c < (r->font.desc.first_glyph + r->font.desc.num_glyphs))
         {
-            od_draw_char(r, x, y, *c, srgb_color);
+            draw_char(r, x, y, *c, srgb_color);
             uint32_t glyph_index = *c - r->font.desc.first_glyph;
             x += r->font.desc.glyphs[glyph_index].advance_x * scale;
         }
@@ -1815,6 +1879,13 @@ void od_draw_quad(struct onedraw* r, float x0, float y0, float x1, float y1, od_
         return;
     }
     assert_msg(slice_index < r->rasterizer.atlas->arrayLength(), "slice index out of bound");
+
+    vec2 lo = canvas_xform_pos(r, vec2_set(x0, y0));
+    vec2 hi = canvas_xform_pos(r, vec2_set(x1, y1));
+    x0 = lo.x;
+    y0 = lo.y;
+    x1 = hi.x;
+    y1 = hi.y;
 
     // keep the corners coherent with the uv
     if (x0 > x1)
@@ -1849,10 +1920,13 @@ void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, f
     }
     assert_msg(slice_index < r->rasterizer.atlas->arrayLength(), "slice index out of bound");
 
+    vec2 center = canvas_xform_pos(r, vec2_set(cx, cy));
+    width = canvas_xform_dist(r, width);
+    height = canvas_xform_dist(r, height);
+
     if (width < HALF_PIXEL || height < HALF_PIXEL)
         return;
 
-    vec2 center = {cx, cy};
     vec2 axis = vec2_direction(angle);
     vec2 dir = vec2_scale(axis, width*.5f);
     vec2 p0 = vec2_sub(center, dir);
@@ -1863,7 +1937,7 @@ void od_draw_oriented_quad(struct onedraw* r, float cx, float cy, float width, f
     if (data == nullptr)
         return;
 
-    write_float(data, cx, cy, 1.f/width, 1.f/height, axis.x, axis.y, uv.u0, uv.v0, uv.u1, uv.v1);
+    write_float(data, center.x, center.y, 1.f/width, 1.f/height, axis.x, axis.y, uv.u0, uv.v0, uv.u1, uv.v1);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1998,7 +2072,7 @@ uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, fl
 //----------------------------------------------------------------------------------------------------------------------------
 float od_text_height(struct onedraw* r)
 {
-    return r->font.desc.font_height * r->font.scale;
+    return r->font.desc.font_height * r->font.scale / r->canvas.scale;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2013,7 +2087,7 @@ float od_text_width(struct onedraw* r, const char* text)
         else
             width += r->font.desc.glyphs['_'- r->font.desc.first_glyph].advance_x * .65f * scale;
     }
-    return width;
+    return width / r->canvas.scale;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2024,6 +2098,36 @@ void od_set_font_scale(struct onedraw* r, float scale)
         r->font.scale = scale;
         od_upload_font_glyphs(r);
         r->font.generation++;    // tile cache : the glyph metrics changed, invalidate the whole cache
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_set_canvas(struct onedraw* r, float x, float y, float width, float height)
+{
+    if (!isfinite(x) || !isfinite(y) || !isfinite(width) || !isfinite(height))
+    {
+        od_log(r, "od_set_canvas : parameters must be finite");
+        return;
+    }
+
+    if (width <= 0.f)
+    {
+        od_log(r, "od_set_canvas : width must be > 0");
+        return;
+    }
+
+    r->canvas.x = x;
+    r->canvas.y = y;
+    r->canvas.width = width;
+    r->canvas.height = height;
+
+    // keep the scale uniform : a canvas whose ratio differs from the framebuffer's by more than
+    // 1e-3 (relative) has its height derived from its width, the width is kept, nothing is rejected
+    const float expected_height = width * (float)r->rasterizer.height / (float)r->rasterizer.width;
+    if (fabsf(height - expected_height) > 1e-3f * fabsf(height))
+    {
+        r->canvas.height = expected_height;
+        od_log(r, "od_set_canvas : height adjusted to %f to match the framebuffer ratio", expected_height);
     }
 }
 
@@ -2124,6 +2228,32 @@ void od_push_clipdisc(struct onedraw* r, float cx, float cy, float radius)
     // a negative radius would leave the rounded rect shape undefined, so it is clamped to the degenerate point
     radius = max(radius, 0.f);
     push_cliprect(r, cx - radius, cy - radius, cx + radius, cy + radius, radius);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_canvas_cliprect(struct onedraw* r, float min_x, float min_y, float max_x, float max_y)
+{
+    vec2 lo = canvas_xform_pos(r, vec2_set(min_x, min_y));
+    vec2 hi = canvas_xform_pos(r, vec2_set(max_x, max_y));
+    push_cliprect(r, lo.x, lo.y, hi.x, hi.y, 0.f);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_canvas_cliprect_rounded(struct onedraw* r, float min_x, float min_y, float max_x, float max_y, float radius)
+{
+    vec2 lo = canvas_xform_pos(r, vec2_set(min_x, min_y));
+    vec2 hi = canvas_xform_pos(r, vec2_set(max_x, max_y));
+    push_cliprect(r, lo.x, lo.y, hi.x, hi.y, canvas_xform_dist(r, radius));
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_canvas_clipdisc(struct onedraw* r, float cx, float cy, float radius)
+{
+    vec2 center = canvas_xform_pos(r, vec2_set(cx, cy));
+    radius = canvas_xform_dist(r, radius);
+    // a negative radius would leave the rounded rect shape undefined, so it is clamped to the degenerate point
+    radius = max(radius, 0.f);
+    push_cliprect(r, center.x - radius, center.y - radius, center.x + radius, center.y + radius, radius);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

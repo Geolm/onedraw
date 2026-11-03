@@ -35,6 +35,8 @@ struct test_options options = {false, false, false, false, false};
 #define FROM_HTML(html)   ((html&0xff)<<16) | ((html>>16)&0xff) | (html&0x00ff00) | 0xff000000
 #define TEX_SIZE (256)
 #define REFERENCE_PSNR_THRESHOLD_DB (60.0f)
+#define CANVAS_WIDTH (2560.f)
+#define CANVAS_HEIGHT (1440.f)
 
 // https://lospec.com/palette-list/miyazaki-16
 static const uint32_t miya_black = FROM_HTML(0x232228);
@@ -202,8 +204,8 @@ static void draw_background(void)
     if (renderer == NULL)
         return;
 
-    const float w = sapp_widthf();
-    const float h = sapp_heightf();
+    const float w = CANVAS_WIDTH;
+    const float h = CANVAS_HEIGHT;
     const float cell = 56.f;
     const float max_jitter = cell * 0.16f;
     const float min_r = cell * 0.22f;
@@ -390,14 +392,16 @@ void init(void)
         return;
 
     od_set_clear_color(renderer, miya_white);
+
+    od_set_canvas(renderer, 0.f, 0.f, CANVAS_WIDTH, CANVAS_HEIGHT);
     fill_texture_array();
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
 void slot(uint32_t index, float* cx, float* cy, float* radius)
 {
-    float step_x = sapp_widthf() / 8.f;
-    float step_y = sapp_heightf() / 3.375f;
+    float step_x = CANVAS_WIDTH / 8.f;
+    float step_y = CANVAS_HEIGHT / 3.375f;
 
     *cx = (index%8) * step_x + step_x * .5f;
     *cy = (index/8) * step_y + step_y * .5f;
@@ -491,7 +495,7 @@ void frame(void)
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "arc", miya_brown);
 
     slot(13, &cx, &cy, &radius);
-    od_push_cliprect(renderer, cx - radius, cy - radius, cx + radius, cy + radius);
+    od_canvas_cliprect(renderer, cx - radius, cy - radius, cx + radius, cy + radius);
     od_draw_text(renderer, cx-radius, cy-radius, "Some text\nABCDEFGHILMNO\nPQRSTUVWYZ\n1234567890!@#$%?&*()\nSphinx of black\n quartz, judge my vow.\n"
                  "!\"#$%&'()*+,-./01234\n56789:;<=>?@\n[\\]^_`abcdefghijklmnop\nqrstuvwxyz{|}~", miya_black);
     od_pop_clip(renderer);
@@ -506,7 +510,7 @@ void frame(void)
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "smoothmin", miya_brown);
 
     slot(15, &cx, &cy, &radius);
-    od_push_cliprect_rounded(renderer, cx - radius*.5f, cy - radius*.5f, cx + radius*.5f, cy + radius*.5f, radius*.25f);
+    od_canvas_cliprect_rounded(renderer, cx - radius*.5f, cy - radius*.5f, cx + radius*.5f, cy + radius*.5f, radius*.25f);
     od_draw_quad(renderer, cx-radius, cy-radius, cx, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 0, 0xafffffff);
     od_draw_quad(renderer, cx, cy-radius, cx+radius, cy, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 1, 0xafffffff);
     od_draw_quad(renderer, cx-radius, cy, cx, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 2, 0xafffffff);
@@ -546,7 +550,7 @@ void frame(void)
     od_draw_text(renderer, cx-radius, cy-radius*1.25f, "outline", miya_brown);
 
     slot(20, &cx, &cy, &radius);
-    od_push_clipdisc(renderer, cx, cy, radius);
+    od_canvas_clipdisc(renderer, cx, cy, radius);
     int seed = 0x12345678;
     const uint32_t colors[] = {miya_green, miya_pale_blue, miya_yellow};
     for(uint32_t i=0; i<100; i++)
@@ -555,7 +559,7 @@ void frame(void)
         od_draw_capsule(renderer, cx, cy, cx + cosf(angle) * 1000.f, cy + sinf(angle) * 1000.f, radius * 0.1f, colors[i%3]);
     }
 
-    od_push_cliprect(renderer, cx - radius, cy - radius, cx + radius, cy + radius);
+    od_canvas_cliprect(renderer, cx - radius, cy - radius, cx + radius, cy + radius);
     od_draw_box(renderer, cx - radius, cy - radius, cx - radius * 0.55f, cy - radius * 0.55f, 0.f, miya_red);
     od_pop_clip(renderer);
     od_draw_box(renderer, cx + radius * 0.75f, cy - radius * 0.95f, cx + radius * 0.95f, cy - radius * 0.75f, 0.f, miya_red);
@@ -571,9 +575,9 @@ void frame(void)
     // changes every frame and the tile cache must invalidate + redraw it (a stale tile would leave a
     // ghost and fail the PSNR check). 0.01 (1% of the width) keeps it a smooth drift, not a strobe
     {
-        float s = fminf(sapp_widthf() / 8.f, sapp_heightf() / 3.375f) * 0.4f;
-        float ax = fmodf(s + (float) frame_count * sapp_widthf() * 0.01f, sapp_widthf() + 2.f * s) - s;
-        float ay = sapp_heightf() * 0.295f;
+        float s = fminf(CANVAS_WIDTH / 8.f, CANVAS_HEIGHT / 3.375f) * 0.4f;
+        float ax = fmodf(s + (float) frame_count * CANVAS_WIDTH * 0.01f, CANVAS_WIDTH + 2.f * s) - s;
+        float ay = CANVAS_HEIGHT * 0.295f;
 
         od_begin_group(renderer, false, 0.f, 2.f);
         draw_color arrow_color = patch_color_alpha(miya_red, 224);
@@ -663,15 +667,15 @@ void frame(void)
         rasterization_time_ms += stats.rasterization_time_ms;
 
         snprintf(string, 256, "GPU Memory usage : %zu kb", stats.gpu_memory_usage>>10);
-        od_draw_text(renderer, 0, sapp_heightf() - od_text_height(renderer) * 2.f, string, miya_blue);
+        od_draw_text(renderer, 0, CANVAS_HEIGHT - od_text_height(renderer) * 2.f, string, miya_blue);
 
         snprintf(string, 256, "num commands : %u", stats.peak_num_draw_cmd);
-        od_draw_text(renderer, (sapp_widthf() - od_text_width(renderer, string)) * .5f,
-                    sapp_heightf() - od_text_height(renderer) * 2.f, string, miya_blue);
+        od_draw_text(renderer, (CANVAS_WIDTH - od_text_width(renderer, string)) * .5f,
+                    CANVAS_HEIGHT - od_text_height(renderer) * 2.f, string, miya_blue);
 
         snprintf(string, 256, "GPU Time : %2.2f ms", gpu_time_ms / (float)(num_frames));
-        od_draw_text(renderer, sapp_widthf() - od_text_width(renderer, string),
-                    sapp_heightf() - od_text_height(renderer) * 2.f, string, miya_blue);
+        od_draw_text(renderer, CANVAS_WIDTH - od_text_width(renderer, string),
+                    CANVAS_HEIGHT - od_text_height(renderer) * 2.f, string, miya_blue);
     }
 
     uint8_t* pixels = NULL;

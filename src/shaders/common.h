@@ -9,9 +9,8 @@
 // renderer constants
 #define TILE_SIZE (16)
 #define REGION_SIZE (16)
-#define MAX_NODES_COUNT (1<<22)
 #define NODES_PER_CHUNK (6)
-#define MAX_NODE_CHUNKS ((MAX_NODES_COUNT + NODES_PER_CHUNK - 1) / NODES_PER_CHUNK)
+#define MAX_NODE_CHUNKS (704U<<10U)
 #define INVALID_INDEX (0xffffffff)
 #define MAX_CLIPS (256)
 #define MAX_COMMANDS (1<<16)
