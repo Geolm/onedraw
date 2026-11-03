@@ -11,7 +11,19 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include <sv.h>
+
 #include "../../lib/onedraw.h"
+
+// The normal preview window size in points (a sized screenshot resizes away from it, the
+// pipeline restores it afterwards)
+#define MCP_WINDOW_W 1280
+#define MCP_WINDOW_H 720
+
+// The vendored sokol_app has no programmatic window resize API. This sets the window's point
+// size; sokol's windowDidResize: pipeline does the rest (recompute dpi_scale, resize the Metal
+// framebuffer to points x dpi_scale, emit SAPP_EVENTTYPE_RESIZED). Implemented in window.mm
+void mcp_set_window_points(int w, int h);
 
 //----------------------------------------------------------------------------------------------------------------------------
 // Point -> pixel fit transform (plan §3)
@@ -215,5 +227,84 @@ bool mcp_parse_color(const char* str, draw_color* out);
 // Parses one tools/call `arguments` object and applies it to the scene (clear / draw /
 // update / remove mutate the scene immediately, screenshot only fills the result)
 bool mcp_parse_tool_call(mcp_scene* s, char* buf, size_t len, mcp_parse_result* out, char* err, size_t err_size);
+
+//----------------------------------------------------------------------------------------------------------------------------
+// Screenshot pipeline (image.c, plan §7)
+//
+// A pending screenshot drives a small state machine ticked once per frame :
+//  - a sized shot (w, h in output pixels) resizes the window to w/dpi x h/dpi points, waits
+//    until the framebuffer reports the requested pixels (±1 px for the point rounding),
+//    captures the whole framebuffer, and restores the window to MCP_WINDOW_W x MCP_WINDOW_H
+//  - a sizeless shot (w = h = 0) captures the canvas rect of the current framebuffer
+//
+// All calls run on the main thread (frame_cb). Call order per frame :
+//  mcp_shot_request (when a screenshot command arrives, before sapp_acquire_swapchain)
+//  -> mcp_shot_tick (before sapp_acquire_swapchain)
+//  -> mcp_shot_prepare + od_set_capture_region + od_take_screenshot (between begin/end frame)
+//  -> mcp_shot_end (after od_end_frame, rendered or not).
+//
+// The pixel buffer is malloc'd per capture (transient, not a hot loop - allowed for tools).
+// The result views (png, b64) stay valid until the next capture is encoded.
+//----------------------------------------------------------------------------------------------------------------------------
+
+// A growable byte buffer
+typedef struct mcp_buf
+{
+    char* data;
+    size_t len;
+    size_t cap;
+} mcp_buf;
+
+// The capture area for the current frame, in framebuffer pixels
+typedef struct mcp_capture
+{
+    bool whole;            // true : whole framebuffer, false : rect at (x, y)
+    uint32_t x, y;
+    uint32_t w, h;
+    float scale;           // point->pixel scale of the frame being captured (set by the host)
+} mcp_capture;
+
+typedef struct mcp_shot_result
+{
+    bool valid;            // the pending shot completed, a response is due
+    bool ok;               // true : the image is present, false : error (the size is the framebuffer's)
+    uint32_t width, height;
+    float scale;
+    String_View png;       // PNG bytes
+    String_View b64;       // base64(png)
+} mcp_shot_result;
+
+typedef struct mcp_shot
+{
+    bool pending;
+    bool whole;
+    uint32_t target_w, target_h;
+    uint32_t frame;        // frames since the request (the resize deadline)
+    uint8_t* pixels;       // w*h*4, malloc'd per capture, filled by od_take_screenshot
+    mcp_capture cap;
+    mcp_buf png_buf;       // growable, stbi_write_png_to_func output
+    mcp_buf b64_buf;       // growable, base64 output
+    mcp_shot_result result;
+} mcp_shot;
+
+// Wipes the state (the output buffers keep their backing allocation)
+void mcp_shot_init(mcp_shot* s);
+
+// Requests a shot. [w], [h] are the requested output pixels, 0,0 = canvas rect.
+// [dpi_scale] is sapp_dpi_scale(); a sized shot resizes the window immediately, so call this
+// before sapp_acquire_swapchain(). Replaces any pending shot.
+void mcp_shot_request(mcp_shot* s, uint32_t w, uint32_t h, float dpi_scale);
+
+// Ticks the state machine once per frame with the current framebuffer size in pixels.
+// Fills [cap] and returns true if a capture is due this frame.
+bool mcp_shot_tick(mcp_shot* s, float canvas_w, float canvas_h, uint32_t fb_w, uint32_t fb_h, mcp_capture* cap);
+
+// Allocates the pixel buffer for a due capture and returns it (NULL on allocation failure);
+// call before od_take_screenshot, the buffer is freed by mcp_shot_end
+uint8_t* mcp_shot_prepare(mcp_shot* s, const mcp_capture* cap);
+
+// After od_end_frame (rendered or not) : encodes the captured pixels into s->result
+// (BGRA -> RGBA -> PNG -> base64), restores the window, and clears the pending state
+void mcp_shot_end(mcp_shot* s);
 
 #endif

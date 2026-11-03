@@ -241,20 +241,20 @@ The screenshot buffer is `malloc`'d per capture (transient, not a hot loop — a
 
 ## 9. Todo list (execution order)
 
-- [ ] **T1 — Skeleton app.** CMake target `mcp` (`onedraw.cpp` + `tool/mcp/*.c` + `tests/sokol_app.mm`,
+- [x] **T1 — Skeleton app.** CMake target `mcp` (`onedraw.cpp` + `tool/mcp/*.c` + `tests/sokol_app.mm`,
       frameworks). `main.c`: `sapp_desc {1280,720,high_dpi=true}`, `init_cb` → `od_init` (screenshot allowed,
       high_dpi, cache), `frame_cb` → render a static demo scene (live preview works), `event_cb` →
       `RESIZED`/`od_resize`. Verify: builds, window opens, demo renders, no validation errors.
-- [ ] **T2 — Window shim.** `tool/mcp/window.mm`: `mcp_set_window_points(int w, int h)` (AppKit
+- [x] **T2 — Window shim.** `tool/mcp/window.mm`: `mcp_set_window_points(int w, int h)` (AppKit
       `setContentSize` on the sokol NSWindow, in points). The vendored sokol's existing RESIZED pipeline
       (dpi_scale → framebuffer → `SAPP_EVENTTYPE_RESIZED`) does the rest. No `third_party/` changes.
-- [ ] **T3 — Scene buffer.** [`scene.c`]: growable op array + string pool; `reset`/`append`/`update`/`remove`
+- [x] **T3 — Scene buffer.** [`scene.c`]: growable op array + string pool; `reset`/`append`/`update`/`remove`
       (tombstone, stable indices); `replay(transform)` emitting every primitive/group/clip with
       point→pixel transform, hex colors, font scale; unbalanced group/clip detection.
-- [ ] **T4 — Tool-JSON parser.** [`parse.c`]: `sj.h` + `sv.h` parsing of all `cmd`s and per-primitive fields
+- [x] **T4 — Tool-JSON parser.** [`parse.c`]: `sj.h` + `sv.h` parsing of all `cmd`s and per-primitive fields
       (all §6 types), number/string/bool extractors, `#rrggbb[a]` → `draw_color`; clear errors carry the
       `sj_location` line/col.
-- [ ] **T5 — Screenshot pipeline.** [`image.c`]: resize state machine (request `W/dpi × H/dpi` points, wait
+- [x] **T5 — Screenshot pipeline.** [`image.c`]: resize state machine (request `W/dpi × H/dpi` points, wait
       until the framebuffer reports W×H, capture the whole framebuffer, resize back), canvas-rect capture for
       the no-size case, BGRA→RGBA, `stbi_write_png_to_func` (sv-backed growable buffer) + base64 encoder.
 - [ ] **T6 — MCP stdio layer.** [`mcp.c`]: newline JSON-RPC loop (drained in `frame_cb`), `initialize` /

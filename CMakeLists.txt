@@ -49,6 +49,7 @@ add_executable(mcp
     ./tool/mcp/main.c
     ./tool/mcp/parse.c
     ./tool/mcp/scene.c
+    ./tool/mcp/image.c
     ./tool/mcp/window.mm
     ./tests/sokol_app.mm
 )
@@ -76,6 +77,16 @@ add_executable(parse_check
 )
 
 target_include_directories(parse_check PRIVATE ./third_party)
+
+# --- Shot check (headless, no GPU) ---
+add_executable(shot_check
+    ./tool/mcp/scene.c
+    ./tool/mcp/image.c
+    ./tests/shot_check.c
+    ./tests/shot_check_stubs.c
+)
+
+target_include_directories(shot_check PRIVATE ./third_party)
 
 # --- Test ---
 add_executable(test
