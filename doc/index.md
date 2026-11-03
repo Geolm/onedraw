@@ -60,9 +60,8 @@ Because every tile with at least one command is appended to a list of tiles to r
 | `MAX_COMMANDS` | `65,536` | draw commands per frame (including begin/end group) |
 | `MAX_CLIPS` | `256` | clip shapes per frame |
 | `SIMD_GROUP_SIZE` | `32` | Apple Silicon wavefront size |
-| `MAX_NODES_COUNT` | `4,194,304` | command slots in the per-tile lists (packed in chunks of 6) |
 | `NODES_PER_CHUNK` | `6` | command slots per 16-byte `node_chunk` (plus the link to the next chunk) |
-| `MAX_NODE_CHUNKS` | `699,051` | size of the per-tile chunk pool, `ceil(MAX_NODES_COUNT / NODES_PER_CHUNK)` |
+| `MAX_NODE_CHUNKS` | `720,896` | size of the per-tile chunk pool |
 | `MAX_SCREEN_SIZE` | `4096` | max viewport (the quantized AABB stores tile indices on 8 bits) |
 
 ---

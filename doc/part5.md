@@ -10,7 +10,7 @@ The biggest consumer is the **screenshot** buffer, and it is the only piece that
 
 Everything else:
 
-* **Per-tile node pool (10.7 MB, ~28 %)** — 699,051 fixed 16-byte `node_chunk`s, each holding 6 command slots plus the link to the next chunk, sized to `MAX_NODES_COUNT` (~4.2 million command slots) rather than the framebuffer. Packing six commands in a 16-byte chunk costs ~2.7 bytes per command instead of 8, which is what brought the pool down from 32 MB and out of the anchor position.
+* **Per-tile node pool (11 MB, ~28 %)** — 720,896 fixed 16-byte `node_chunk`s, each holding 6 command slots plus the link to the next chunk.
 * **Region lists (7.5 MB, ~20 %)** — the per-region `indices` lists are sized to the resolution, because a command can reach several regions. (The `predicate` and `scan` buffers of the older three-kernel design are gone — region binning is fused into a single kernel now.)
 * **Per-frame CPU ring (4 MB, ~11 %)** — commands, colors, draw data, quantized AABBs and clips, **double-buffered** so two frames can be in flight (the CPU encodes a frame while the GPU runs the one before).
 * **Other (1.9 MB, ~5 %)** — the font atlas (BC4), the glyph buffer, the user texture array, the small per-tile head/index buffers, and the cache bookkeeping (per-tile hash, clean-tile indices, per-command content hashes).
