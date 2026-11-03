@@ -12,6 +12,7 @@
 #include <stdbool.h>
 
 #include <sv.h>
+#include <arena.h>
 
 #include "../../lib/onedraw.h"
 
@@ -243,11 +244,13 @@ bool mcp_parse_tool_call(mcp_scene* s, char* buf, size_t len, mcp_parse_result* 
 //  -> mcp_shot_prepare + od_set_capture_region + od_take_screenshot (between begin/end frame)
 //  -> mcp_shot_end (after od_end_frame, rendered or not).
 //
-// The pixel buffer is malloc'd per capture (transient, not a hot loop - allowed for tools).
-// The result views (png, b64) stay valid until the next capture is encoded.
+// The pixel buffer and the encoded outputs (png, b64) live in the shot's arena (third_party/arena.h) :
+// each capture cycle rewinds it, the grown regions are kept and reused, no malloc/free churn
+// in this long-running tool. The result views stay valid until the next mcp_shot_prepare or
+// mcp_shot_request (the host must have consumed the response by then).
 //----------------------------------------------------------------------------------------------------------------------------
 
-// A growable byte buffer
+// A byte buffer backed by an arena
 typedef struct mcp_buf
 {
     char* data;
@@ -276,18 +279,19 @@ typedef struct mcp_shot_result
 
 typedef struct mcp_shot
 {
+    Arena arena;          // backs the pixel buffer and the encoded outputs (rewound per capture)
     bool pending;
     bool whole;
     uint32_t target_w, target_h;
     uint32_t frame;        // frames since the request (the resize deadline)
-    uint8_t* pixels;       // w*h*4, malloc'd per capture, filled by od_take_screenshot
+    uint8_t* pixels;       // w*h*4, from the arena per capture, filled by od_take_screenshot
     mcp_capture cap;
-    mcp_buf png_buf;       // growable, stbi_write_png_to_func output
-    mcp_buf b64_buf;       // growable, base64 output
+    mcp_buf png_buf;       // arena-backed, stbi_write_png_to_func output
+    mcp_buf b64_buf;       // arena-backed, base64 output
     mcp_shot_result result;
 } mcp_shot;
 
-// Wipes the state (the output buffers keep their backing allocation)
+// Wipes the state and releases the arena regions
 void mcp_shot_init(mcp_shot* s);
 
 // Requests a shot. [w], [h] are the requested output pixels, 0,0 = canvas rect.
@@ -299,8 +303,9 @@ void mcp_shot_request(mcp_shot* s, uint32_t w, uint32_t h, float dpi_scale);
 // Fills [cap] and returns true if a capture is due this frame.
 bool mcp_shot_tick(mcp_shot* s, float canvas_w, float canvas_h, uint32_t fb_w, uint32_t fb_h, mcp_capture* cap);
 
-// Allocates the pixel buffer for a due capture and returns it (NULL on allocation failure);
-// call before od_take_screenshot, the buffer is freed by mcp_shot_end
+// Allocates the pixel buffer for a due capture from the shot's arena and returns it;
+// call before od_take_screenshot. The buffer stays live until the next mcp_shot_prepare or
+// mcp_shot_request rewinds the arena (mcp_shot_end must encode it before that)
 uint8_t* mcp_shot_prepare(mcp_shot* s, const mcp_capture* cap);
 
 // After od_end_frame (rendered or not) : encodes the captured pixels into s->result

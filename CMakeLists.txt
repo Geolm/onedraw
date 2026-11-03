@@ -12,6 +12,15 @@ endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_STANDARD 99)
+
+# --- AddressSanitizer ---
+option(ONEDRAW_ASAN "Build with AddressSanitizer" OFF)
+
+if(ONEDRAW_ASAN)
+    add_compile_options(-fsanitize=address)
+    add_link_options(-fsanitize=address)
+endif()
+
 set(CMAKE_C_FLAGS_DEBUG "-g -O0 -DDEBUG -Wall -Wextra ")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra")

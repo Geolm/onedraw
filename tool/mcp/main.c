@@ -1,4 +1,3 @@
-#include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
 
@@ -10,6 +9,10 @@
 struct onedraw* renderer;
 mcp_scene scene;
 mcp_shot shot;
+
+// The onedraw state buffer (and the later JSON-RPC buffers, T6) ; the shot has its own
+// arena because it is rewound per capture
+Arena arena;
 
 #define FROM_HTML(html)   ((html&0xff)<<16) | ((html>>16)&0xff) | (html&0x00ff00) | 0xff000000
 
@@ -32,7 +35,7 @@ void init(void)
     renderer = od_init( &(onedraw_def)
     {
         .metal_device = (void*)env.metal.device,
-        .preallocated_buffer = malloc(od_min_memory_size()),
+        .preallocated_buffer = arena_alloc(&arena, od_min_memory_size()),
         .viewport_width = (uint32_t) sapp_width(),
         .viewport_height = (uint32_t) sapp_height(),
         .log_func = mcp_log,
@@ -150,9 +153,12 @@ void cleanup(void)
     if (renderer != NULL)
     {
         od_terminate(renderer);
-        free(renderer);
         renderer = NULL;
     }
+
+    // renderer points into the arena (placement-new in the preallocated buffer)
+    arena_free(&arena);
+    arena_free(&shot.arena);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

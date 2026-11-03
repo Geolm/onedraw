@@ -1,6 +1,7 @@
+// before mcp.h : it includes arena.h, the implementation must be compiled in this one TU
+#define ARENA_IMPLEMENTATION
 #include "mcp.h"
 
-#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
@@ -13,37 +14,30 @@
 #define MCP_SHOT_RESIZE_TIMEOUT 120
 
 // ----------------------------------------------------------------------------------------------------------------------------
-static bool mcp_buf_grow(mcp_buf* b, size_t min_size)
+static void mcp_buf_grow(mcp_buf* b, Arena* a, size_t min_size)
 {
     if (b->cap >= min_size)
-        return true;
+        return;
 
     size_t cap = b->cap ? b->cap : 4096;
     while (cap < min_size)
         cap *= 2;
 
-    char* data = (char*) realloc(b->data, cap);
-    if (data == NULL)
-        return false;
-
-    b->data = data;
+    b->data = (char*) arena_realloc(a, b->data, b->cap, cap);
     b->cap = cap;
-    return true;
 }
 
-static void mcp_buf_append(mcp_buf* b, const char* p, size_t n)
+static void mcp_buf_append(mcp_buf* b, Arena* a, const char* p, size_t n)
 {
-    if (mcp_buf_grow(b, b->len + n))
-    {
-        memcpy(b->data + b->len, p, n);
-        b->len += n;
-    }
+    mcp_buf_grow(b, a, b->len + n);
+    memcpy(b->data + b->len, p, n);
+    b->len += n;
 }
 
-// stbi_write_func has no return value, a failed append just truncates the output (checked later)
 static void mcp_png_write(void* context, void* data, int size)
 {
-    mcp_buf_append((mcp_buf*) context, (const char*) data, (size_t) size);
+    mcp_shot* s = (mcp_shot*) context;
+    mcp_buf_append(&s->png_buf, &s->arena, (const char*) data, (size_t) size);
 }
 
 // ----------------------------------------------------------------------------------------------------------------------------
@@ -59,7 +53,7 @@ static void mcp_bgra_to_rgba(uint8_t* pixels, uint32_t w, uint32_t h)
 
 // ----------------------------------------------------------------------------------------------------------------------------
 // Appends the base64 of [in] (NUL-terminated) to [b]
-static void mcp_base64(mcp_buf* b, const uint8_t* in, size_t in_len)
+static void mcp_base64(mcp_buf* b, Arena* a, const uint8_t* in, size_t in_len)
 {
     static const char* table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -68,7 +62,7 @@ static void mcp_base64(mcp_buf* b, const uint8_t* in, size_t in_len)
     {
         uint32_t v = ((uint32_t) in[i] << 16) | ((uint32_t) in[i + 1] << 8) | in[i + 2];
         char c[4] = { table[v >> 18 & 0x3f], table[v >> 12 & 0x3f], table[v >> 6 & 0x3f], table[v & 0x3f] };
-        mcp_buf_append(b, c, 4);
+        mcp_buf_append(b, a, c, 4);
         i += 3;
     }
 
@@ -76,16 +70,16 @@ static void mcp_base64(mcp_buf* b, const uint8_t* in, size_t in_len)
     {
         uint32_t v = (uint32_t) in[i] << 16;
         char c[4] = { table[v >> 18 & 0x3f], table[v >> 12 & 0x3f], '=', '=' };
-        mcp_buf_append(b, c, 4);
+        mcp_buf_append(b, a, c, 4);
     }
     else if (i + 2 == in_len)
     {
         uint32_t v = ((uint32_t) in[i] << 16) | ((uint32_t) in[i + 1] << 8);
         char c[4] = { table[v >> 18 & 0x3f], table[v >> 12 & 0x3f], table[v >> 6 & 0x3f], '=' };
-        mcp_buf_append(b, c, 4);
+        mcp_buf_append(b, a, c, 4);
     }
 
-    mcp_buf_append(b, "", 1);   // NUL
+    mcp_buf_append(b, a, "", 1);   // NUL
 }
 
 // ----------------------------------------------------------------------------------------------------------------------------
@@ -99,16 +93,27 @@ static uint32_t mcp_shot_points(uint32_t px, float dpi_scale)
 }
 
 // ----------------------------------------------------------------------------------------------------------------------------
+// The capture cycle boundary : the previous pixels and encoded outputs die in the rewind,
+// their arena regions are kept and reused (no malloc/free in the steady state)
+static void mcp_shot_rewind(mcp_shot* s)
+{
+    arena_reset(&s->arena);
+    s->pixels = NULL;
+    s->png_buf = (mcp_buf) { 0 };
+    s->b64_buf = (mcp_buf) { 0 };
+}
+
+// ----------------------------------------------------------------------------------------------------------------------------
 void mcp_shot_init(mcp_shot* s)
 {
+    arena_free(&s->arena);
     memset(s, 0, sizeof(*s));
 }
 
 // ----------------------------------------------------------------------------------------------------------------------------
 void mcp_shot_request(mcp_shot* s, uint32_t w, uint32_t h, float dpi_scale)
 {
-    free(s->pixels);
-    s->pixels = NULL;
+    mcp_shot_rewind(s);
     memset(&s->result, 0, sizeof(s->result));
 
     s->pending = true;
@@ -192,7 +197,8 @@ bool mcp_shot_tick(mcp_shot* s, float canvas_w, float canvas_h, uint32_t fb_w, u
 uint8_t* mcp_shot_prepare(mcp_shot* s, const mcp_capture* cap)
 {
     s->cap = *cap;
-    s->pixels = (uint8_t*) malloc((size_t) cap->w * cap->h * 4);
+    mcp_shot_rewind(s);
+    s->pixels = (uint8_t*) arena_alloc(&s->arena, (size_t) cap->w * cap->h * 4);
     return s->pixels;
 }
 
@@ -210,29 +216,21 @@ void mcp_shot_end(mcp_shot* s)
 
     s->png_buf.len = 0;
     s->b64_buf.len = 0;
-    stbi_write_png_to_func(mcp_png_write, &s->png_buf, (int) w, (int) h, 4, s->pixels, (int) w * 4);
+    stbi_write_png_to_func(mcp_png_write, s, (int) w, (int) h, 4, s->pixels, (int) w * 4);
+    mcp_base64(&s->b64_buf, &s->arena, (const uint8_t*) s->png_buf.data, s->png_buf.len);
 
-    // a png is always > 8 bytes : the signature (a truncated encode means a failed append)
-    bool ok = s->png_buf.len > 8;
-    if (ok)
-    {
-        s->b64_buf.len = 0;
-        mcp_base64(&s->b64_buf, (const uint8_t*) s->png_buf.data, s->png_buf.len);
-        ok = s->b64_buf.len > 0;
-    }
-
-    free(s->pixels);
+    // the pixels die in the next rewind (the encoded result lives until then)
     s->pixels = NULL;
     s->pending = false;
 
     s->result.valid = true;
-    s->result.ok = ok;
+    s->result.ok = true;
     s->result.width = w;
     s->result.height = h;
     s->result.scale = s->cap.scale;
-    s->result.png = (String_View) { ok ? s->png_buf.len : 0, ok ? s->png_buf.data : NULL };
+    s->result.png = (String_View) { s->png_buf.len, s->png_buf.data };
     // the b64 buffer is NUL-terminated (mcp_base64), the view is the payload only
-    s->result.b64 = (String_View) { ok ? s->b64_buf.len - 1 : 0, ok ? s->b64_buf.data : NULL };
+    s->result.b64 = (String_View) { s->b64_buf.len - 1, s->b64_buf.data };
 
     if (s->whole)
         mcp_set_window_points(MCP_WINDOW_W, MCP_WINDOW_H);

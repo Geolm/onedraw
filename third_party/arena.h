@@ -35,6 +35,18 @@
 #define ARENA_ASSERT assert
 #endif
 
+#ifndef ARENA_DEBUG
+#ifdef NDEBUG
+#define ARENA_DEBUG 0
+#else
+#define ARENA_DEBUG 1
+#endif
+#endif // ARENA_DEBUG
+
+#ifndef ARENA_POISON_BYTE
+#define ARENA_POISON_BYTE 0xCD
+#endif // ARENA_POISON_BYTE
+
 #define ARENA_BACKEND_LIBC_MALLOC 0
 #define ARENA_BACKEND_LINUX_MMAP 1
 #define ARENA_BACKEND_WIN32_VIRTUALALLOC 2
@@ -73,8 +85,10 @@ void *arena_alloc(Arena *a, size_t size_bytes);
 void *arena_realloc(Arena *a, void *oldptr, size_t oldsz, size_t newsz);
 char *arena_strdup(Arena *a, const char *cstr);
 void *arena_memdup(Arena *a, void *data, size_t size);
+void *arena_memcpy(void *dest, const void *src, size_t n);
 #ifndef ARENA_NOSTDIO
 char *arena_sprintf(Arena *a, const char *format, ...);
+char *arena_vsprintf(Arena *a, const char *format, va_list args);
 #endif // ARENA_NOSTDIO
 
 Arena_Mark arena_snapshot(Arena *a);
@@ -82,7 +96,6 @@ void arena_reset(Arena *a);
 void arena_rewind(Arena *a, Arena_Mark m);
 void arena_free(Arena *a);
 void arena_trim(Arena *a);
-void arena_stats(Arena* a, size_t* bytes_allocated, size_t* bytes_used);
 
 #ifndef ARENA_DA_INIT_CAP
 #define ARENA_DA_INIT_CAP 256
@@ -253,7 +266,7 @@ Region *new_region(size_t capacity)
 
     // grow memory brk() style
     size_t current_memory_size = ARENA_WASM_PAGE_SIZE * __builtin_wasm_memory_size(0);
-    size_t desired_memory_size = (size_t) bump_pointer;
+    size_t desired_memory_size = (size_t) bump_pointer + size_bytes;
     if (desired_memory_size > current_memory_size) {
         size_t delta_bytes = desired_memory_size - current_memory_size;
         size_t delta_pages = (delta_bytes + (ARENA_WASM_PAGE_SIZE - 1))/ARENA_WASM_PAGE_SIZE;
@@ -361,22 +374,57 @@ void *arena_memdup(Arena *a, void *data, size_t size)
 }
 
 #ifndef ARENA_NOSTDIO
+char *arena_vsprintf(Arena *a, const char *format, va_list args)
+{
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int n = vsnprintf(NULL, 0, format, args_copy);
+    va_end(args_copy);
+
+    ARENA_ASSERT(n >= 0);
+    char *result = (char*)arena_alloc(a, n + 1);
+    vsnprintf(result, n + 1, format, args);
+
+    return result;
+}
+
 char *arena_sprintf(Arena *a, const char *format, ...)
 {
     va_list args;
     va_start(args, format);
-    int n = vsnprintf(NULL, 0, format, args);
-    va_end(args);
-
-    ARENA_ASSERT(n >= 0);
-    char *result = (char*)arena_alloc(a, n + 1);
-    va_start(args, format);
-    vsnprintf(result, n + 1, format, args);
+    char *result = arena_vsprintf(a, format, args);
     va_end(args);
 
     return result;
 }
 #endif // ARENA_NOSTDIO
+
+#if ARENA_DEBUG
+static void arena__check_mark(const Arena *a, Arena_Mark m)
+{
+    int end_seen = 0;
+    for (Region *r = a->begin; r != NULL; r = r->next) {
+        if (r == m.region) {
+            ARENA_ASSERT(!end_seen && "marker region is ahead of the current position (stale marker)");
+            ARENA_ASSERT(m.count <= r->count && "marker count exceeds the region's current count (stale marker)");
+            return;
+        }
+        if (r == a->end) {
+            end_seen = 1;
+        }
+    }
+    ARENA_ASSERT(0 && "marker does not belong to this arena (foreign, trimmed or freed region)");
+}
+
+static void arena__poison(uintptr_t *p, size_t n)
+{
+    // 0xCD in every byte of a uintptr_t, at any pointer width
+    uintptr_t word = ((uintptr_t)-1 / 0xFF) * (uintptr_t)ARENA_POISON_BYTE;
+    for (size_t i = 0; i < n; i++) {
+        p[i] = word;
+    }
+}
+#endif // ARENA_DEBUG
 
 Arena_Mark arena_snapshot(Arena *a)
 {
@@ -396,6 +444,11 @@ Arena_Mark arena_snapshot(Arena *a)
 void arena_reset(Arena *a)
 {
     for (Region *r = a->begin; r != NULL; r = r->next) {
+#if ARENA_DEBUG
+        if (r->count > 0) {
+            arena__poison(&r->data[0], r->count);
+        }
+#endif // ARENA_DEBUG
         r->count = 0;
     }
 
@@ -404,13 +457,27 @@ void arena_reset(Arena *a)
 
 void arena_rewind(Arena *a, Arena_Mark m)
 {
-    if(m.region == NULL){ //snapshot of uninitialized arena
-        arena_reset(a);   //leave allocation
+    if (m.region == NULL) { //snapshot of uninitialized arena
+        arena_reset(a); //leave allocation
         return;
     }
 
+#if ARENA_DEBUG
+    arena__check_mark(a, m);
+
+    // guard keeps (m.region->count - m.count) from underflowing if ARENA_ASSERT is a no-op
+    if (m.count < m.region->count) {
+        arena__poison(&m.region->data[m.count], m.region->count - m.count);
+    }
+#endif // ARENA_DEBUG
+
     m.region->count = m.count;
     for (Region *r = m.region->next; r != NULL; r = r->next) {
+#if ARENA_DEBUG
+        if (r->count > 0) {
+            arena__poison(&r->data[0], r->count);
+        }
+#endif // ARENA_DEBUG
         r->count = 0;
     }
 
@@ -437,18 +504,6 @@ void arena_trim(Arena *a){
         free_region(r0);
     }
     a->end->next = NULL;
-}
-
-void arena_stats(Arena* a, size_t* bytes_allocated, size_t* bytes_used)
-{
-    *bytes_allocated = 0;
-    *bytes_used = 0;
-
-    for (Region *r = a->begin; r != NULL; r = r->next) 
-    {
-        *bytes_used += r->count;
-        *bytes_allocated += r->capacity;
-    }
 }
 
 #endif // ARENA_IMPLEMENTATION
