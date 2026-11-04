@@ -47,3 +47,26 @@ The rewritten multi-face baker left `stbtt_pack_range.h_oversample` / `v_oversam
 context and uses `recip = 1.0f / oversample` — an infinite scale that renders every glyph to
 a zero-size rect with NaN/inf bearings, producing an empty atlas. Fix: set both to `1`
 explicitly (no supersampling is used, but the fields must be non-zero).
+
+## New `bin2h_u64` wrote a corrupted atlas header, masquerading as a baker bug (v3.0.1)
+
+After switching the atlas export from `uint8_t` to `uint64_t` (header 7.92 MB → 3.42 MB),
+the test scene rendered ghosted, faint text (PSNR 27.5, 100,360 px against the reference).
+Because the glyph table, the rasterizer shader and every packed rect were byte-identical
+between bakes, the investigation chased a phantom "baker bug" : decoding the atlas in
+Python appeared to show the same glyph ink *displaced* per glyph (by roughly one glyph size,
+in random-looking directions), and the committed v3.0.0 header appeared 90 % different from
+a fresh bake — a "self-inconsistent commit".
+
+None of it was real. The new `bin2h_u64` loop assembled each `uint64_t` from 8 input bytes
+but advanced the cursor by **1 byte** instead of 8, so the 160,801 header values were
+*overlapping, shifted windows* over the first 160 KB of the buffer (the rest was never
+read). The expanded header was a corrupted stream, and decoding *that* produced exactly the
+displaced-glyph and 90 %-different measurements. A u8-reconstruction A/B "verified" the
+encoding was faithful — but it only compared two renderings of the same corrupted stream.
+
+Fix: advance the cursor by 8 bytes per value. The u64 header now expands byte-identical to
+the u8 one, a fresh bake reproduces the committed v3.0.0 atlas byte-identical (v3.0.0 was
+self-consistent all along), and the test renders bit-identical to the reference.
+Lesson: before believing a "non-deterministic baker", verify the serializer end-to-end
+(expand the generated header and diff it against the in-memory buffer).

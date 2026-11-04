@@ -49,12 +49,15 @@ Don't modify this file.
 - Never sacrifice correctness or maintainability for unmeasured optimization.
 - Profile GPU while the LLM is running doesn't produce useful numbers. Ask the use to run the gpu profiling.
 
-## Build & Test
-
+## Build
 - Config: `cmake -B build -S . -DCMAKE_BUILD_TYPE=Release`
 - Build: `cmake --build build`
 - Clean: `rm -rf build/`
 - Test: `./build/test --autoexit`
+
+## Test
+- Always debug issues directly in the actual project. Never create separate programs, minimal reproductions, or scratchpad implementations to investigate project bugs unless explicitly requested.
+- Use the existing code, build system, debugger, and runtime to identify and fix the root cause.
 - Regression: the test always compares screenshot.png against the reference matching its dpi scale (1x: reference.png, 2x: reference_highdpi.png) and reports PSNR; identical images pass.
 - Run `./build/test --autoexit --compare` as the regression gate: it exits non-zero if PSNR falls below threshold.
 - After any intentional scene change, regenerate the reference with `./build/test --autoexit --update-refs` and commit the updated reference in the same change.

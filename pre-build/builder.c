@@ -12,6 +12,11 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
+// arena.h : the backend must be selected before its first inclusion (shader_reader.h does
+// one, declaration-only), and the implementation pass (ARENA_IMPLEMENTATION, which sits
+// outside the include guard) must run exactly once - after that first inclusion
+#define ARENA_BACKEND ARENA_BACKEND_LINUX_MMAP
+
 #include "shader_reader.h"
 
 #define ARENA_NOSTDIO
@@ -457,8 +462,8 @@ bool build_fonts(Arena* arena)
 
     fprintf(stdout, "writting %s : ", FONT_H);
 
-    if (!bin2h(FONT_H, "default_font_atlas", compressed_atlas, bc4_image_size))
-        return false; // bin2h reported the error
+    if (!bin2h_u64(FONT_H, "default_font_atlas", compressed_atlas, bc4_image_size))
+        return false; // bin2h_u64 reported the error
 
     fprintf(stdout, "ok\n");
 

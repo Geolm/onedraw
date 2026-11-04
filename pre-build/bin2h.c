@@ -70,6 +70,64 @@ bool bin2h(const char* filename, const char* variable, const void* buffer, size_
 }
 
 //-------------------------------------------------------------------------------------------------
+bool bin2h_u64(const char* filename, const char* variable, const void* buffer, size_t length)
+{
+    if (length == 0)
+    {
+        fprintf(stderr, "error: cannot write '%s': the buffer is empty\n", filename);
+        return false;
+    }
+
+    if (length % 8 != 0)
+    {
+        fprintf(stderr, "error: cannot write '%s': the buffer is not a multiple of 8 bytes\n", filename);
+        return false;
+    }
+
+    FILE* f = open_header(filename);
+    if (f == NULL)
+        return false;
+
+    fprintf(f, "#ifndef __%s__H__\n", variable);
+    fprintf(f, "#define __%s__H__\n\n", variable);
+    fprintf(f, "#include <stdint.h>\n");
+    fprintf(f, "#include <stddef.h>\n");
+    fprintf(f, "#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__\n");
+    fprintf(f, "#error %s is stored as little-endian bytes\n", variable);
+    fprintf(f, "#endif\n\n");
+    fprintf(f, "static const size_t %s_size = %zu;\n", variable, length);
+    fprintf(f, "static const uint64_t %s[] =\n{\n    ", variable);
+
+    // one uint64_t per 8 little-endian bytes : half the hex characters of the u8 writer
+    const uint8_t* input = (const uint8_t*)buffer;
+    size_t index = 0;
+
+    while (index + 16 <= length)
+    {
+        uint64_t value = 0;
+
+        for (int i = 0; i < 8; ++i)
+            value |= (uint64_t)input[index + i] << (8 * i);
+
+        index += 8;
+        fprintf(f, "0x%016llX, ", (unsigned long long)value);
+        if ((index/8) % 4 == 0)
+            fprintf(f, "\n    ");
+    }
+
+    {
+        uint64_t value = 0;
+
+        for (int i = 0; i < 8; ++i)
+            value |= (uint64_t)input[index + i] << (8 * i);
+
+        fprintf(f, "0x%016llX\n};\n#endif\n", (unsigned long long)value);
+    }
+
+    return finish_header(f, filename);
+}
+
+//-------------------------------------------------------------------------------------------------
 bool string2h(const char* filename, const char* variable, const char* string, size_t length)
 {
     if (length == 0)

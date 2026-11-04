@@ -1,4 +1,5 @@
 #include "shader_reader.h"
+#include "arena.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
