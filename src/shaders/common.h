@@ -18,7 +18,10 @@
 #define SIMD_GROUP_SIZE (32)
 #define LAST_COMMAND (MAX_COMMANDS-1)
 #define MAX_THREADS_PER_THREADGROUP (1024)
-#define MAX_GLYPHS (128)
+#define MAX_GLYPHS (256)          // the glyph index must fit in the 8-bit extra field of draw_command
+#define OD_NUM_FONTS (4)
+#define OD_NUM_FONT_SIZES (9)
+#define MAX_FACES (OD_NUM_FONTS * OD_NUM_FONT_SIZES)
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // cpp compatibility
@@ -144,15 +147,22 @@ typedef struct glyph
     float advance_x;
 } glyph;
 
-typedef struct alphabet
+typedef struct font_face
 {
     glyph glyphs[MAX_GLYPHS];
-    float font_height;
+    float pixel_size;
+    float ascent;         // top of the line -> baseline, pixels
+    float line_height;    // distance between two baselines, pixels
+} font_face;
+
+typedef struct font_bank
+{
+    font_face faces[MAX_FACES];
+    uint32_t codepoints[MAX_GLYPHS];   // sorted, the glyph index is the position in this list
     uint16_t num_glyphs;
-    uint16_t first_glyph;
     uint16_t texture_width;
     uint16_t texture_height;
-} alphabet;
+} font_bank;
 
 typedef struct draw_cmd_arguments
 {

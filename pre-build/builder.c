@@ -21,24 +21,50 @@
 
 
 #define LIB_FOLDER "lib/"
-#define DEFAULT_FONT_FILENAME "fonts/Satoshi-Bold.otf"
-#define FONT_HEIGHT_STANDARD (24.0f)
-#define FONT_HEIGHT_HIGHDPI  (48.0f)
-#define ATLAS_MAX_SIZE  (1024)
+#define FONT_FILENAME_REGULAR   "fonts/Satoshi-Regular.otf"
+#define FONT_FILENAME_BOLD      "fonts/Satoshi-Bold.otf"
+#define FONT_FILENAME_ITALIC    "fonts/Satoshi-Italic.otf"
+#define FONT_FILENAME_MONO      "fonts/JetBrainsMono-Regular.ttf"
+#define ATLAS_MAX_SIZE  (2048)
 #define ATLAS_PADDING   (1)   // 1 px gutter, the packer stores it on the left and top of every glyph
 #define FONT_H "lib/default_font_atlas.h"
 #define GLYPH_H "lib/default_font.h"
-#define FONT_H_HIGHDPI "lib/default_font_atlas_highdpi.h"
-#define GLYPH_H_HIGHDPI "lib/default_font_highdpi.h"
-#define FONT_CHAR_FIRST 33
-#define FONT_CHAR_LAST 126
-#define FONT_NUM_CHARS 95
 #define SHADERS_FOLDER    "src/shaders/"
-#define SOURCE_FOLDER   "src/"
 #define BINNING_SHADER          "binning.metal"
 #define RASTERIZER_SHADER       "rasterizer.metal"
 #define CPU_GPU_COMMON_FILE     "common.h"
 
+// the sizes are physical pixels, shared by every font, and must match OD_NUM_FONT_SIZES
+static const float FONT_SIZES[OD_NUM_FONT_SIZES] = {12.0f, 16.0f, 20.0f, 24.0f, 32.0f, 40.0f, 48.0f, 56.0f, 64.0f};
+static const char* const FONT_FILES[OD_NUM_FONTS] = {FONT_FILENAME_REGULAR, FONT_FILENAME_BOLD, FONT_FILENAME_ITALIC, FONT_FILENAME_MONO};
+
+static uint32_t CODEPOINTS[MAX_GLYPHS];
+static int NUM_CODEPOINTS;
+
+// the baked character set, identical for every font, sorted (the glyph index is the position in this list)
+static bool build_codepoints(void)
+{
+    int i = 0;
+
+    for (int c = 0x20; c <= 0x7E; ++c)
+        CODEPOINTS[i++] = (uint32_t)c;
+
+    for (int c = 0xA1; c <= 0xFF; ++c)
+    {
+        if (c == 0xAA || c == 0xBA || c == 0xAD)
+            continue;
+        CODEPOINTS[i++] = (uint32_t)c;
+    }
+
+    const uint32_t extras[] = {0x0152, 0x0153, 0x0178, 0x20AC, 0x2018, 0x2019, 0x201C, 0x201D, 0x2026, 0x2013, 0x2014, 0x2022};
+
+    for (int e = 0; e < (int)(sizeof(extras) / sizeof(extras[0])); ++e)
+        CODEPOINTS[i++] = extras[e];
+
+    NUM_CODEPOINTS = i;
+
+    return (i == 199 && i <= MAX_GLYPHS);
+}
 
 // ---------------------------------------------------------------------------------------------------------------------------
 static bool file_exists(const char* path)
@@ -53,31 +79,22 @@ static bool file_exists(const char* path)
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // the builder relies on relative paths, make sure all the input files are present before doing any work
-static bool verify_inputs(const char* font_filename)
+static bool verify_inputs(void)
 {
-    struct input
-    {
-        const char* path;
-        const char* description;
-    };
-
-    const struct input inputs[] =
-    {
-        { font_filename,                      "font file" },
-        { SHADERS_FOLDER BINNING_SHADER,      "shader" },
-        { SHADERS_FOLDER RASTERIZER_SHADER,   "shader" },
-        { SHADERS_FOLDER CPU_GPU_COMMON_FILE, "header" },
-    };
-
     bool ok = true;
 
-    for (size_t i=0; i<sizeof(inputs)/sizeof(inputs[0]); ++i)
+    for (int i = 0; i < OD_NUM_FONTS; ++i)
     {
-        if (!file_exists(inputs[i].path))
-        {
-            fprintf(stderr, "error: could not find %s '%s'\n", inputs[i].description, inputs[i].path);
-            ok = false;
-        }
+        if (!file_exists(FONT_FILES[i]))
+            fprintf(stderr, "error: could not find the font file '%s'\n", FONT_FILES[i]);
+    }
+
+    const char* inputs[] = {SHADERS_FOLDER BINNING_SHADER, SHADERS_FOLDER RASTERIZER_SHADER, SHADERS_FOLDER CPU_GPU_COMMON_FILE};
+
+    for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i)
+    {
+        if (!file_exists(inputs[i]))
+            fprintf(stderr, "error: could not find '%s'\n", inputs[i]);
     }
 
     if (!ok)
@@ -104,7 +121,7 @@ void* read_file(const char* filename, size_t* file_size, Arena* arena)
 
     if (size < 0)
     {
-        fprintf(stderr, "error: could not determine the size of '%s' (%s)\n", filename, strerror(errno));
+        fprintf(stderr, "error: could not determine the size of '%s'\n", filename);
         fclose(f);
         return NULL;
     }
@@ -128,7 +145,7 @@ void* read_file(const char* filename, size_t* file_size, Arena* arena)
 
     if (fread(buffer, *file_size, 1, f) != 1)
     {
-        fprintf(stderr, "error: failed to read '%s' (%s)\n", filename, strerror(errno));
+        fprintf(stderr, "error: failed to read '%s'\n", filename);
         fclose(f);
         return NULL;
     }
@@ -144,26 +161,24 @@ static uint32_t round_up_4(uint32_t value)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// can every glyph be packed into a (atlas_width x atlas_height) atlas ?
+// can every rect pack into a (atlas_width x atlas_height) atlas ?
 // this uses the exact same packing code path as the final bake, so a success here guarantees the bake succeeds
-static bool can_pack(const stbtt_fontinfo* font_info, float font_height, uint32_t atlas_width, uint32_t atlas_height, stbrp_rect* rects)
+static bool can_pack_all(const stbrp_rect* rects, int num_rects, uint32_t atlas_width, uint32_t atlas_height, Arena* arena)
 {
     stbtt_pack_context pack_context;
-    stbtt_pack_range range;
 
     memset(&pack_context, 0, sizeof(pack_context));
     if (!stbtt_PackBegin(&pack_context, NULL, (int)atlas_width, (int)atlas_height, 0, ATLAS_PADDING, NULL))
         return false; // out of memory
 
-    memset(&range, 0, sizeof(range));
-    range.font_size = font_height;
-    range.first_unicode_codepoint_in_range = FONT_CHAR_FIRST;
-    range.num_chars = FONT_NUM_CHARS;
+    stbrp_rect* copy = (stbrp_rect*)arena_alloc(arena, (size_t)num_rects * sizeof(stbrp_rect));
+    bool packed = false;
 
-    bool packed = stbtt_PackFontRangesGatherRects(&pack_context, font_info, &range, 1, rects) == FONT_NUM_CHARS;
-
-    if (packed)
-        packed = stbrp_pack_rects((stbrp_context*)pack_context.pack_info, rects, FONT_NUM_CHARS) == 1;
+    if (copy != NULL)
+    {
+        memcpy(copy, rects, (size_t)num_rects * sizeof(stbrp_rect));
+        packed = stbrp_pack_rects((stbrp_context*)pack_context.pack_info, copy, (unsigned)num_rects) == 1;
+    }
 
     stbtt_PackEnd(&pack_context);
 
@@ -172,20 +187,20 @@ static bool can_pack(const stbtt_fontinfo* font_info, float font_height, uint32_
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // if the glyphs don't fit in a height, they don't fit in a smaller one either, so the search is monotonic
-static uint32_t smallest_packing_height(const stbtt_fontinfo* font_info, float font_height, uint32_t atlas_width, uint32_t min_height, stbrp_rect* rects)
+static uint32_t smallest_packing_height(const stbrp_rect* rects, int num_rects, uint32_t atlas_width, uint32_t min_height, Arena* arena)
 {
     // the packer's target is (width-1) x (height-1) because of the padding, so the atlas must be at least 1 bigger than the biggest rect
     uint32_t low = min_height / 4;
     uint32_t high = ATLAS_MAX_SIZE / 4;
 
-    if (!can_pack(font_info, font_height, atlas_width, ATLAS_MAX_SIZE, rects))
+    if (!can_pack_all(rects, num_rects, atlas_width, ATLAS_MAX_SIZE, arena))
         return 0; // doesn't fit even at the maximum height
 
     while (high > low)
     {
         uint32_t mid = low + (high - low) / 2;
 
-        if (can_pack(font_info, font_height, atlas_width, mid*4, rects))
+        if (can_pack_all(rects, num_rects, atlas_width, mid * 4, arena))
             high = mid;
         else
             low = mid + 1;
@@ -195,31 +210,24 @@ static uint32_t smallest_packing_height(const stbtt_fontinfo* font_info, float f
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// find the smallest atlas (width and height multiples of 4, at most ATLAS_MAX_SIZE) that fits every glyph
-static bool find_atlas_size(const stbtt_fontinfo* font_info, float font_height, uint32_t* out_width, uint32_t* out_height, stbrp_rect* rects)
+// find the smallest atlas (width and height multiples of 4, at most ATLAS_MAX_SIZE) that fits every rect
+static bool find_atlas_size(const stbrp_rect* rects, int num_rects, uint32_t* out_width, uint32_t* out_height, Arena* arena)
 {
-    // measure the glyph boxes to bound the search, each packed rect gets a +1 gutter on the left and top when packed
-    float scale = stbtt_ScaleForPixelHeight(font_info, font_height);
-
     uint32_t max_rect_width = 0;
     uint32_t max_rect_height = 0;
 
-    for (int i = 0; i < FONT_NUM_CHARS; ++i)
+    for (int i = 0; i < num_rects; ++i)
     {
-        int x0, y0, x1, y1;
+        if (rects[i].w > (int)max_rect_width)
+            max_rect_width = (uint32_t)rects[i].w;
 
-        stbtt_GetCodepointBitmapBox(font_info, FONT_CHAR_FIRST + i, scale, scale, &x0, &y0, &x1, &y1);
-
-        if ((uint32_t)(x1 - x0 + ATLAS_PADDING) > max_rect_width)
-            max_rect_width = (uint32_t)(x1 - x0 + ATLAS_PADDING);
-
-        if ((uint32_t)(y1 - y0 + ATLAS_PADDING) > max_rect_height)
-            max_rect_height = (uint32_t)(y1 - y0 + ATLAS_PADDING);
+        if (rects[i].h > (int)max_rect_height)
+            max_rect_height = (uint32_t)rects[i].h;
     }
 
     if (max_rect_width + 1 > ATLAS_MAX_SIZE)
     {
-        fprintf(stderr, "error: the font is too wide (%u px) for an atlas of at most %u px, increase ATLAS_MAX_SIZE\n", max_rect_width, ATLAS_MAX_SIZE);
+        fprintf(stderr, "error: a glyph is too wide (%u px) for an atlas of at most %u px, increase ATLAS_MAX_SIZE\n", max_rect_width, ATLAS_MAX_SIZE);
         return false;
     }
 
@@ -229,13 +237,13 @@ static bool find_atlas_size(const stbtt_fontinfo* font_info, float font_height, 
         uint16_t height;
     };
 
-    struct size sizes[ATLAS_MAX_SIZE/4 + 1];
+    struct size sizes[ATLAS_MAX_SIZE / 4 + 1];
     size_t num_sizes = 0;
     float min_area = 1e30f;
 
     for (uint32_t width = round_up_4(max_rect_width + 1); width <= ATLAS_MAX_SIZE; width += 4)
     {
-        uint32_t height = smallest_packing_height(font_info, font_height, width, round_up_4(max_rect_height + 1), rects);
+        uint32_t height = smallest_packing_height(rects, num_rects, width, round_up_4(max_rect_height + 1), arena);
 
         if (height == 0)
             continue; // this width is too narrow
@@ -249,7 +257,8 @@ static bool find_atlas_size(const stbtt_fontinfo* font_info, float font_height, 
 
     if (num_sizes == 0)
     {
-        fprintf(stderr, "error: could not pack the font in an atlas of at most %ux%u, increase ATLAS_MAX_SIZE\n", ATLAS_MAX_SIZE, ATLAS_MAX_SIZE);
+        fprintf(stderr, "error: could not pack the font faces in an atlas of at most %ux%u, increase ATLAS_MAX_SIZE or step back to the 7-size list\n",
+                ATLAS_MAX_SIZE, ATLAS_MAX_SIZE);
         return false;
     }
 
@@ -280,140 +289,236 @@ static bool find_atlas_size(const stbtt_fontinfo* font_info, float font_height, 
     return true;
 }
 
+// one (font file, pixel size) pair; the 4 fonts x OD_NUM_FONT_SIZES sizes
+#define NUM_FACES (OD_NUM_FONTS * OD_NUM_FONT_SIZES)
+
 // ---------------------------------------------------------------------------------------------------------------------------
-bool build_font(Arena *arena, const char* font_filename, float font_height, const char* font_h, const char* glyph_h, const char* atlas_var, const char* glyph_var)
+static bool load_fonts(stbtt_fontinfo* fonts, Arena* arena)
 {
-    fprintf(stdout, "opening font '%s' : ", font_filename);
+    bool ok = true;
 
-    size_t font_size;
-    uint8_t* font_data = read_file(font_filename, &font_size, arena);
+    for (int i = 0; i < OD_NUM_FONTS; ++i)
+    {
+        size_t file_size;
+        uint8_t* data = read_file(FONT_FILES[i], &file_size, arena);
 
-    if (font_data == NULL)
-        return false; // read_file reported the error
+        if (data == NULL)
+        {
+            ok = false;
+            continue;
+        }
+
+        if (!stbtt_InitFont(&fonts[i], data, 0))
+        {
+            fprintf(stderr, "error: '%s' is not a valid font file\n", FONT_FILES[i]);
+            ok = false;
+            continue;
+        }
+
+        for (int c = 0; c < NUM_CODEPOINTS; ++c)
+        {
+            if (stbtt_FindGlyphIndex(&fonts[i], (int)CODEPOINTS[c]) == 0)
+            {
+                fprintf(stderr, "error: '%s' is missing the glyph U+%04X\n", FONT_FILES[i], CODEPOINTS[c]);
+                ok = false;
+            }
+        }
+    }
+
+    return ok;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// gather the packed rect of every code point of every face, in the order of the final pack
+static void gather_face_rects(stbtt_fontinfo* fonts, stbrp_rect* rects)
+{
+    stbtt_pack_context pack_context;
+    stbtt_pack_range range;
+
+    memset(&pack_context, 0, sizeof(pack_context));
+    stbtt_PackBegin(&pack_context, NULL, 1, 1, 0, ATLAS_PADDING, NULL);
+
+    for (int f = 0; f < OD_NUM_FONTS; ++f)
+    {
+        for (int s = 0; s < OD_NUM_FONT_SIZES; ++s)
+        {
+            int face = f * OD_NUM_FONT_SIZES + s;
+
+            memset(&range, 0, sizeof(range));
+            range.font_size = FONT_SIZES[s];
+            range.h_oversample = 1;
+            range.v_oversample = 1;
+            range.array_of_unicode_codepoints = (int*)CODEPOINTS;
+            range.num_chars = NUM_CODEPOINTS;
+
+            if (stbtt_PackFontRangesGatherRects(&pack_context, &fonts[f], &range, 1, &rects[face * NUM_CODEPOINTS]) != NUM_CODEPOINTS)
+            {
+                fprintf(stderr, "error: could not gather the glyph rects of face %d\n", face);
+            }
+        }
+    }
+
+    stbtt_PackEnd(&pack_context);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+bool build_fonts(Arena* arena)
+{
+    stbtt_fontinfo fonts[OD_NUM_FONTS];
+
+    fprintf(stdout, "opening fonts : ");
+    if (!load_fonts(fonts, arena))
+        return false;
 
     fprintf(stdout, "ok\n");
 
-    stbtt_fontinfo font_info = {0};
-    if (!stbtt_InitFont(&font_info, font_data, 0))
-    {
-        fprintf(stderr, "error: '%s' is not a valid font file\n", font_filename);
-        return false;
-    }
-
     fprintf(stdout, "sizing atlas : ");
 
-    stbrp_rect rects[FONT_NUM_CHARS];
-    uint32_t atlas_width, atlas_height;
+    // one rect per baked code point per face (the arena does not zero its memory, so the unused
+    // slots of a MAX_GLYPHS stride would reach the packer uninitialized)
+    stbrp_rect* rects = (stbrp_rect*)arena_alloc(arena, (size_t)NUM_FACES * NUM_CODEPOINTS * sizeof(stbrp_rect));
+    if (rects == NULL)
+        return false; // out of memory
 
-    if (!find_atlas_size(&font_info, font_height, &atlas_width, &atlas_height, rects))
+    gather_face_rects(fonts, rects);
+
+    uint32_t atlas_width = 0;
+    uint32_t atlas_height = 0;
+
+    if (!find_atlas_size(rects, NUM_FACES * NUM_CODEPOINTS, &atlas_width, &atlas_height, arena))
         return false; // find_atlas_size reported the error
 
-    if ((atlas_width%4) != 0 || (atlas_height%4) != 0)
-    {
-        fprintf(stderr, "error: the font atlas size (%ux%u) must be a multiple of 4\n", atlas_width, atlas_height);
-        return false;
-    }
-
-    size_t bc4_image_size = (atlas_width/4) * (atlas_height/4) * 8;
+    size_t bc4_image_size = (atlas_width / 4) * (atlas_height / 4) * 8;
 
     fprintf(stdout, "%ux%u (%zu bytes of bc4 data)\n", atlas_width, atlas_height, bc4_image_size);
 
     fprintf(stdout, "baking %ux%u atlas : ", atlas_width, atlas_height);
 
-    uint8_t* atlas_pixels = arena_alloc(arena, atlas_height * atlas_width);
+    uint8_t* atlas_pixels = (uint8_t*)arena_alloc(arena, (size_t)atlas_width * atlas_height);
     if (atlas_pixels == NULL)
-    {
-        fprintf(stderr, "error: out of memory while baking the font atlas\n");
-        return false;
-    }
+        return false; // out of memory
 
-    stbtt_packedchar glyphs[FONT_NUM_CHARS];
-    memset(glyphs, 0, sizeof(glyphs));
+    memset(atlas_pixels, 0, (size_t)atlas_width * atlas_height);
+
+    // the packedchar storage of every face (~1.8 MB, too big for the stack) is a plain array,
+    // not part of the serialized layout : the baker reads it to fill the font bank
+    stbtt_packedchar* bake_chars = (stbtt_packedchar*)arena_alloc(arena, (size_t)NUM_FACES * MAX_GLYPHS * sizeof(stbtt_packedchar));
+    if (bake_chars == NULL)
+        return false; // out of memory
 
     stbtt_pack_context pack_context;
-    stbtt_pack_range range;
-
     memset(&pack_context, 0, sizeof(pack_context));
     if (!stbtt_PackBegin(&pack_context, atlas_pixels, (int)atlas_width, (int)atlas_height, 0, ATLAS_PADDING, NULL))
+        return false; // out of memory
+
+    // pack every rect of every face in one pass, then render each face into its packed rects
+    if (stbrp_pack_rects((stbrp_context*)pack_context.pack_info, rects, (unsigned)(NUM_FACES * NUM_CODEPOINTS)) != 1)
     {
-        fprintf(stderr, "error: out of memory while baking the font atlas\n");
+        fprintf(stderr, "error: the font atlas (%ux%u) is too small to fit every face, increase ATLAS_MAX_SIZE or step back to the 7-size list\n",
+                atlas_width, atlas_height);
+        stbtt_PackEnd(&pack_context);
         return false;
     }
 
-    memset(&range, 0, sizeof(range));
-    range.font_size = font_height;
-    range.first_unicode_codepoint_in_range = FONT_CHAR_FIRST;
-    range.num_chars = FONT_NUM_CHARS;
-    range.chardata_for_range = glyphs;
+    for (int f = 0; f < OD_NUM_FONTS; ++f)
+    {
+        for (int s = 0; s < OD_NUM_FONT_SIZES; ++s)
+        {
+            int face = f * OD_NUM_FONT_SIZES + s;
 
-    bool packed = stbtt_PackFontRange(&pack_context, font_data, 0, font_height, FONT_CHAR_FIRST, FONT_NUM_CHARS, glyphs) == 1;
+            stbtt_pack_range range;
+            memset(&range, 0, sizeof(range));
+            range.font_size = FONT_SIZES[s];
+            // must be set explicitly : render copies the oversampling from the range, and a zeroed range
+            // renders every glyph at scale 0 (empty atlas) with infinite bearings
+            range.h_oversample = 1;
+            range.v_oversample = 1;
+            range.array_of_unicode_codepoints = (int*)CODEPOINTS;
+            range.num_chars = NUM_CODEPOINTS;
+            range.chardata_for_range = &bake_chars[face * MAX_GLYPHS];
+
+            stbtt_PackFontRangesRenderIntoRects(&pack_context, &fonts[f], &range, 1, &rects[face * NUM_CODEPOINTS]);
+        }
+    }
+
     stbtt_PackEnd(&pack_context);
-
-    if (!packed)
-    {
-        fprintf(stderr, "error: the font atlas (%ux%u) is too small to fit every glyph at height %.0f, increase ATLAS_MAX_SIZE\n",
-                atlas_width, atlas_height, font_height);
-        return false;
-    }
 
     fprintf(stdout, "ok\n");
 
     fprintf(stdout, "compressing atlas in BC4 : ");
 
-    uint8_t* compressed_atlas = arena_alloc(arena, bc4_image_size);
-
+    uint8_t* compressed_atlas = (uint8_t*)arena_alloc(arena, bc4_image_size);
     if (compressed_atlas == NULL)
-    {
-        fprintf(stderr, "error: out of memory while compressing the font atlas\n");
-        return false;
-    }
+        return false; // out of memory
 
     bc4_encode(atlas_pixels, compressed_atlas, atlas_width, atlas_height);
 
     fprintf(stdout, "ok\n");
 
-    fprintf(stdout, "writting %s : ", font_h);
+    fprintf(stdout, "writting %s : ", FONT_H);
 
-    if (!bin2h(font_h, atlas_var, compressed_atlas, bc4_image_size))
+    if (!bin2h(FONT_H, "default_font_atlas", compressed_atlas, bc4_image_size))
         return false; // bin2h reported the error
 
     fprintf(stdout, "ok\n");
 
-    fprintf(stdout, "filling glyphs structure : ");
+    fprintf(stdout, "filling the font bank : ");
 
-    struct alphabet* font = arena_alloc(arena, sizeof(struct alphabet));
-    if (font == NULL)
+    font_bank bank;
+    memset(&bank, 0, sizeof(bank));
+    bank.num_glyphs = (uint16_t)NUM_CODEPOINTS;
+    bank.texture_width = (uint16_t)atlas_width;
+    bank.texture_height = (uint16_t)atlas_height;
+
+    for (int c = 0; c < NUM_CODEPOINTS; ++c)
+        bank.codepoints[c] = CODEPOINTS[c];
+
+    for (int f = 0; f < OD_NUM_FONTS; ++f)
     {
-        fprintf(stderr, "error: out of memory while building the glyphs structure\n");
-        return false;
+        int ascent = 0, descent = 0, line_gap = 0;
+        stbtt_GetFontVMetrics(&fonts[f], &ascent, &descent, &line_gap);
+
+        for (int s = 0; s < OD_NUM_FONT_SIZES; ++s)
+        {
+            int face = f * OD_NUM_FONT_SIZES + s;
+
+            float scale = stbtt_ScaleForPixelHeight(&fonts[f], FONT_SIZES[s]);
+
+            bank.faces[face] = (font_face)
+            {
+                .pixel_size = FONT_SIZES[s],
+                .ascent = (float)ascent * scale,
+                .line_height = (float)(ascent - descent + line_gap) * scale
+            };
+
+            for (int c = 0; c < NUM_CODEPOINTS; ++c)
+            {
+                const stbtt_packedchar* pc = &bake_chars[face * MAX_GLYPHS + c];
+                bank.faces[face].glyphs[c] = (glyph)
+                {
+                    .x0 = (uint16_t)pc->x0,
+                    .y0 = (uint16_t)pc->y0,
+                    .x1 = (uint16_t)pc->x1,
+                    .y1 = (uint16_t)pc->y1,
+                    .bearing_x = pc->xoff,
+                    .bearing_y = pc->yoff,
+                    .advance_x = pc->xadvance
+                };
+            }
+        }
     }
 
-    memset(font, 0, sizeof(struct alphabet));
-    font->first_glyph = FONT_CHAR_FIRST;
-    font->num_glyphs = FONT_NUM_CHARS;
-    font->texture_width = atlas_width;
-    font->texture_height = atlas_height;
-    font->font_height = font_height;
-
-    for(uint32_t i=0; i<FONT_NUM_CHARS; ++i)
+    if (bank.faces[0].line_height <= 0.f)
     {
-        font->glyphs[i] = (struct glyph)
-        {
-            .x0 = glyphs[i].x0,
-            .y0 = glyphs[i].y0,
-            .x1 = glyphs[i].x1,
-            .y1 = glyphs[i].y1,
-            .bearing_x = glyphs[i].xoff,
-            .bearing_y = glyphs[i].yoff,
-            .advance_x = glyphs[i].xadvance
-        };
+        fprintf(stderr, "error: the font metrics are broken (line_height <= 0), check the vmetrics of '%s'\n", FONT_FILES[0]);
+        return false;
     }
 
     fprintf(stdout, "ok\n");
 
-    fprintf(stdout, "writting %s : ", glyph_h);
+    fprintf(stdout, "writting %s : ", GLYPH_H);
 
-    if (!bin2h(glyph_h, glyph_var, font, sizeof(struct alphabet)))
+    if (!bin2h(GLYPH_H, "default_font", &bank, sizeof(font_bank)))
         return false; // bin2h reported the error
 
     fprintf(stdout, "ok\n");
@@ -421,7 +526,7 @@ bool build_font(Arena *arena, const char* font_filename, float font_height, cons
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-bool prepare_shaders(Arena *arena)
+bool prepare_shaders(Arena* arena)
 {
     fprintf(stdout, "\npreparing shaders\n");
 
@@ -487,36 +592,20 @@ static void track_peak_memory(Arena* arena, size_t* peak)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-int main(int argc, const char * argv[]) 
+int main(void)
 {
-    const char* font_filename = DEFAULT_FONT_FILENAME;
+    fprintf(stdout, "onedraw %d.%d.%d library builder\n\n", ONEDRAW_MAJOR_VERSION, ONEDRAW_MINOR_VERSION, ONEDRAW_PATCH);
 
-    if (argc > 2)
-    {
-        fprintf(stderr, "usage: builder [font_file]\n");
-        return 1;
-    }
-
-    if (argc == 2)
-        font_filename = argv[1];
-
-    fprintf(stdout, "onedraw %u.%u.%u library builder\n\n", ONEDRAW_MAJOR_VERSION, ONEDRAW_MINOR_VERSION, ONEDRAW_PATCH);
-
-    if (!verify_inputs(font_filename))
+    if (!build_codepoints())
         return 1;
 
-    if (strcmp(font_filename, DEFAULT_FONT_FILENAME) != 0)
-        fprintf(stdout, "note: baking a non-default font, the regression test will fail against the committed reference\n\n");
+    if (!verify_inputs())
+        return 1;
 
     Arena arena = {0};
     size_t peak_memory = 0;
 
-    bool success = build_font(&arena, font_filename, FONT_HEIGHT_STANDARD, FONT_H, GLYPH_H, "default_font_atlas", "default_font");
-
-    track_peak_memory(&arena, &peak_memory);
-    arena_reset(&arena);
-
-    success = success && build_font(&arena, font_filename, FONT_HEIGHT_HIGHDPI, FONT_H_HIGHDPI, GLYPH_H_HIGHDPI, "default_font_atlas_highdpi", "default_font_highdpi");
+    bool success = build_fonts(&arena);
 
     track_peak_memory(&arena, &peak_memory);
     arena_reset(&arena);
@@ -528,7 +617,7 @@ int main(int argc, const char * argv[])
 
     success = success && copy_files();
 
-    fprintf(stdout, "\npeak memory usage %zukb\n\n", peak_memory>>10);
+    fprintf(stdout, "\npeak memory usage %zukb\n\n", peak_memory >> 10);
     arena_free(&arena);
 
     if (success)

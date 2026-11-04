@@ -28,11 +28,11 @@ Internally every clip lives in framebuffer pixels (the clip buffer, the 16-deep 
 * **`od_push_cliprect()` / `_rounded` / `od_push_clipdisc()`** (the original names) — like scissor rects in any graphics API: framebuffer pixels, not affected by the canvas. You place a clip where you want it *on screen*, and the canvas-scaled geometry is clipped against it.
 * **`od_canvas_clip*()`** — the coordinates and radius are mapped by the canvas transform, so the clip **follows the canvas-scaled shapes**. This is the natural choice when the scene is designed in canvas units (as the [regression test](../tests/test.c) does).
 
-### Font stays in screen pixels
+### Text lives in canvas units
 
-Text is a debug facility backed by a small baked atlas, and a textured glyph quad doesn't scale well, so the glyph sizes and advances are never scaled by the canvas (`od_set_font_scale()` remains the way to scale text). The **anchor position** of `od_draw_char()`/`od_draw_text()` is still mapped, so a label follows its shape while staying a constant on-screen size.
+`od_draw_text()` takes its position and its `size` in canvas units, like every other primitive: a label follows the canvas-scaled scene, and the same call renders the same relative size at any resolution. Internally the library converts the size to physical pixels (`size * canvas scale`) to pick the closest baked face, so a size of `16` on a 2x display bakes to the 32 px face at scale 1.0.
 
-The measurements `od_text_width()`/`od_text_height()` are returned **in canvas units** (the on-screen size divided by the canvas scale), so text layout math — centering, aligning, stacking labels — stays resolution independent.
+The measurements `od_text_width()`/`od_text_ascent()`/`od_text_line_height()` are returned **in canvas units** (the physical value divided by the canvas scale), so text layout math — centering, aligning, stacking labels — stays resolution independent.
 
 ### Tile cache
 

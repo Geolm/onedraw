@@ -99,7 +99,7 @@ class Svg:
 def gen_memory():
     W, H = 1160, 660
     s = Svg(W, H,
-            title="GPU memory at 1440p (2560\u00d71440)",
+            title="GPU memory at 1440p (2560\u00d71440) \u00b7 v2.2.4",
             subtitle="every buffer is fixed-capacity, so this is a stable upper bound (measured with od_get_stats)",
             footer="the screenshot buffer is optional \u2014 the first thing to drop \u00b7 with the tile cache on the total grows to \u2248 53 MB")
 
@@ -325,17 +325,19 @@ def gen_font_pipeline():
             x += 230
 
     s.text(150, 128, "pre-build (build time)", 14, PALETTE["purple"][0], "start", "bold")
-    row_flow(150, [("font file", "grey"), ("stb_truetype", "blue"), ("atlas (BC4)", "green"), ("headers", "orange")])
+    row_flow(150, [("4 fonts x 9 sizes", "grey"), ("stb_truetype", "blue"), ("one atlas (BC4)", "green"), ("headers", "orange")])
     s.line(215, 208, 215, 258, MUTED, 1.5, "6 5")
-    s.text(228, 228, "-> default_font_atlas.h + default_font.h (plain C, no runtime dep)", 12, MUTED)
+    s.text(228, 228, "-> default_font_atlas.h + default_font.h (36 faces, 199 glyphs, plain C, no runtime dep)", 12, MUTED)
 
     s.text(150, 300, "runtime", 14, PALETTE["green"][0], "start", "bold")
-    row_flow(320, [("od_draw_char", "grey"), ("quad + glyph index", "blue"), ("sample atlas", "green"), ("inverted alpha = SDF", "orange")])
+    row_flow(320, [("od_draw_text", "grey"), ("pick face + scale", "blue"), ("char per code point", "green"), ("sample + invert = SDF", "orange")])
 
-    s.card(60, 430, 1080, 130)
-    s.text(90, 465, "at runtime the UV is computed from the pixel, the atlas sampled, and the alpha inverted to act as a distance-like mask,", 13, INK)
-    s.text(90, 488, "so glyph edges are anti-aliased exactly like every other SDF. the 1x atlas (24 px) can be stretched (od_set_font_scale)", 13, INK)
-    s.text(90, 511, "or swapped for the 2x (48 px) atlas via onedraw_def.high_dpi for crisper text on retina displays.", 13, INK)
+    s.card(60, 430, 1080, 148)
+    s.text(90, 465, "a face is a (font, pixel size) pair: 4 fonts x 9 sizes = 36 faces share one BC4 atlas, with a 36 x 256-entry", 13, INK)
+    s.text(90, 488, "glyph table (216 KiB) uploaded once at init. a requested size picks the smallest baked size at or above the", 13, INK)
+    s.text(90, 511, "physical size and scales the glyph by the ratio, so text is only ever minified, never magnified below it.", 13, INK)
+    s.text(90, 534, "at draw time the UV is computed from the pixel, the atlas sampled, and the coverage inverted to act as a", 13, INK)
+    s.text(90, 557, "distance-like mask, so glyph edges are anti-aliased exactly like every other SDF.", 13, INK)
 
     s.save("doc/font-pipeline.svg")
 

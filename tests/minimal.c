@@ -26,7 +26,7 @@ void frame(void)
     if (renderer == NULL)
         return;
     od_begin_frame(renderer);
-    od_draw_text(renderer, 0, 0, "Hello world!", 0xffffffff);
+    od_draw_text(renderer, 0, 0, "Hello world!", od_font_regular, 16.f, 0xffffffff);
 
     sapp_swapchain sc = sapp_acquire_swapchain();
     od_end_frame(renderer, (void*)sc.metal.current_drawable);

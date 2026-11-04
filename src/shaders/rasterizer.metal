@@ -351,15 +351,15 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                     if (glyph_index<MAX_GLYPHS)
                     {
                         float2 top_left = float2(data[0], data[1]);
-                        constant font_char& g = input.glyphs[glyph_index];
-                        float2 uv_topleft = g.uv_topleft;
-                        float2 uv_bottomright = g.uv_bottomright;
-                        float2 char_size = float2(g.width, g.height);
+                        float scale = data[2];
+                        uint face = (uint)data[3];
+                        constant font_char& g = input.glyphs[face * MAX_GLYPHS + glyph_index];
+                        float2 char_size = float2(g.width, g.height) * scale;
                         float2 t = (in.pos.xy - top_left) / char_size.xy;
 
                         if (all(t >= 0.f && t <= 1.f))
                         {
-                            float2 uv = mix(uv_topleft, uv_bottomright, t);
+                            float2 uv = mix(g.uv_topleft, g.uv_bottomright, t);
                             half texel = 1.h - input.font.sample(s_linear, uv).r;
                             distance = texel * input.aa_width;
                         }

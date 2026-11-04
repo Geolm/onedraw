@@ -4,6 +4,8 @@
 
 ![GPU memory at 1440p](memory.svg)
 
+_(chart from the v2.2.4 profiling run — the v3.0.0 font bank below adds ~1.4 MB to these numbers)_
+
 The chart above breaks down the renderer's **GPU memory at 1440p (2560×1440)** into its pieces — **≈ 39 MB (38,943 kb)** with the cache off. Because every buffer is fixed-capacity, the figure reported by `od_get_stats()` is a stable upper bound rather than a per-frame measurement — it stays the same no matter how many commands you actually draw in a frame.
 
 The biggest consumer is the **screenshot** buffer, and it is the only piece that does not have to be there: it is the framebuffer-sized capture texture, present only when `allow_screenshot` is set, so it is the first thing to drop (~14 MB at 1440p).
@@ -13,7 +15,7 @@ Everything else:
 * **Per-tile node pool (11 MB, ~28 %)** — 720,896 fixed 16-byte `node_chunk`s, each holding 6 command slots plus the link to the next chunk.
 * **Region lists (7.5 MB, ~20 %)** — the per-region `indices` lists are sized to the resolution, because a command can reach several regions. (The `predicate` and `scan` buffers of the older three-kernel design are gone — region binning is fused into a single kernel now.)
 * **Per-frame CPU ring (4 MB, ~11 %)** — commands, colors, draw data, quantized AABBs and clips, **double-buffered** so two frames can be in flight (the CPU encodes a frame while the GPU runs the one before).
-* **Other (1.9 MB, ~5 %)** — the font atlas (BC4), the glyph buffer, the user texture array, the small per-tile head/index buffers, and the cache bookkeeping (per-tile hash, clean-tile indices, per-command content hashes).
+* **Other (1.9 MB in v2.2.4, ~3.3 MB in v3)** — the font atlas (BC4), the glyph table, the user texture array, the small per-tile head/index buffers, and the cache bookkeeping (per-tile hash, clean-tile indices, per-command content hashes). The v3.0.0 font bank is the main growth here: the two 24/48 px atlases (~44 KB) become one 1604×1604 BC4 atlas (1.23 MB) shared by the 36 faces, plus the 36×256-entry glyph table (216 KiB) — ~1.5 MB in total, so the 1440p total rises from ~39 MB to ~40 MB.
 
 One piece is missing from the chart on purpose: the [tile cache](part1.md) is **opt-in**, and the chart is the `cache`-off configuration, where only a 1×1 placeholder texture is kept. With the flag on, a full-screen texture in the backbuffer format (4 bytes per pixel — ~14 MiB at 1440p, up to 64 MiB at the 4096×4096 maximum) is added on top, bringing the 1440p total from ~39 MB to ~53 MB.
 

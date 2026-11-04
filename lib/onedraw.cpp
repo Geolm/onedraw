@@ -7,8 +7,6 @@
 #include "common.h"
 #include "default_font.h"
 #include "default_font_atlas.h"
-#include "default_font_highdpi.h"
-#include "default_font_atlas_highdpi.h"
 #include "binning.h"
 #include "rasterization.h"
 #include <stdatomic.h>
@@ -130,9 +128,9 @@ typedef struct aabb {vec2 min, max;} aabb;
 typedef struct quadratic_bezier {vec2 c0, c1, c2;} quadratic_bezier;
 typedef struct cubic_bezier {vec2 c0, c1, c2, c3;} cubic_bezier;
 
-// the pre-build baker serializes struct alphabet into the default_font headers, fail at compile time if the layout drifted
-static_assert(sizeof(alphabet) == default_font_size, "baked font layout mismatch");
-static_assert(sizeof(alphabet) == default_font_highdpi_size, "baked font layout mismatch");
+// the pre-build baker serializes struct font_bank into the default_font header, fail at compile time if the layout drifted
+static_assert(sizeof(font_bank) == default_font_size, "baked font layout mismatch");
+
 
 struct gpu_timer
 {
@@ -233,10 +231,8 @@ struct onedraw
     {
         MTL::Texture* texture {nullptr};
         MTL::Buffer* glyphs {nullptr};
-        alphabet desc;
-        float scale {1.f};
-        bool high_dpi {false};
-        uint32_t generation {0};
+        // points at the static table serialized by the baker (default_font.h)
+        const font_bank* desc {nullptr};
     } font;
 
     struct
@@ -676,14 +672,17 @@ void od_build_pso(struct onedraw* r)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-static void od_upload_font_glyphs(struct onedraw* r);
-
-//----------------------------------------------------------------------------------------------------------------------------
 void od_build_font(struct onedraw* r)
 {
+    if ((size_t)r->font.desc->texture_width * r->font.desc->texture_height / 2 != default_font_atlas_size)
+    {
+        od_log(r, "error: the baked atlas size does not match its dimensions, re-run the builder");
+        return;
+    }
+
     MTL::TextureDescriptor* pTextureDesc = MTL::TextureDescriptor::alloc()->init();
-    pTextureDesc->setWidth(r->font.desc.texture_width);
-    pTextureDesc->setHeight(r->font.desc.texture_height);
+    pTextureDesc->setWidth(r->font.desc->texture_width);
+    pTextureDesc->setHeight(r->font.desc->texture_height);
     pTextureDesc->setPixelFormat(MTL::PixelFormatBC4_RUnorm);
     pTextureDesc->setTextureType(MTL::TextureType2D);
     pTextureDesc->setMipmapLevelCount(1);
@@ -692,36 +691,29 @@ void od_build_font(struct onedraw* r)
 
     r->font.texture = r->device->newTexture(pTextureDesc);
 
-    const uint8_t* atlas_pixels = r->font.high_dpi ? default_font_atlas_highdpi : default_font_atlas;
     r->font.texture->replaceRegion( MTL::Region(
         0, 0, 0,
-        r->font.desc.texture_width, r->font.desc.texture_height, 1 ),
-        0, atlas_pixels, (r->font.desc.texture_width/4) * 8);
+        r->font.desc->texture_width, r->font.desc->texture_height, 1 ),
+        0, default_font_atlas, (r->font.desc->texture_width/4) * 8);
     pTextureDesc->release();
 
-    od_upload_font_glyphs(r);
-}
-
-//----------------------------------------------------------------------------------------------------------------------------
-static void od_upload_font_glyphs(struct onedraw* r)
-{
-    // fill the glyph description to be upload on the gpu
-    // note: the glyph size is scaled by the font scale so text matches the
-    //       (possibly high-dpi) framebuffer resolution, the uv's are untouched
-    font_char cpu_buffer[MAX_GLYPHS];
-    for(uint32_t i=0; i<r->font.desc.num_glyphs; i++)
-    {
-        const glyph& glyph = r->font.desc.glyphs[i];
-        cpu_buffer[i] = 
+    // one-shot upload of the whole gpu glyph table : every face, unscaled sizes (the scale is per command)
+    font_char cpu_buffer[MAX_FACES * MAX_GLYPHS];
+    for(uint32_t face=0; face<MAX_FACES; face++)
+        for(uint32_t i=0; i<MAX_GLYPHS; i++)
         {
-            .uv_topleft = {.x = float(glyph.x0) / float(r->font.desc.texture_width), 
-                           .y = float(glyph.y0) / float(r->font.desc.texture_height)},
-            .uv_bottomright = {.x = float(glyph.x1) / float(r->font.desc.texture_width),
-                               .y = float(glyph.y1) / float(r->font.desc.texture_height)},
-            .width = float(glyph.x1 - glyph.x0) * r->font.scale,
-            .height = float(glyph.y1 - glyph.y0) * r->font.scale
-        };
-    }
+            const glyph& glyph = r->font.desc->faces[face].glyphs[i];
+            cpu_buffer[face * MAX_GLYPHS + i] =
+            {
+                .uv_topleft = {.x = float(glyph.x0) / float(r->font.desc->texture_width),
+                               .y = float(glyph.y0) / float(r->font.desc->texture_height)},
+                .uv_bottomright = {.x = float(glyph.x1) / float(r->font.desc->texture_width),
+                                   .y = float(glyph.y1) / float(r->font.desc->texture_height)},
+                .width = float(glyph.x1 - glyph.x0),
+                .height = float(glyph.y1 - glyph.y0)
+            };
+        }
+
     SAFE_RELEASE(r->font.glyphs);
     r->font.glyphs = r->device->newBuffer(cpu_buffer, sizeof(cpu_buffer), MTL::ResourceStorageModeShared);
 }
@@ -783,7 +775,6 @@ void od_bin_commands(struct onedraw* r)
     // tile cache : the frame seed mixes everything that can change a pixel without changing the commands
     uint32_t seed = r->tiles.invalidate_generation;
     seed = hash_combine(seed, r->rasterizer.atlas_generation);
-    seed = hash_combine(seed, r->font.generation);
     seed = hash_combine(seed, float_bits(r->rasterizer.clear_color.x));
     seed = hash_combine(seed, float_bits(r->rasterizer.clear_color.y));
     seed = hash_combine(seed, float_bits(r->rasterizer.clear_color.z));
@@ -927,6 +918,7 @@ void od_flush(struct onedraw* r, void* drawable)
         MTL::Texture* cache_bound = r->cache ? r->rasterizer.cache_texture : r->rasterizer.cache_placeholder;
         render_encoder->useResource(cache_bound, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
         render_encoder->useResource(r->tiles.indirect_arg, MTL::ResourceUsageRead);
+        render_encoder->useResource(r->font.glyphs, MTL::ResourceUsageRead);
         render_encoder->useResource(r->font.texture, MTL::ResourceUsageRead);
         if (r->rasterizer.atlas != nullptr)
             render_encoder->useResource(r->rasterizer.atlas, MTL::ResourceUsageRead);
@@ -1125,12 +1117,7 @@ struct onedraw* od_init(onedraw_def* def)
 
     r->stats.seconds_per_tick = 0.0;
 
-    r->font.high_dpi = def->high_dpi;
-
-    if (r->font.high_dpi)
-        r->font.desc = *((alphabet*) default_font_highdpi);
-    else
-        r->font.desc = *((alphabet*) default_font);
+    r->font.desc = (const font_bank*) default_font;
 
     od_build_pso(r);
     od_build_font(r);
@@ -1813,60 +1800,139 @@ void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float width, flo
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// the canvas maps the anchor only: the glyph quad comes from the baked atlas, its size is a screen property
-static void draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_color)
+// decode one utf-8 code point, *pp advances past the sequence, an invalid byte yields 0
+static uint32_t decode_utf8(const char** pp)
 {
-    if (c < r->font.desc.first_glyph || c >= (r->font.desc.first_glyph + r->font.desc.num_glyphs))
-        return;
+    const uint8_t* p = (const uint8_t*)*pp;
+    uint32_t cp = 0;
 
-    uint32_t glyph_index = c - r->font.desc.first_glyph;
+    if (*p < 0x80)
+    {
+        cp = *p;
+        *pp += 1;
+    }
+    else if ((*p & 0xE0) == 0xC0 && (p[1] & 0xC0) == 0x80)
+    {
+        cp = ((uint32_t)(*p & 0x1F) << 6) | (p[1] & 0x3F);
+        if (cp < 0x80)
+            cp = 0; // overlong encoding
+        *pp += 2;
+    }
+    else if ((*p & 0xF0) == 0xE0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80)
+    {
+        cp = ((uint32_t)(*p & 0x0F) << 12) | ((uint32_t)(p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+        if (cp < 0x800)
+            cp = 0; // overlong encoding
+        *pp += 3;
+    }
+    else if ((*p & 0xF8) == 0xF0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80 && (p[3] & 0xC0) == 0x80)
+    {
+        cp = ((uint32_t)(*p & 0x07) << 18) | ((uint32_t)(p[1] & 0x3F) << 12) | ((uint32_t)(p[2] & 0x3F) << 6) | (p[3] & 0x3F);
+        if (cp > 0x10FFFF)
+            cp = 0; // out of the unicode range
+        *pp += 4;
+    }
+    else
+        *pp += 1; // invalid byte
 
-    const float scale = r->font.scale;
-    const glyph& glyph = r->font.desc.glyphs[glyph_index];
+    return cp;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+// ascii is a direct offset, anything else is a binary search in the sorted code point list
+static uint32_t codepoint_to_glyph(const font_bank* bank, uint32_t cp)
+{
+    if (cp >= 0x20 && cp <= 0x7E)
+        return cp - 0x20;
+
+    uint32_t lo = 0;
+    uint32_t hi = bank->num_glyphs;
+
+    while (lo < hi)
+    {
+        uint32_t mid = (lo + hi) >> 1;
+
+        if (bank->codepoints[mid] < cp)
+            lo = mid + 1;
+        else if (bank->codepoints[mid] > cp)
+            hi = mid;
+        else
+            return mid;
+    }
+
+    return MAX_GLYPHS; // not baked (unknown code point, invalid utf-8, no-break spaces, soft hyphen)
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+// the physical size (device pixels) picks the smallest baked size >= it : glyphs are only minified,
+// which stays sharper than magnifying a smaller bake
+static uint32_t select_face(const struct onedraw* r, enum od_font font, float size, float* out_scale)
+{
+    const font_face* faces = &r->font.desc->faces[font * OD_NUM_FONT_SIZES];
+    float physical = size * r->canvas.scale;
+
+    uint32_t s = 0;
+    while (s + 1 < OD_NUM_FONT_SIZES && faces[s].pixel_size < physical)
+        ++s;
+
+    *out_scale = physical / faces[s].pixel_size;
+
+    return font * OD_NUM_FONT_SIZES + (int)s;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+static void draw_char(struct onedraw* r, float x, float y, uint32_t face, uint32_t glyph_index, float scale, draw_color srgb_color)
+{
+    const font_face* f = &r->font.desc->faces[face];
+    const glyph& glyph = f->glyphs[glyph_index];
+
     x += glyph.bearing_x * scale;
-    y += (glyph.bearing_y + r->font.desc.font_height) * scale;
+    y += (glyph.bearing_y + f->ascent) * scale;
     float glyph_width = float(glyph.x1 - glyph.x0) * scale;
     float glyph_height = float(glyph.y1 - glyph.y0) * scale;
 
     aabb bb = {.min = vec2_set(x, y), .max = vec2_set(x + glyph_width, y + glyph_height)};
-    float* data = new_primitive(r, primitive_char, fill_solid, (uint8_t)glyph_index, srgb_color, 2, bb);
+    float* data = new_primitive(r, primitive_char, fill_solid, (uint8_t)glyph_index, srgb_color, 4, bb);
     if (data == nullptr)
         return;
 
-    write_float(data, x, y);
+    write_float(data, x, y, scale, (float)face);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_color)
+void od_draw_text(struct onedraw* r, float x, float y, const char* text, od_font font, float size, draw_color srgb_color)
 {
-    vec2 anchor = canvas_xform_pos(r, vec2_set(x, y));
-    draw_char(r, anchor.x, anchor.y, c, srgb_color);
-}
+    float scale = 1.f;
+    uint32_t face = select_face(r, font, size, &scale);
 
-//----------------------------------------------------------------------------------------------------------------------------
-void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_color srgb_color)
-{
-    vec2 anchor = canvas_xform_pos(r, vec2_set(x, y));
-    x = anchor.x;
-    y = anchor.y;
+    const font_face* f = &r->font.desc->faces[face];
+    const float space_advance = f->glyphs[0].advance_x * scale; // the space is the first code point
 
-    float left = x;
-    const float scale = r->font.scale;
-    for(const char *c = text; *c != 0; c++)
+    vec2 anchor = canvas_xform_pos(r, vec2_set(x, y));
+    float px = anchor.x;
+    float py = anchor.y;
+    float left = px;
+
+    while (*text != 0)
     {
-        if (*c == '\n')
+        if (*text == '\n')
         {
-            y += r->font.desc.font_height * scale;
-            x = left;
+            py += f->line_height * scale;
+            px = left;
+            ++text;
+            continue;
         }
-        else if (*c >= r->font.desc.first_glyph && *c < (r->font.desc.first_glyph + r->font.desc.num_glyphs))
+
+        uint32_t cp = decode_utf8(&text);
+        uint32_t glyph_index = codepoint_to_glyph(r->font.desc, cp);
+
+        if (glyph_index < MAX_GLYPHS)
         {
-            draw_char(r, x, y, *c, srgb_color);
-            uint32_t glyph_index = *c - r->font.desc.first_glyph;
-            x += r->font.desc.glyphs[glyph_index].advance_x * scale;
+            draw_char(r, px, py, face, glyph_index, scale, srgb_color);
+            px += f->glyphs[glyph_index].advance_x * scale;
         }
         else
-            x += r->font.desc.glyphs['_'- r->font.desc.first_glyph].advance_x * .65f * scale;
+            px += space_advance;
     }
 }
 
@@ -2070,35 +2136,52 @@ uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, fl
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-float od_text_height(struct onedraw* r)
+float od_text_width(struct onedraw* r, const char* text, od_font font, float size)
 {
-    return r->font.desc.font_height * r->font.scale / r->canvas.scale;
-}
+    float scale = 1.f;
+    uint32_t face = select_face(r, font, size, &scale);
 
-//----------------------------------------------------------------------------------------------------------------------------
-float od_text_width(struct onedraw* r, const char* text)
-{
+    const font_face* f = &r->font.desc->faces[face];
+    const float space_advance = f->glyphs[0].advance_x * scale;
+
     float width = 0.f;
-    const float scale = r->font.scale;
-    for(const char *c = text; *c != 0; c++)
+
+    while (*text != 0)
     {
-        if (*c >= r->font.desc.first_glyph && *c < (r->font.desc.first_glyph + r->font.desc.num_glyphs))
-            width += r->font.desc.glyphs[*c - r->font.desc.first_glyph].advance_x * scale;
+        if (*text == '\n')
+        {
+            ++text;
+            continue;
+        }
+
+        uint32_t cp = decode_utf8(&text);
+        uint32_t glyph_index = codepoint_to_glyph(r->font.desc, cp);
+
+        if (glyph_index < MAX_GLYPHS)
+            width += f->glyphs[glyph_index].advance_x * scale;
         else
-            width += r->font.desc.glyphs['_'- r->font.desc.first_glyph].advance_x * .65f * scale;
+            width += space_advance;
     }
+
     return width / r->canvas.scale;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_set_font_scale(struct onedraw* r, float scale)
+float od_text_ascent(struct onedraw* r, od_font font, float size)
 {
-    if (r->font.scale != scale)
-    {
-        r->font.scale = scale;
-        od_upload_font_glyphs(r);
-        r->font.generation++;    // tile cache : the glyph metrics changed, invalidate the whole cache
-    }
+    float scale = 1.f;
+    uint32_t face = select_face(r, font, size, &scale);
+
+    return r->font.desc->faces[face].ascent * scale / r->canvas.scale;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+float od_text_line_height(struct onedraw* r, od_font font, float size)
+{
+    float scale = 1.f;
+    uint32_t face = select_face(r, font, size, &scale);
+
+    return r->font.desc->faces[face].line_height * scale / r->canvas.scale;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

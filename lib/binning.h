@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-static const size_t binning_shader_size = 41392;
+static const size_t binning_shader_size = 41854;
 static const char binning_shader[] =
     "#include <metal_stdlib>\n"
     "#ifndef __COMMON_H__\n"
@@ -26,7 +26,10 @@ static const char binning_shader[] =
     "#define SIMD_GROUP_SIZE (32)\n"
     "#define LAST_COMMAND (MAX_COMMANDS-1)\n"
     "#define MAX_THREADS_PER_THREADGROUP (1024)\n"
-    "#define MAX_GLYPHS (128)\n"
+    "#define MAX_GLYPHS (256)          // the glyph index must fit in the 8-bit extra field of draw_command\n"
+    "#define OD_NUM_FONTS (4)\n"
+    "#define OD_NUM_FONT_SIZES (9)\n"
+    "#define MAX_FACES (OD_NUM_FONTS * OD_NUM_FONT_SIZES)\n"
     "\n"
     "// ---------------------------------------------------------------------------------------------------------------------------\n"
     "// cpp compatibility\n"
@@ -152,15 +155,22 @@ static const char binning_shader[] =
     "    float advance_x;\n"
     "} glyph;\n"
     "\n"
-    "typedef struct alphabet\n"
+    "typedef struct font_face\n"
     "{\n"
     "    glyph glyphs[MAX_GLYPHS];\n"
-    "    float font_height;\n"
+    "    float pixel_size;\n"
+    "    float ascent;         // top of the line -> baseline, pixels\n"
+    "    float line_height;    // distance between two baselines, pixels\n"
+    "} font_face;\n"
+    "\n"
+    "typedef struct font_bank\n"
+    "{\n"
+    "    font_face faces[MAX_FACES];\n"
+    "    uint32_t codepoints[MAX_GLYPHS];   // sorted, the glyph index is the position in this list\n"
     "    uint16_t num_glyphs;\n"
-    "    uint16_t first_glyph;\n"
     "    uint16_t texture_width;\n"
     "    uint16_t texture_height;\n"
-    "} alphabet;\n"
+    "} font_bank;\n"
     "\n"
     "typedef struct draw_cmd_arguments\n"
     "{\n"

@@ -35,8 +35,8 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#define ONEDRAW_MAJOR_VERSION   (2)
-#define ONEDRAW_MINOR_VERSION   (3)
+#define ONEDRAW_MAJOR_VERSION   (3)
+#define ONEDRAW_MINOR_VERSION   (0)
 #define ONEDRAW_PATCH           (0)
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -79,7 +79,6 @@ typedef struct onedraw_def
     void (*log_func)(const char* string);
     bool allow_screenshot;
     bool srgb_backbuffer;
-    bool high_dpi;            // use the 2x resolution (48 px) built-in font, for retina displays
     bool cache;               // enable the tile cache, skip the fragment work of the tiles that didn't change
 
     struct
@@ -91,6 +90,15 @@ typedef struct onedraw_def
 } onedraw_def;
 
 typedef uint32_t draw_color; // in sRGB color space
+
+// the four built-in font families, baked at every size of the font bank
+typedef enum od_font
+{
+    od_font_regular,
+    od_font_bold,
+    od_font_italic,
+    od_font_mono
+} od_font;
 
 #ifdef __cplusplus
 extern "C" {
@@ -115,9 +123,6 @@ size_t od_min_memory_size(void);
 //      [viewport_height]       must be non-zero
 //      [log_func]              pointer to the log function, can be NULL if no log required
 //      [allow_screenshot]      if true buffers are allocated for screenshot
-//      [high_dpi]              if true the 2x resolution (48 px) built-in font is used, sharper on retina displays.
-//                               the 1x font (24 px) is the default; on a retina screen the 1x text appears
-//                               blurry unless you also call od_set_font_scale() with the framebuffer scale
 //      [cache]                 if true, a persistent tile cache skips the fragment work of unchanged tiles.
 //                               opt-in : the cache is a full-screen texture in the backbuffer format
 //                               (4 bytes per pixel, up to ~64 MiB at the 4096x4096 max resolution).
@@ -283,21 +288,22 @@ void od_begin_group(struct onedraw* r, bool smoothblend, float smooth_value, flo
 void od_end_group(struct onedraw* r, draw_color outline_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Returns the height of the rendered text in canvas units (includes the font scale : the
-// on-screen size in pixels divided by the canvas scale, see od_set_canvas)
-float od_text_height(struct onedraw* r);
+// Returns the width of the string [text] rendered with [font] at [size], in canvas units.
+// Carriage returns (\n) are not added to the width (each line is measured from the left edge).
+//      [text]      UTF-8 string. Unknown code points and invalid sequences advance by the space width
+//      [font]      one of the built-in families, see od_font
+//      [size]      font size in canvas units (the same space as the drawing coordinates); on a high-dpi
+//                  display with a 1:1 canvas, multiply by the dpi scale (e.g. 16 * sapp_dpi_scale())
+float od_text_width(struct onedraw* r, const char* text, od_font font, float size);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Returns the width of the rendered string [text] in canvas units (includes the font scale :
-// the on-screen size in pixels divided by the canvas scale, see od_set_canvas)
-float od_text_width(struct onedraw* r, const char* text);
+// Returns the distance from the top of the line to the baseline of [font] at [size], in canvas units.
+// Use it to align baselines when mixing fonts/sizes on one line.
+float od_text_ascent(struct onedraw* r, od_font font, float size);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Sets the scale factor applied to the built-in font (glyphs, bearings and advances)
-//      [scale]     scale factor, 1.0 = the native size of the baked atlas (24 px)
-// 
-// Warning : this variable is store in frame params, it cannot change in a frame
-void od_set_font_scale(struct onedraw* r, float scale);
+// Returns the distance between two baselines (line height) of [font] at [size], in canvas units.
+float od_text_line_height(struct onedraw* r, od_font font, float size);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a ring (circle)
@@ -413,20 +419,17 @@ void od_draw_box(struct onedraw* r, float x0, float y0, float x1, float y1, floa
 void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float half_width, float half_height, float roundness, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Draws one character
-//      [x, y]                  top-left coordinates of the character
-//      [c]                     only [32-126] char are supported
-// The [x, y] anchor follows the canvas (see od_set_canvas); the glyph size and advances are not
-// scaled by it (they stay in screen pixels)
-void od_draw_char(struct onedraw* r, float x, float y, char c, draw_color srgb_color);
-
-//-----------------------------------------------------------------------------------------------------------------------------
-// Draws a zero-terminated string, carriage return (\n) are taken in account
-//      [x, y]                  top-left coordinates of the string
-//      [text]                  string to be rendered
-// The [x, y] anchor follows the canvas (see od_set_canvas); the glyph size and advances are not
-// scaled by it (they stay in screen pixels)
-void od_draw_text(struct onedraw* r, float x, float y, const char* text, draw_color srgb_color);
+// Draws the zero-terminated UTF-8 string [text] with [font] at [size]; carriage returns (\n) start
+// a new line (each line restarts from the left edge of the first line).
+//      [x, y]                  top-left coordinates of the first line, in canvas units (see od_set_canvas)
+//      [text]                  UTF-8 string. Unknown code points and invalid sequences advance by the
+//                               space width, nothing is drawn (no-break spaces and the soft hyphen are
+//                               not baked : they advance by the space width / are skipped)
+//      [font]                  one of the built-in families, see od_font
+//      [size]                  font size in canvas units. The renderer picks the closest baked size that
+//                               is >= the physical size (size * canvas scale) and minifies it, which stays
+//                               sharper than magnifying a smaller bake
+void od_draw_text(struct onedraw* r, float x, float y, const char* text, od_font font, float size, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a textured quad

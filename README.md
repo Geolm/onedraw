@@ -4,7 +4,7 @@
 `onedraw` is designed to render everything in a single indirect draw call (plus one more for cached tiles when the opt-in tile cache is on), maximizing GPU efficiency for 2D graphics. More details can be found in the [documentation](doc/index.md). It relies on Apple Metal API, wave instructions, and indirect draw calls, so adapting it to other graphics APIs would require significant changes (but feel free to contact me if you want to do a port).
 
 ### Screenshot
-![all primitives screenshot](reference_highdpi.png)
+![all primitives screenshot](tests/references/primitives_highdpi.png)
 
 
 ### Features
@@ -15,7 +15,7 @@
 * **Shader-based alpha blending** – all blending operations are handled in the shader, no framebuffer read/write required.
 * **Anti-aliasing** – smooth edges using signed distance functions.
 * **Lightweight and minimal** – drop-in library with minimal dependencies.
-* **Baked font** – ready-to-use text rendering; the pre-build step can bake a custom font instead ([Custom font](#custom-font)).
+* **Text** – four built-in font families (Satoshi regular / bold / italic, JetBrains Mono) baked at nine sizes into one BC4 atlas; every call states its family and size, the closest baked size is picked and minified, strings are UTF-8, and width / ascent / line-height metrics are provided for layout.
 * **Wide shape support** – box, blurred box, rectangle, oriented box/rectangle, triangle, triangle ring, disc, circle, ellipse, ellipse ring, arc, sector, sector ring, Bézier curves (quadratic & cubic), textured quad, oriented textured quad.
 * **Dashed shapes** – dashed variants of line, ring, box, oriented box, ellipse ring and triangle ring, with configurable dash length, gap, phase and round/flat caps.
 * **Gradient fills** – radial gradient disc and two-color capsule.
@@ -56,7 +56,7 @@ void init(void)
 void frame(void)
 {
     od_begin_frame(renderer);
-    od_draw_text(renderer, 0, 0, "Hello world!", 0xffffffff);
+    od_draw_text(renderer, 0, 0, "Hello world!", od_font_regular, 16.f, 0xffffffff);
     od_end_frame(renderer, (void*)sapp_metal_get_current_drawable());
 }
 
@@ -91,19 +91,6 @@ Follow the step to build and run the test program
 * cmake ..
 * make
 * ./test
-
-#### Custom font
-
-The pre-build step bakes `fonts/Satoshi-Bold.otf` into `lib/` as a BC4 atlas. To experiment with another font (e.g. `fonts/JetBrainsMono-Regular.ttf`), run the builder manually from the project root, then rebuild:
-
-```
-./build/pre-build/builder fonts/JetBrainsMono-Regular.ttf
-cmake --build build
-./build/test --autoexit
-```
-
-This overwrites the generated headers in `lib/`, so the regression gate (`--compare`) fails until the default font is baked again (`./build/pre-build/builder`) and the project is rebuilt.
-
 
 ### Links and references
 

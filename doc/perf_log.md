@@ -46,3 +46,19 @@ gpu memory : 38941 kb (peak num commands : 2086)
 ### cache
 gpu time (last 4045 frames) : 0.25 ms (binning 0.17 ms, rasterization 0.08 ms)
 gpu memory : 53661 kb (peak num commands : 2086)
+
+
+## version 3.0.0
+
+measured on an M5 Pro (not the M2 Max of the runs above), test scene, last 40 frames
+
+### no cache
+gpu time (last 40 frames) : 1.40 ms (binning 0.31 ms, rasterization 1.08 ms)
+gpu memory : 41194 kb (peak num commands : 2019)
+
+
+### cache
+gpu time (last 40 frames) : 1.24 ms (binning 0.46 ms, rasterization 0.75 ms)
+gpu memory : 41194 kb (peak num commands : 2019)
+
+the memory gain of the tile cache is not visible in this short run; the M2 Max numbers above remain the reference for the cache comparison.

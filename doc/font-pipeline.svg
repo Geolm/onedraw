@@ -4,7 +4,7 @@
 <text x="600.0" y="68.0" font-size="13.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">baked at build time, uploaded at init, sampled at draw time</text>
 <text x="150.0" y="128.0" font-size="14" fill="#7B72E3" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">pre-build (build time)</text>
 <rect x="70.0" y="150.0" width="190.0" height="52.0" rx="10" fill="#EEF1F5" stroke="#64748B" stroke-width="1.8"/>
-<text x="165.0" y="181.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">font file</text>
+<text x="165.0" y="181.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">4 fonts x 9 sizes</text>
 <line x1="262.0" y1="176.0" x2="298.0" y2="176.0" stroke="#1E293B" stroke-width="2"/>
 <polygon points="298.0,176.0 291.7,179.0 291.7,173.0" fill="#1E293B"/>
 <rect x="300.0" y="150.0" width="190.0" height="52.0" rx="10" fill="#DBEAFE" stroke="#3D6BD1" stroke-width="1.8"/>
@@ -12,30 +12,32 @@
 <line x1="492.0" y1="176.0" x2="528.0" y2="176.0" stroke="#1E293B" stroke-width="2"/>
 <polygon points="528.0,176.0 521.7,179.0 521.7,173.0" fill="#1E293B"/>
 <rect x="530.0" y="150.0" width="190.0" height="52.0" rx="10" fill="#D7F0E2" stroke="#2F9E63" stroke-width="1.8"/>
-<text x="625.0" y="181.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">atlas (BC4)</text>
+<text x="625.0" y="181.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">one atlas (BC4)</text>
 <line x1="722.0" y1="176.0" x2="758.0" y2="176.0" stroke="#1E293B" stroke-width="2"/>
 <polygon points="758.0,176.0 751.7,179.0 751.7,173.0" fill="#1E293B"/>
 <rect x="760.0" y="150.0" width="190.0" height="52.0" rx="10" fill="#FDEBD3" stroke="#DD8500" stroke-width="1.8"/>
 <text x="855.0" y="181.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">headers</text>
 <line x1="215.0" y1="208.0" x2="215.0" y2="258.0" stroke="#64748B" stroke-width="1.5" stroke-dasharray="6 5"/>
-<text x="228.0" y="228.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">-&gt; default_font_atlas.h + default_font.h (plain C, no runtime dep)</text>
+<text x="228.0" y="228.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">-&gt; default_font_atlas.h + default_font.h (36 faces, 199 glyphs, plain C, no runtime dep)</text>
 <text x="150.0" y="300.0" font-size="14" fill="#2F9E63" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">runtime</text>
 <rect x="70.0" y="320.0" width="190.0" height="52.0" rx="10" fill="#EEF1F5" stroke="#64748B" stroke-width="1.8"/>
-<text x="165.0" y="351.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">od_draw_char</text>
+<text x="165.0" y="351.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">od_draw_text</text>
 <line x1="262.0" y1="346.0" x2="298.0" y2="346.0" stroke="#1E293B" stroke-width="2"/>
 <polygon points="298.0,346.0 291.7,349.0 291.7,343.0" fill="#1E293B"/>
 <rect x="300.0" y="320.0" width="190.0" height="52.0" rx="10" fill="#DBEAFE" stroke="#3D6BD1" stroke-width="1.8"/>
-<text x="395.0" y="351.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">quad + glyph index</text>
+<text x="395.0" y="351.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">pick face + scale</text>
 <line x1="492.0" y1="346.0" x2="528.0" y2="346.0" stroke="#1E293B" stroke-width="2"/>
 <polygon points="528.0,346.0 521.7,349.0 521.7,343.0" fill="#1E293B"/>
 <rect x="530.0" y="320.0" width="190.0" height="52.0" rx="10" fill="#D7F0E2" stroke="#2F9E63" stroke-width="1.8"/>
-<text x="625.0" y="351.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">sample atlas</text>
+<text x="625.0" y="351.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">char per code point</text>
 <line x1="722.0" y1="346.0" x2="758.0" y2="346.0" stroke="#1E293B" stroke-width="2"/>
 <polygon points="758.0,346.0 751.7,349.0 751.7,343.0" fill="#1E293B"/>
 <rect x="760.0" y="320.0" width="190.0" height="52.0" rx="10" fill="#FDEBD3" stroke="#DD8500" stroke-width="1.8"/>
-<text x="855.0" y="351.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">inverted alpha = SDF</text>
-<rect x="60.0" y="430.0" width="1080.0" height="130.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
-<text x="90.0" y="465.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">at runtime the UV is computed from the pixel, the atlas sampled, and the alpha inverted to act as a distance-like mask,</text>
-<text x="90.0" y="488.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">so glyph edges are anti-aliased exactly like every other SDF. the 1x atlas (24 px) can be stretched (od_set_font_scale)</text>
-<text x="90.0" y="511.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">or swapped for the 2x (48 px) atlas via onedraw_def.high_dpi for crisper text on retina displays.</text>
+<text x="855.0" y="351.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">sample + invert = SDF</text>
+<rect x="60.0" y="430.0" width="1080.0" height="148.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<text x="90.0" y="465.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">a face is a (font, pixel size) pair: 4 fonts x 9 sizes = 36 faces share one BC4 atlas, with a 36 x 256-entry</text>
+<text x="90.0" y="488.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">glyph table (216 KiB) uploaded once at init. a requested size picks the smallest baked size at or above the</text>
+<text x="90.0" y="511.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">physical size and scales the glyph by the ratio, so text is only ever minified, never magnified below it.</text>
+<text x="90.0" y="534.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">at draw time the UV is computed from the pixel, the atlas sampled, and the coverage inverted to act as a</text>
+<text x="90.0" y="557.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">distance-like mask, so glyph edges are anti-aliased exactly like every other SDF.</text>
 </svg>
