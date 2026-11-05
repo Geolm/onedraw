@@ -27,10 +27,11 @@ struct test_options
     bool compare;      // exit non-zero if the screenshot differs from the reference
     bool update_refs;  // rewrite the matching reference image from the current capture
     bool cache;
+    bool offscreen;    // render into the offscreen target instead of the window drawable
     bool validate;     // enable the metal api validation layer
 };
 
-struct test_options options = {false, false, false, false, false};
+struct test_options options = {false, false, false, false, false, false};
 
 #define FROM_HTML(html)   ((html&0xff)<<16) | ((html>>16)&0xff) | (html&0x00ff00) | 0xff000000
 #define TEX_SIZE (256)
@@ -380,6 +381,7 @@ void init(void)
         .srgb_backbuffer = false,
         .allow_screenshot = true,
         .cache = options.cache,
+        .allow_offscreen = options.offscreen,
         .atlas = 
         {
             .width = TEX_SIZE,
@@ -422,9 +424,10 @@ void frame(void)
         return;
 
     // fully obscured window : macOS provides no drawable, sapp returns an invalid swapchain (the nil
-    // drawable reads as 0x0 and would fail the onedraw size assert), so skip the whole frame until visible
+    // drawable reads as 0x0 and would fail the onedraw size assert), so skip the whole frame until
+    // visible (offscreen mode doesn't need a drawable, a hidden window does not stop the frames)
     sapp_swapchain sc = sapp_acquire_swapchain();
-    if (sc.invalid)
+    if (sc.invalid && !options.offscreen)
         return;
 
     frame_count++;
@@ -715,7 +718,7 @@ void frame(void)
         od_take_screenshot(renderer, pixels);
     }
 
-    od_end_frame(renderer, (void*)sc.metal.current_drawable);
+    od_end_frame(renderer, options.offscreen ? NULL : (void*)sc.metal.current_drawable);
 
     if (pixels != NULL)
     {
@@ -814,6 +817,7 @@ sapp_desc sokol_main(int argc, char* argv[])
     flag_bool_var(&options.compare, "compare", false, "exit non-zero if the screenshot differs from the reference");
     flag_bool_var(&options.update_refs, "update-refs", false, "rewrite the matching reference image from the current capture");
     flag_bool_var(&options.cache, "cache", false, "enable the tile cache");
+    flag_bool_var(&options.offscreen, "offscreen", false, "render into the offscreen target instead of the window drawable");
     flag_bool_var(&options.validate, "validate", false, "enable the metal api validation layer");
 
     if (!flag_parse(argc, argv))

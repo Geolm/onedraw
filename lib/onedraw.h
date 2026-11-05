@@ -36,7 +36,7 @@
 #include <stdbool.h>
 
 #define ONEDRAW_MAJOR_VERSION   (3)
-#define ONEDRAW_MINOR_VERSION   (1)
+#define ONEDRAW_MINOR_VERSION   (2)
 #define ONEDRAW_PATCH           (0)
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -87,6 +87,8 @@ typedef struct onedraw_def
         uint32_t num_slices;        // Max 256
     } atlas;
 
+    bool allow_offscreen;     // allocate a library-owned offscreen render target, see od_end_frame()
+
 } onedraw_def;
 
 typedef uint32_t draw_color; // in sRGB color space
@@ -131,6 +133,10 @@ size_t od_min_memory_size(void);
 //          [width]             width of all textures in the array, if 0 (undefined) the array won't be created
 //          [height]
 //          [num_slices]        must be <= 256. each quad can use a specific slice.
+//      [allow_offscreen]       if true, a library-owned offscreen render target is allocated (4 bytes per
+//                               pixel, up to ~64 MiB at the 4096x4096 max resolution, in the backbuffer
+//                               pixel format). it is the render target of od_end_frame() when the drawable
+//                               is NULL
 //
 // returns NULL on failure (invalid def, unaligned buffer, non M1/A14 GPU, zero viewport, can't create a command queue)
 struct onedraw* od_init(onedraw_def* def);
@@ -191,8 +197,24 @@ void od_begin_frame(struct onedraw* r);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Ends the collect of draw commands, renders everything
-//      [drawable]              pointer to CA::MetalDrawable* from obj-C
+//      [drawable]              pointer to CA::MetalDrawable* from obj-C, or NULL to render into the
+//                               library-owned offscreen target instead of a window (requires
+//                               allow_offscreen in od_init, the frame is dropped otherwise). read the frame
+//                               back with od_take_screenshot(), or consume the texture with
+//                               od_get_offscreen_texture()
 void od_end_frame(struct onedraw* r, void* drawable);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Returns the offscreen render target as a pointer to (MTL::Texture*), or NULL if allow_offscreen was not
+//      set in od_init
+//
+// the texture is resized with the renderer (od_resize) and is in the backbuffer pixel format (BGRA8, sRGB
+// if srgb_backbuffer).
+//
+// warning : it is a single texture while up to two frames can be in flight (like the tile cache texture).
+//           a consumer in its own command buffer must make sure the previous renderer frame completed
+//           before reading it (od_take_screenshot() already waits internally)
+void* od_get_offscreen_texture(struct onedraw* r);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Returns the average gpu time for the last 60 frames

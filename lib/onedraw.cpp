@@ -255,6 +255,13 @@ struct onedraw
         bool allocate_resources {false};
     } screenshot;
 
+    // offscreen render target
+    struct
+    {
+        MTL::Texture* texture {nullptr};
+        bool allocate_resources {false};
+    } offscreen;
+
     // stats
     struct
     {
@@ -474,6 +481,28 @@ void od_init_screenshot_resources(struct onedraw* r)
     else
     {
         r->screenshot = {};
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_init_offscreen_resources(struct onedraw* r)
+{
+    SAFE_RELEASE(r->offscreen.texture);
+
+    if (r->offscreen.allocate_resources)
+    {
+        MTL::TextureDescriptor* pTextureDesc = MTL::TextureDescriptor::alloc()->init();
+        pTextureDesc->setWidth(r->rasterizer.width);
+        pTextureDesc->setHeight(r->rasterizer.height);
+        pTextureDesc->setPixelFormat(r->rasterizer.srgb_backbuffer ? MTL::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormatBGRA8Unorm);
+        pTextureDesc->setTextureType(MTL::TextureType2D);
+        pTextureDesc->setMipmapLevelCount(1);
+        pTextureDesc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite | MTL::TextureUsageRenderTarget);
+        pTextureDesc->setStorageMode(MTL::StorageModeShared);
+
+        r->offscreen.texture = r->device->newTexture(pTextureDesc);
+
+        pTextureDesc->release();
     }
 }
 
@@ -869,8 +898,15 @@ void od_bin_commands(struct onedraw* r)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_flush(struct onedraw* r, void* drawable)
 {
-    assert_msg((uint16_t)((CA::MetalDrawable*)drawable)->texture()->width() == r->rasterizer.width, "drawable/renderer size mismatch");
-    assert_msg((uint16_t)((CA::MetalDrawable*)drawable)->texture()->height() == r->rasterizer.height, "drawable/renderer size mismatch");
+    MTL::Texture* target = (drawable != nullptr) ? ((CA::MetalDrawable*)drawable)->texture() : r->offscreen.texture;
+
+    if (drawable != nullptr)
+    {
+        assert_msg((uint16_t)target->width() == r->rasterizer.width, "drawable/renderer size mismatch");
+        assert_msg((uint16_t)target->height() == r->rasterizer.height, "drawable/renderer size mismatch");
+    }
+    else
+        assert_msg(target != nullptr, "NULL drawable requires allow_offscreen set in od_init()");
 
     SAFE_RELEASE(r->command_buffer);
     r->command_buffer = r->command_queue->commandBuffer();
@@ -880,7 +916,7 @@ void od_flush(struct onedraw* r, void* drawable)
 
     MTL::RenderPassDescriptor* renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
     MTL::RenderPassColorAttachmentDescriptor* cd = renderPassDescriptor->colorAttachments()->object(0);
-    cd->setTexture(((CA::MetalDrawable*)drawable)->texture());
+    cd->setTexture(target);
     cd->setLoadAction(MTL::LoadActionClear);
     cd->setClearColor(MTL::ClearColor(r->rasterizer.clear_color.x, r->rasterizer.clear_color.y, r->rasterizer.clear_color.z, r->rasterizer.clear_color.w));
     cd->setStoreAction(MTL::StoreActionStore);
@@ -988,11 +1024,12 @@ void od_flush(struct onedraw* r, void* drawable)
     if (take_screenshot)
     {
         MTL::BlitCommandEncoder* blit = r->command_buffer->blitCommandEncoder();
-        blit->copyFromTexture(((CA::MetalDrawable*)drawable)->texture(),0, 0, r->screenshot.texture, 0, 0, 1, 1);
+        blit->copyFromTexture(target, 0, 0, r->screenshot.texture, 0, 0, 1, 1);
         blit->endEncoding();
     }
 
-    r->command_buffer->presentDrawable((CA::MetalDrawable*)drawable);
+    if (drawable != nullptr)
+        r->command_buffer->presentDrawable((CA::MetalDrawable*)drawable);
     r->command_buffer->commit();
     r->command_buffer->retain();
 
@@ -1048,6 +1085,7 @@ struct onedraw* od_init(onedraw_def* def)
     r->device = (MTL::Device*)def->metal_device;
     r->command_queue = r->device->newCommandQueue();
     r->screenshot.allocate_resources = def->allow_screenshot;
+    r->offscreen.allocate_resources = def->allow_offscreen;
     r->rasterizer.srgb_backbuffer = def->srgb_backbuffer;
     r->cache = def->cache;
 
@@ -1269,6 +1307,7 @@ void od_resize(struct onedraw* r, uint32_t width, uint32_t height)
     od_log(r, "%ux%u regions", r->regions.num_width, r->regions.num_height);
 
     od_init_screenshot_resources(r);
+    od_init_offscreen_resources(r);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1291,6 +1330,16 @@ void od_begin_frame(struct onedraw* r)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_end_frame(struct onedraw* r, void* drawable)
 {
+    if ((drawable == nullptr) && (r->offscreen.texture == nullptr))
+    {
+        assert_msg(false, "NULL drawable requires allow_offscreen set in od_init()");
+        od_log(r, "can't render into a NULL drawable, set allow_offscreen when calling od_init(), the frame is dropped");
+
+        // od_begin_frame consumed an in-flight slot that no completion handler will give back
+        dispatch_semaphore_signal(r->semaphore);
+        return;
+    }
+
     assert_msg(r->commands.group_aabb == nullptr, "you need to call od_end_group, before od_end_frame");
     assert_msg(r->commands.clip_depth == 1, "unbalanced clip stack, every od_push_clip* must be matched by od_pop_clip");
     if (r->screenshot.show_region)
@@ -1308,6 +1357,12 @@ void od_end_frame(struct onedraw* r, void* drawable)
     gpu_timer_end_frame(&r->stats.rasterization, r->stats.frame_index);
 
     od_flush(r, drawable);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void* od_get_offscreen_texture(struct onedraw* r)
+{
+    return (void*)r->offscreen.texture;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -1356,6 +1411,7 @@ void od_terminate(struct onedraw* r)
     SAFE_RELEASE(r->font.texture);
     SAFE_RELEASE(r->font.glyphs);
     SAFE_RELEASE(r->screenshot.texture);
+    SAFE_RELEASE(r->offscreen.texture);
     SAFE_RELEASE(r->sample_buffer);
     if (r->semaphore != nullptr)
     {
@@ -1387,6 +1443,7 @@ void od_get_stats(struct onedraw* r, od_stats* stats)
     gpu_mem += r->regions.hashes->allocatedSize();
     gpu_mem += r->regions.dirty->allocatedSize();
     gpu_mem += (r->screenshot.texture != nullptr) ? r->screenshot.texture->allocatedSize() : 0;
+    gpu_mem += (r->offscreen.texture != nullptr) ? r->offscreen.texture->allocatedSize() : 0;
     gpu_mem += r->tiles.counters_buffer->allocatedSize();
     gpu_mem += r->tiles.head->allocatedSize();
     gpu_mem += r->tiles.indices->allocatedSize();

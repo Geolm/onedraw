@@ -11,6 +11,7 @@
 * **Single draw call rendering** – as the name suggests, all primitives are rasterized by a single indirect draw call; when the tile cache is on, unchanged tiles are redrawn from the cache by a second one.
 * **Hierarchical tile-based binning** – the compute shader processes only the primitives that influence each tile, reducing wasted work.
 * **Tile cache** – opt-in via the `cache` flag of `onedraw_def`: unchanged tiles are redrawn from a full-screen cache texture instead of being re-shaded (4 extra bytes per pixel).
+* **Offscreen rendering** – opt-in via the `allow_offscreen` flag: `od_end_frame()` accepts a NULL drawable and renders into a library-owned texture, no window required. For unit testing, headless use, or compositing onedraw into a bigger scene.
 * **Occlusion culling** – while building the per-tile command lists, the walk stops at the first fully opaque box that covers a tile, so content hidden under a window never reaches the fragment shader.
 * **Shader-based alpha blending** – all blending operations are handled in the shader, no framebuffer read/write required.
 * **Anti-aliasing** – smooth edges using signed distance functions.

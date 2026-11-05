@@ -33,3 +33,9 @@ As for primitives that are on the screen but completely covered, there is a limi
 ### Does the library work on iOS?
 
 It should but it has not been tested, so one should not expect a smooth experience on iOS. Especially BC4 texture might not be supported, one should convert the font texture in R8 format.
+
+### Can I render without a window ?
+
+Yes. Set `allow_offscreen` in `onedraw_def` and call `od_end_frame()` with a `NULL` drawable : the frame is rendered into a library-owned texture (in the backbuffer pixel format) instead of a window backbuffer. Read it back on the CPU with `od_take_screenshot()`, or consume the texture directly with `od_get_offscreen_texture()`. This is the intended path for unit testing the renderer.
+
+Note that the offscreen target is a single texture while up to two frames can be in flight : if you consume it in your own command buffer, make sure the previous renderer frame completed before reading it (`od_take_screenshot()` already waits for you).
