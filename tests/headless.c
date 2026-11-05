@@ -65,10 +65,17 @@ int main(int argc, char* argv[])
     if (options.validate)
         setenv("MTL_DEBUG_LAYER", "1", 1);
 
+    void* metal_device = metal_default_device();
+    if (metal_device == NULL)
+    {
+        custom_log("no m1/a14 (or later) gpu, headless test skipped");
+        return 0;
+    }
+
     void* preallocated_buffer = malloc(od_min_memory_size());
     renderer = od_init( &(onedraw_def)
     {
-        .metal_device = metal_default_device(),
+        .metal_device = metal_device,
         .preallocated_buffer = preallocated_buffer,
         .viewport_width = VIEW_WIDTH,
         .viewport_height = VIEW_HEIGHT,
