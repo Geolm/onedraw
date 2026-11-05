@@ -19,13 +19,34 @@ jobs:
       - name: Set up CMake
         uses: jwlawson/actions-setup-cmake@v2
 
-      - name: Create build directory
+      - name: Create debug build directory
         run: |
           mkdir -p build
           cd build
           cmake .. -DCMAKE_BUILD_TYPE=Debug
 
-      - name: Build
+      - name: Build debug
         run: |
           cd build
           cmake --build . --config Debug --parallel
+
+      - name: Run headless test (debug)
+        run: |
+          cd build
+          ./headless --compare --validate
+
+      - name: Create release build directory
+        run: |
+          mkdir -p build-release
+          cd build-release
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build release
+        run: |
+          cd build-release
+          cmake --build . --config Release --parallel
+
+      - name: Run headless test (release)
+        run: |
+          cd build-release
+          ./headless --compare --validate

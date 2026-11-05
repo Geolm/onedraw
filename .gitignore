@@ -74,6 +74,7 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 /build
+/build-release
 
 # project specific
 screenshot.png
