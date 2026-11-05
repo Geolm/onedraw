@@ -515,7 +515,10 @@ void frame(void)
 
         uint32_t toggle = (frame_count / 30) % 4;
         const float toggle_sizes[4] = {24.f, 32.f, 48.f, 16.f};
-        od_draw_text(renderer, cx - radius, py, "toggle", faces[toggle], toggle_sizes[toggle], miya_black);
+        // the "toggle" word is repeated so the 6-byte view never ends on a null byte : it must be
+        // length delimited, not null terminated
+        static const char toggle_text[] = "toggletoggletoggletoggletoggle";
+        od_draw_string_view(renderer, cx - radius, py, toggle_text + toggle * 6, 6, faces[toggle], toggle_sizes[toggle], miya_black);
 
         od_pop_clip(renderer);
     }
@@ -536,7 +539,11 @@ void frame(void)
     od_draw_quad(renderer, cx-radius, cy, cx, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 2, 0xafffffff);
     od_draw_quad(renderer, cx, cy, cx+radius, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 3, 0xafffffff);
     od_pop_clip(renderer);
-    od_draw_text(renderer, cx-radius, cy-radius*1.25f, "quad\nrounded clip", od_font_bold, LABEL_SIZE, miya_brown);
+    {
+        const float label_height = od_text_line_height(renderer, od_font_bold, LABEL_SIZE);
+        od_draw_text(renderer, cx-radius, cy-radius*1.25f, "quad", od_font_bold, LABEL_SIZE, miya_brown);
+        od_draw_text(renderer, cx-radius, cy-radius*1.25f + label_height, "rounded clip", od_font_bold, LABEL_SIZE, miya_brown);
+    }
 
     slot(16, &cx, &cy, &radius);
     od_draw_oriented_quad(renderer, cx, cy, radius, radius*.5f, angle * 0.75f, (od_quad_uv){0.f, 0.f, 1.f, 0.5f}, 2, 0xafffffff);
@@ -693,7 +700,7 @@ void frame(void)
         od_draw_text(renderer, 0, CANVAS_HEIGHT - line_height * 2.f, string, od_font_bold, label_size, miya_blue);
 
         snprintf(string, 256, "num commands : %u", stats.peak_num_draw_cmd);
-        od_draw_text(renderer, (CANVAS_WIDTH - od_text_width(renderer, string, od_font_bold, label_size)) * .5f,
+        od_draw_text(renderer, (CANVAS_WIDTH - od_string_view_width(renderer, string, strlen(string), od_font_bold, label_size)) * .5f,
                     CANVAS_HEIGHT - line_height * 2.f, string, od_font_bold, label_size, miya_blue);
 
         snprintf(string, 256, "GPU Time : %2.2f ms", gpu_time_ms / (float)(num_frames));

@@ -36,8 +36,8 @@
 #include <stdbool.h>
 
 #define ONEDRAW_MAJOR_VERSION   (3)
-#define ONEDRAW_MINOR_VERSION   (0)
-#define ONEDRAW_PATCH           (1)
+#define ONEDRAW_MINOR_VERSION   (1)
+#define ONEDRAW_PATCH           (0)
 
 //----------------------------------------------------------------------------------------------------------------------------
 // Structures
@@ -289,12 +289,22 @@ void od_end_group(struct onedraw* r, draw_color outline_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Returns the width of the string [text] rendered with [font] at [size], in canvas units.
-// Carriage returns (\n) are not added to the width (each line is measured from the left edge).
+// Carriage returns (\n) advance by the space width, like every other unbaked code point.
 //      [text]      UTF-8 string. Unknown code points and invalid sequences advance by the space width
 //      [font]      one of the built-in families, see od_font
 //      [size]      font size in canvas units (the same space as the drawing coordinates); on a high-dpi
 //                  display with a 1:1 canvas, multiply by the dpi scale (e.g. 16 * sapp_dpi_scale())
 float od_text_width(struct onedraw* r, const char* text, od_font font, float size);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Returns the width of the UTF-8 byte string [text] of [size_in_byte] bytes rendered with [font] at [size], in
+// canvas units; the string is not required to be null-terminated (the view is exactly [size_in_byte] bytes).
+// Carriage returns (\n) advance by the space width, like every other unbaked code point.
+//      [text]          UTF-8 bytes. Unknown code points and invalid sequences advance by the space width
+//      [size_in_byte]  length of [text] in bytes
+//      [font]          one of the built-in families, see od_font
+//      [size]          font size in canvas units (see od_text_width)
+float od_string_view_width(struct onedraw* r, const char* text, size_t size_in_byte, od_font font, float size);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Returns the distance from the top of the line to the baseline of [font] at [size], in canvas units.
@@ -419,9 +429,10 @@ void od_draw_box(struct onedraw* r, float x0, float y0, float x1, float y1, floa
 void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float half_width, float half_height, float roundness, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Draws the zero-terminated UTF-8 string [text] with [font] at [size]; carriage returns (\n) start
-// a new line (each line restarts from the left edge of the first line).
-//      [x, y]                  top-left coordinates of the first line, in canvas units (see od_set_canvas)
+// Draws the zero-terminated UTF-8 string [text] with [font] at [size] as a single line; carriage returns (\n) are
+// not rendered : they advance by the space width, like every other unbaked code point. For multi-line text, draw
+// one line per call and stack them with od_text_line_height().
+//      [x, y]                  top-left coordinates of the line, in canvas units (see od_set_canvas)
 //      [text]                  UTF-8 string. Unknown code points and invalid sequences advance by the
 //                               space width, nothing is drawn (no-break spaces and the soft hyphen are
 //                               not baked : they advance by the space width / are skipped)
@@ -430,6 +441,18 @@ void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float half_width
 //                               is >= the physical size (size * canvas scale) and minifies it, which stays
 //                               sharper than magnifying a smaller bake
 void od_draw_text(struct onedraw* r, float x, float y, const char* text, od_font font, float size, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws the UTF-8 byte string [text] of [size_in_byte] bytes with [font] at [size] as a single line; the string is
+// not required to be null-terminated (the view is exactly [size_in_byte] bytes); carriage returns (\n) are not
+// rendered : they advance by the space width, like every other unbaked code point. For multi-line text, draw one
+// line per call and stack them with od_text_line_height().
+//      [x, y]          top-left coordinates of the line, in canvas units (see od_set_canvas)
+//      [text]          UTF-8 bytes. Unknown code points and invalid sequences advance by the space width
+//      [size_in_byte]  length of [text] in bytes
+//      [font]          one of the built-in families, see od_font
+//      [size]          font size in canvas units (see od_draw_text)
+void od_draw_string_view(struct onedraw* r, float x, float y, const char* text, size_t size_in_byte, od_font font, float size, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a textured quad

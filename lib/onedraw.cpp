@@ -10,6 +10,7 @@
 #include "binning.h"
 #include "rasterization.h"
 #include <stdatomic.h>
+#include <string.h>
 
 // ---------------------------------------------------------------------------------------------------------------------------
 // Macros
@@ -1800,40 +1801,42 @@ void od_draw_blurred_box(struct onedraw* r, float cx, float cy, float width, flo
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-// decode one utf-8 code point, *pp advances past the sequence, an invalid byte yields 0
-static uint32_t decode_utf8(const char** pp)
+// decode one utf-8 code point, *pp advances past the sequence, bounded by [end) so a truncated
+// trailing sequence does not read past the buffer; an invalid or truncated byte yields 0
+static uint32_t decode_utf8(const char* p, const char* end, const char** pp)
 {
-    const uint8_t* p = (const uint8_t*)*pp;
+    const uint8_t* b = (const uint8_t*)p;
+    const uint8_t* be = (const uint8_t*)end;
     uint32_t cp = 0;
 
-    if (*p < 0x80)
+    if (*b < 0x80)
     {
-        cp = *p;
+        cp = *b;
         *pp += 1;
     }
-    else if ((*p & 0xE0) == 0xC0 && (p[1] & 0xC0) == 0x80)
+    else if (b + 1 < be && (*b & 0xE0) == 0xC0 && (b[1] & 0xC0) == 0x80)
     {
-        cp = ((uint32_t)(*p & 0x1F) << 6) | (p[1] & 0x3F);
+        cp = ((uint32_t)(*b & 0x1F) << 6) | (b[1] & 0x3F);
         if (cp < 0x80)
             cp = 0; // overlong encoding
         *pp += 2;
     }
-    else if ((*p & 0xF0) == 0xE0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80)
+    else if (b + 2 < be && (*b & 0xF0) == 0xE0 && (b[1] & 0xC0) == 0x80 && (b[2] & 0xC0) == 0x80)
     {
-        cp = ((uint32_t)(*p & 0x0F) << 12) | ((uint32_t)(p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+        cp = ((uint32_t)(*b & 0x0F) << 12) | ((uint32_t)(b[1] & 0x3F) << 6) | (b[2] & 0x3F);
         if (cp < 0x800)
             cp = 0; // overlong encoding
         *pp += 3;
     }
-    else if ((*p & 0xF8) == 0xF0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80 && (p[3] & 0xC0) == 0x80)
+    else if (b + 3 < be && (*b & 0xF8) == 0xF0 && (b[1] & 0xC0) == 0x80 && (b[2] & 0xC0) == 0x80 && (b[3] & 0xC0) == 0x80)
     {
-        cp = ((uint32_t)(*p & 0x07) << 18) | ((uint32_t)(p[1] & 0x3F) << 12) | ((uint32_t)(p[2] & 0x3F) << 6) | (p[3] & 0x3F);
+        cp = ((uint32_t)(*b & 0x07) << 18) | ((uint32_t)(b[1] & 0x3F) << 12) | ((uint32_t)(b[2] & 0x3F) << 6) | (b[3] & 0x3F);
         if (cp > 0x10FFFF)
             cp = 0; // out of the unicode range
         *pp += 4;
     }
     else
-        *pp += 1; // invalid byte
+        *pp += 1; // invalid or truncated byte
 
     return cp;
 }
@@ -1900,7 +1903,7 @@ static void draw_char(struct onedraw* r, float x, float y, uint32_t face, uint32
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_draw_text(struct onedraw* r, float x, float y, const char* text, od_font font, float size, draw_color srgb_color)
+void od_draw_string_view(struct onedraw* r, float x, float y, const char* text, size_t size_in_byte, od_font font, float size, draw_color srgb_color)
 {
     float scale = 1.f;
     uint32_t face = select_face(r, font, size, &scale);
@@ -1911,19 +1914,12 @@ void od_draw_text(struct onedraw* r, float x, float y, const char* text, od_font
     vec2 anchor = canvas_xform_pos(r, vec2_set(x, y));
     float px = anchor.x;
     float py = anchor.y;
-    float left = px;
 
-    while (*text != 0)
+    const char* end = text + size_in_byte;
+
+    while (text < end)
     {
-        if (*text == '\n')
-        {
-            py += f->line_height * scale;
-            px = left;
-            ++text;
-            continue;
-        }
-
-        uint32_t cp = decode_utf8(&text);
+        uint32_t cp = decode_utf8(text, end, &text);
         uint32_t glyph_index = codepoint_to_glyph(r->font.desc, cp);
 
         if (glyph_index < MAX_GLYPHS)
@@ -1934,6 +1930,12 @@ void od_draw_text(struct onedraw* r, float x, float y, const char* text, od_font
         else
             px += space_advance;
     }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_draw_text(struct onedraw* r, float x, float y, const char* text, od_font font, float size, draw_color srgb_color)
+{
+    od_draw_string_view(r, x, y, text, strlen(text), font, size, srgb_color);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2136,7 +2138,7 @@ uint32_t od_draw_cubic_bezier(struct onedraw* r, const float* control_points, fl
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-float od_text_width(struct onedraw* r, const char* text, od_font font, float size)
+float od_string_view_width(struct onedraw* r, const char* text, size_t size_in_byte, od_font font, float size)
 {
     float scale = 1.f;
     uint32_t face = select_face(r, font, size, &scale);
@@ -2144,17 +2146,12 @@ float od_text_width(struct onedraw* r, const char* text, od_font font, float siz
     const font_face* f = &r->font.desc->faces[face];
     const float space_advance = f->glyphs[0].advance_x * scale;
 
+    const char* end = text + size_in_byte;
     float width = 0.f;
 
-    while (*text != 0)
+    while (text < end)
     {
-        if (*text == '\n')
-        {
-            ++text;
-            continue;
-        }
-
-        uint32_t cp = decode_utf8(&text);
+        uint32_t cp = decode_utf8(text, end, &text);
         uint32_t glyph_index = codepoint_to_glyph(r->font.desc, cp);
 
         if (glyph_index < MAX_GLYPHS)
@@ -2164,6 +2161,12 @@ float od_text_width(struct onedraw* r, const char* text, od_font font, float siz
     }
 
     return width / r->canvas.scale;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+float od_text_width(struct onedraw* r, const char* text, od_font font, float size)
+{
+    return od_string_view_width(r, text, strlen(text), font, size);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
