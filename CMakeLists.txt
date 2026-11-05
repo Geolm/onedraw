@@ -48,6 +48,8 @@ add_executable(test
     ./lib/onedraw.cpp
     ./tests/test.c
     ./tests/sokol_app.mm
+    ./tests/scene.c
+    ./tests/compare.c
 )
 
 target_include_directories(test PRIVATE ./third_party)
@@ -62,4 +64,24 @@ target_link_libraries(test
     "-framework AppKit"
     "-framework Foundation"
     "-framework QuartzCore"
+)
+
+# --- Headless test ---
+add_executable(headless
+    ./lib/onedraw.cpp
+    ./tests/headless.c
+    ./tests/metal_device.mm
+    ./tests/scene.c
+    ./tests/compare.c
+)
+
+target_include_directories(headless PRIVATE ./third_party)
+
+if(TARGET build_lib)
+    add_dependencies(headless build_lib)
+endif()
+
+target_link_libraries(headless
+    "-framework Metal"
+    "-framework Foundation"
 )
