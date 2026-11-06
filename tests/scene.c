@@ -116,6 +116,13 @@ static void fill_texture_array(struct onedraw* r)
     make_radial(pixel_data, TEX_SIZE, TEX_SIZE, miya_black, miya_light_green);
     od_upload_slice(r, pixel_data, 3);
 
+    // a partial upload on top of the checker, to exercise od_upload_region
+    // (the rounded clip of the quad only shows the bottom-right quadrant of the texture)
+    uint32_t* patch = malloc(128 * 128 * sizeof(uint32_t));
+    make_rings(patch, 128, 128, miya_red, miya_blue);
+    od_upload_region(r, patch, 0, 128, 128, 128, 128);
+    free(patch);
+
     free(pixel_data);
 }
 

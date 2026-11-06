@@ -20,7 +20,7 @@ A different set of fonts can be baked by editing the pre-build step (`pre-build/
 
 ![Textured quads](texture-quad.png)
 
-Bitmap rendering uses a **texture array**. When `onedraw` is initialized, the user can specify the texture array dimensions and the number of slices (up to 256). Slices can be uploaded at any time, but because textures use shared memory, updating a slice while it is being sampled by the GPU may lead to flickering or corruption — synchronization on upload is the user's responsibility.
+Bitmap rendering uses a **texture array**. When `onedraw` is initialized, the user can specify the texture array dimensions and the number of slices (up to 256). Slices — or a region of a slice, with `od_upload_region()` — can be uploaded at any time, but because textures use shared memory, updating a slice while it is being sampled by the GPU may lead to flickering or corruption — synchronization on upload is the user's responsibility.
 
 At runtime, `od_draw_quad()` / `od_draw_oriented_quad()` pass the quad's UVs along with the slice index. In the rasterizer, the pixel is mapped through the quad (and, for oriented quads, through the rotation), the UV is interpolated, and the texture is sampled from the selected slice, then multiplied by the command color — exactly like font rendering.
 

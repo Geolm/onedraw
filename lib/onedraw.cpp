@@ -1185,12 +1185,26 @@ void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_i
         return;
     }
 
-    assert_msg(slice_index<r->rasterizer.atlas->arrayLength(), "slice_index is out of bound");
+    od_upload_region(r, pixel_data, slice_index, 0, 0, r->rasterizer.atlas->width(), r->rasterizer.atlas->height());
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_upload_region(struct onedraw* r, const void* pixel_data, uint32_t slice_index, uint32_t x, uint32_t y, uint32_t width, uint32_t height)
+{
+    if (r->rasterizer.atlas == nullptr)
+    {
+        od_log(r, "can't upload a region, atlas is not allocated (set atlas width/height in od_init)");
+        return;
+    }
+
+    assert_msg(slice_index < r->rasterizer.atlas->arrayLength(), "slice_index is out of bound");
+    assert_msg(width > 0 && height > 0, "region size is zero");
+    assert_msg(x + width <= r->rasterizer.atlas->width() && y + height <= r->rasterizer.atlas->height(), "region is out of bound");
 
     const NS::UInteger bpp = 4;   // MTL::PixelFormat::PixelFormatRGBA8Unorm_sRGB
-    const NS::UInteger bytes_per_row = r->rasterizer.atlas->width() * bpp;
+    const NS::UInteger bytes_per_row = width * bpp;
 
-    MTL::Region region = MTL::Region::Make2D(0, 0, r->rasterizer.atlas->width(), r->rasterizer.atlas->height());
+    MTL::Region region = MTL::Region::Make2D(x, y, width, height);
 
     r->rasterizer.atlas->replaceRegion(
         region,
@@ -1198,10 +1212,10 @@ void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_i
         slice_index,
         pixel_data,
         bytes_per_row,
-        bytes_per_row * r->rasterizer.atlas->height()
+        bytes_per_row * height
     );
 
-    // tile cache : a slice upload can change every textured quad, invalidate the whole cache
+    // tile cache : a region upload can change every textured quad, invalidate the whole cache
     r->rasterizer.atlas_generation++;
 }
 

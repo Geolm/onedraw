@@ -36,8 +36,8 @@
 #include <stdbool.h>
 
 #define ONEDRAW_MAJOR_VERSION   (3)
-#define ONEDRAW_MINOR_VERSION   (2)
-#define ONEDRAW_PATCH           (2)
+#define ONEDRAW_MINOR_VERSION   (3)
+#define ONEDRAW_PATCH           (0)
 
 //----------------------------------------------------------------------------------------------------------------------------
 // Structures
@@ -143,7 +143,7 @@ struct onedraw* od_init(onedraw_def* def);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Uploads (or replaces) a slice of the texture array
-//      [pixel_data]            pointer to the pixel data in B8G8R8A8_srgb format
+//      [pixel_data]            pointer to the pixel data in PixelFormatRGBA8Unorm_sRGB format
 //      [slice_index]           must be < num_slices
 //
 // requires the atlas to be allocated (see onedraw_def::atlas in od_init)
@@ -152,6 +152,22 @@ struct onedraw* od_init(onedraw_def* def);
 //          updating a slice while it’s being sampled by the GPU may cause flickering or corruption.
 //          the user is responsible for synchronizing uploads.
 void od_upload_slice(struct onedraw* r, const void* pixel_data, uint32_t slice_index);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Uploads (or replaces) a region of a slice of the texture array
+//      [pixel_data]            pointer to the pixel data in PixelFormatRGBA8Unorm_sRGB format, tightly packed (width*height*4 bytes)
+//      [slice_index]           must be < num_slices
+//      [x, y]                  top-left corner of the region, in texels
+//      [width, height]         size of the region, in texels, must fit inside the slice
+//
+// requires the atlas to be allocated (see onedraw_def::atlas in od_init)
+//
+// invalidates the tile cache, same as od_upload_slice
+//
+// warning: textures are stored in shared memory.
+//          updating a slice while it’s being sampled by the GPU may cause flickering or corruption.
+//          the user is responsible for synchronizing uploads.
+void od_upload_region(struct onedraw* r, const void* pixel_data, uint32_t slice_index, uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Sets-up the capture region for screenshots
