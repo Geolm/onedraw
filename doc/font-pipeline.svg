@@ -18,7 +18,7 @@
 <rect x="760.0" y="150.0" width="190.0" height="52.0" rx="10" fill="#FDEBD3" stroke="#DD8500" stroke-width="1.8"/>
 <text x="855.0" y="181.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">headers</text>
 <line x1="215.0" y1="208.0" x2="215.0" y2="258.0" stroke="#64748B" stroke-width="1.5" stroke-dasharray="6 5"/>
-<text x="228.0" y="228.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">-&gt; default_font_atlas.h + default_font.h (36 faces, 199 glyphs, plain C, no runtime dep)</text>
+<text x="228.0" y="228.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">-&gt; default_font_atlas.h + default_font.h (36 faces, 234 glyphs, plain C, no runtime dep)</text>
 <text x="150.0" y="300.0" font-size="14" fill="#2F9E63" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">runtime</text>
 <rect x="70.0" y="320.0" width="190.0" height="52.0" rx="10" fill="#EEF1F5" stroke="#64748B" stroke-width="1.8"/>
 <text x="165.0" y="351.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">od_draw_text</text>

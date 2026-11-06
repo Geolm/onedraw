@@ -507,4 +507,15 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
         od_draw_disc(r, cx + cosf(angle) * radius * .3f, cy - sinf(angle) * radius * .3f, radius * .33f, miya_red);
     }
     od_draw_text(r, cx-radius, cy-radius*1.25f, "occlusion", od_font_bold, LABEL_SIZE, miya_brown);
+
+    // the extended glyph set (typography, math, arrows, shapes) rendered in the free bottom strip, so the
+    // reference image covers every new glyph. The windowed test's stats overlay owns the two lines below
+    // it (the capture is on frame 10, before the overlay appears)
+    {
+        static const char glyph_set[] = "‚ „ ‹ › † ‡ ‰ ™ − ′ ≤ ≥ ≠ ≈ ∞ √ ∑ ∏ ∆ ∂ ∫ π Ω ← → ↑ ↓ ↔ ↕ ✓ ● ○ ■ □ ▲";
+        const float size = 40.f; // a baked size : 20 px at 1x and 40 px at 2x, both rendered at scale 1.0
+        const float width = od_text_width(r, glyph_set, od_font_bold, size);
+
+        od_draw_text(r, (CANVAS_WIDTH - width) * .5f, CANVAS_HEIGHT - 158.f, glyph_set, od_font_bold, size, miya_black);
+    }
 }

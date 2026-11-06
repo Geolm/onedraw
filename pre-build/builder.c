@@ -61,14 +61,41 @@ static bool build_codepoints(void)
         CODEPOINTS[i++] = (uint32_t)c;
     }
 
-    const uint32_t extras[] = {0x0152, 0x0153, 0x0178, 0x20AC, 0x2018, 0x2019, 0x201C, 0x201D, 0x2026, 0x2013, 0x2014, 0x2022};
+    const uint32_t extras[] =
+    {
+        0x0152, 0x0153, 0x0178, 0x03A9, 0x03C0, 0x2013, 0x2014, 0x2018, 0x2019, 0x201A, 0x201C, 0x201D,
+        0x201E, 0x2020, 0x2021, 0x2022, 0x2026, 0x2030, 0x2032, 0x2039, 0x203A, 0x20AC, 0x2122, 0x2190,
+        0x2191, 0x2192, 0x2193, 0x2194, 0x2195, 0x2202, 0x2206, 0x220F, 0x2211, 0x2212, 0x221A, 0x221E,
+        0x222B, 0x2248, 0x2260, 0x2264, 0x2265, 0x25A0, 0x25A1, 0x25B2, 0x25CB, 0x25CF, 0x2713
+    };
 
     for (int e = 0; e < (int)(sizeof(extras) / sizeof(extras[0])); ++e)
         CODEPOINTS[i++] = extras[e];
 
+    // the runtime binary search requires a strictly ascending list : a future out-of-order addition
+    // must fail the build instead of silently baking a glyph that renders as a space
+    for (int c = 1; c < i; ++c)
+    {
+        if (CODEPOINTS[c - 1] >= CODEPOINTS[c])
+        {
+            fprintf(stderr, "error: the code point set must be declared in ascending order\n");
+            return false;
+        }
+    }
+
+    // the runtime maps printable ascii by direct offset (cp - 0x20), so the ascii block must stay at the start
+    for (int c = 0x20; c <= 0x7E; ++c)
+    {
+        if (CODEPOINTS[c - 0x20] != (uint32_t)c)
+        {
+            fprintf(stderr, "error: the code point set must not contain characters below 0x20 (the runtime maps ascii by direct offset)\n");
+            return false;
+        }
+    }
+
     NUM_CODEPOINTS = i;
 
-    return (i == 199 && i <= MAX_GLYPHS);
+    return (i == 234 && i <= MAX_GLYPHS);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

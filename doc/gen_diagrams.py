@@ -327,7 +327,7 @@ def gen_font_pipeline():
     s.text(150, 128, "pre-build (build time)", 14, PALETTE["purple"][0], "start", "bold")
     row_flow(150, [("4 fonts x 9 sizes", "grey"), ("stb_truetype", "blue"), ("one atlas (BC4)", "green"), ("headers", "orange")])
     s.line(215, 208, 215, 258, MUTED, 1.5, "6 5")
-    s.text(228, 228, "-> default_font_atlas.h + default_font.h (36 faces, 199 glyphs, plain C, no runtime dep)", 12, MUTED)
+    s.text(228, 228, "-> default_font_atlas.h + default_font.h (36 faces, 234 glyphs, plain C, no runtime dep)", 12, MUTED)
 
     s.text(150, 300, "runtime", 14, PALETTE["green"][0], "start", "bold")
     row_flow(320, [("od_draw_text", "grey"), ("pick face + scale", "blue"), ("char per code point", "green"), ("sample + invert = SDF", "orange")])
