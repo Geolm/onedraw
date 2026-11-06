@@ -70,3 +70,22 @@ the u8 one, a fresh bake reproduces the committed v3.0.0 atlas byte-identical (v
 self-consistent all along), and the test renders bit-identical to the reference.
 Lesson: before believing a "non-deterministic baker", verify the serializer end-to-end
 (expand the generated header and diff it against the in-memory buffer).
+
+## GPU-decoded font atlas: a buffer→texture blit of a compressed format scrambles the data (v3.5.0)
+
+When the font atlas upload was switched from a `replaceRegion` of the baked BC4 image to a
+buffer→texture blit of the GPU-decoded blocks, the text rendered but the reference diffed
+(~2.8 % of pixels, max delta 202) while the decoded buffer was proven byte-identical to the
+baked BC4 image (GPU output compared against the committed baseline header).
+
+The root cause: a buffer→texture blit of a **compressed** format does not raw-copy the block
+grid — with `sourceBytesPerRow = 0` the source is read as a packed per-pixel-row raster of
+the destination format and re-encoded into blocks, which scrambled the row-major block
+layout (reading the texture back with `getBytes` showed the re-ordered blocks). Fix: upload
+the decoded buffer with `replaceRegion` at a `(width/4)*8`-byte pitch (one 4-px row per
+block row) — the exact semantics the direct BC4 upload always used.
+
+A second, independent bug in the same step: `replaceRegion` reads the CPU pointer at call
+time, so it must run **after** `waitUntilCompleted` of the decode, not in the same command
+buffer before the commit (that uploads the zero-initialized buffer — the texture readback
+diffed again, in a different pattern).

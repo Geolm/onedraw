@@ -3,6 +3,7 @@
 #include <errno.h>
 #include "bin2h.h"
 #include "bc4_encoder.h"
+#include "bc_packed.h"
 #include "../src/shaders/common.h"
 #include "../lib/onedraw.h"
 
@@ -37,6 +38,7 @@
 #define SHADERS_FOLDER    "src/shaders/"
 #define BINNING_SHADER          "binning.metal"
 #define RASTERIZER_SHADER       "rasterizer.metal"
+#define BC_DECOMPRESS_SHADER    "bc_decompress.metal"
 #define CPU_GPU_COMMON_FILE     "common.h"
 
 // the sizes are physical pixels, shared by every font, and must match OD_NUM_FONT_SIZES
@@ -121,7 +123,7 @@ static bool verify_inputs(void)
             fprintf(stderr, "error: could not find the font file '%s'\n", FONT_FILES[i]);
     }
 
-    const char* inputs[] = {SHADERS_FOLDER BINNING_SHADER, SHADERS_FOLDER RASTERIZER_SHADER, SHADERS_FOLDER CPU_GPU_COMMON_FILE};
+    const char* inputs[] = {SHADERS_FOLDER BINNING_SHADER, SHADERS_FOLDER RASTERIZER_SHADER, SHADERS_FOLDER BC_DECOMPRESS_SHADER, SHADERS_FOLDER CPU_GPU_COMMON_FILE};
 
     for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i)
     {
@@ -487,10 +489,38 @@ bool build_fonts(Arena* arena)
 
     fprintf(stdout, "ok\n");
 
+    fprintf(stdout, "packing the bc4 image with bc_packed : ");
+
+    size_t packed_capacity = packed_bc4_maxsize(atlas_width, atlas_height);
+
+    uint8_t* packed_atlas = (uint8_t*)arena_alloc(arena, packed_capacity);
+    if (packed_atlas == NULL)
+        return false; // out of memory
+
+    bcp_context* bcp = bcp_init(NULL);
+    if (bcp == NULL)
+    {
+        fprintf(stderr, "error: out of memory in bc_packed\n");
+        return false;
+    }
+
+    uint32_t num_strips = 0;
+    size_t packed_size = bcp_compress_bc4(bcp, compressed_atlas, atlas_width, atlas_height, packed_atlas, packed_capacity, &num_strips);
+    bcp_terminate(bcp);
+
+    if (packed_size == 0)
+    {
+        fprintf(stderr, "error: bc_packed compression failed (the atlas must be at least 16x256)\n");
+        return false;
+    }
+
+    fprintf(stdout, "ok (%zu bytes, %.1fx smaller than the raw atlas, %.1fx smaller than the bc4 image)\n",
+            packed_size, (float)((size_t)atlas_width * atlas_height) / (float)packed_size, (float)bc4_image_size / (float)packed_size);
+
     fprintf(stdout, "writting %s : ", FONT_H);
 
-    if (!bin2h_u64(FONT_H, "default_font_atlas", compressed_atlas, bc4_image_size))
-        return false; // bin2h_u64 reported the error
+    if (!bin2h(FONT_H, "default_font_atlas", packed_atlas, packed_size))
+        return false; // bin2h reported the error
 
     fprintf(stdout, "ok\n");
 
@@ -594,6 +624,24 @@ bool prepare_shaders(Arena* arena)
 
     fprintf(stdout, "ok\nwritting %s : ", LIB_FOLDER"rasterization.h");
     if (!string2h(LIB_FOLDER"rasterization.h", "rasterization_shader", shader, strlen(shader)))
+        return false; // string2h reported the error
+
+    fprintf(stdout, "ok\n");
+
+    fprintf(stdout, "opening %s : ", BC_DECOMPRESS_SHADER);
+    shader = read_shader_include(arena, SHADERS_FOLDER, BC_DECOMPRESS_SHADER);
+
+    if (shader == NULL)
+        return false; // read_shader_include reported the error
+
+    if (strlen(shader) == 0)
+    {
+        fprintf(stderr, "error: shader '%s%s' is empty\n", SHADERS_FOLDER, BC_DECOMPRESS_SHADER);
+        return false;
+    }
+
+    fprintf(stdout, "ok\nwritting %s : ", LIB_FOLDER"bc_decompress.h");
+    if (!string2h(LIB_FOLDER"bc_decompress.h", "bc_decompress_shader", shader, strlen(shader)))
         return false; // string2h reported the error
 
     fprintf(stdout, "ok\n");

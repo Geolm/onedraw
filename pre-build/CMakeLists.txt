@@ -6,6 +6,7 @@ add_executable(builder
     bin2h.c
     builder.c
     shader_reader.c
+    ../third_party/bc_packed.c
 )
 
 target_include_directories(builder PRIVATE ../third_party)
@@ -17,7 +18,9 @@ target_include_directories(builder PRIVATE ../third_party)
 set(prebuild_inputs
     ${CMAKE_SOURCE_DIR}/src/shaders/binning.metal
     ${CMAKE_SOURCE_DIR}/src/shaders/rasterizer.metal
+    ${CMAKE_SOURCE_DIR}/src/shaders/bc_decompress.metal
     ${CMAKE_SOURCE_DIR}/src/shaders/common.h
+    ${CMAKE_SOURCE_DIR}/third_party/bc_packed.h
     ${CMAKE_SOURCE_DIR}/fonts/Satoshi-Regular.otf
     ${CMAKE_SOURCE_DIR}/fonts/Satoshi-Bold.otf
     ${CMAKE_SOURCE_DIR}/fonts/Satoshi-Italic.otf
@@ -29,6 +32,7 @@ set(prebuild_inputs
 set(prebuild_outputs
     ${CMAKE_SOURCE_DIR}/lib/default_font.h
     ${CMAKE_SOURCE_DIR}/lib/default_font_atlas.h
+    ${CMAKE_SOURCE_DIR}/lib/bc_decompress.h
     ${CMAKE_SOURCE_DIR}/lib/binning.h
     ${CMAKE_SOURCE_DIR}/lib/rasterization.h
     ${CMAKE_SOURCE_DIR}/lib/common.h
