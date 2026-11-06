@@ -2261,17 +2261,8 @@ float od_text_line_height(struct onedraw* r, od_font font, float size)
 //----------------------------------------------------------------------------------------------------------------------------
 void od_set_canvas(struct onedraw* r, float x, float y, float width, float height)
 {
-    if (!isfinite(x) || !isfinite(y) || !isfinite(width) || !isfinite(height))
-    {
-        od_log(r, "od_set_canvas : parameters must be finite");
-        return;
-    }
-
-    if (width <= 0.f)
-    {
-        od_log(r, "od_set_canvas : width must be > 0");
-        return;
-    }
+    assert(isfinite(x)&&isfinite(y)&&isfinite(width)&&isfinite(height));
+    assert(width>0.f&&height>0.f);
 
     r->canvas.x = x;
     r->canvas.y = y;
