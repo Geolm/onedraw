@@ -99,11 +99,9 @@ tile_bounds tile_bounds_get(uint strip_index, uint width_blocks, uint height_blo
     uint ty = strip_index / gx;
 
     return tile_bounds { .x0 = (tx * width_blocks) / gx, .x1 = ((tx + 1) * width_blocks) / gx,
-                           .y0 = (ty * height_blocks) / gy, .y1 = ((ty + 1) * height_blocks) / gy };
+                         .y0 = (ty * height_blocks) / gy, .y1 = ((ty + 1) * height_blocks) / gy };
 }
 
-// mirror of le_stream: a 64-bit reservoir buffers bits to keep I/O at byte granularity,
-// least significant bit read first
 typedef struct
 {
     const device uint8_t* buffer;
@@ -209,10 +207,7 @@ uint8_t decode_symbol(thread bit_stream_t* s, const thread model_t* m)
     return m->alphabet[index];
 }
 
-// mirror of le_decode_symbol for the compact 8-symbol bc4 index models: the CPU's 256-entry
-// rank table is zero-filled past num_symbols, so an out-of-range rank (corrupted stream) reads 0
-// there; the 8-entry table cannot, so the bound check emulates it (valid streams always have
-// rank < num_symbols, the encoder only writes the ranks of the symbols it fitted)
+//-----------------------------------------------------------------------------------------------------------------------------
 uint8_t decode_symbol8(thread bit_stream_t* s, const thread model8_t* m)
 {
     uint8_t index = (m->k & 0x80) ? bs_read_bits(s, m->k & 0x7f) : rice_decode(s, m->k, m->q_escape);
@@ -254,10 +249,7 @@ bool load_model(const device uint8_t* input, uint64_t length, thread uint64_t* p
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// mirror of load_static_model for the compact 8-symbol bc4 index models: a corrupted stream
-// may claim up to 256 symbols, so only the first 8 are stored in the rank table and num_symbols
-// is clamped with them; the CPU's zero-filled 256-entry table returns 0 for the same out-of-range
-// ranks (decode_symbol8), so both still decode the same bytes
+// mirror of load_static_model for the compact 8-symbol bc4 index models
 bool load_model8(const device uint8_t* input, uint64_t length, thread uint64_t* pos, thread model8_t* m)
 {
     if (*pos + 3 > length)
@@ -300,13 +292,6 @@ uint16_t read_u16(const device uint8_t* input, uint64_t pos)
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// bc4_decode_strip: GPU mirror of bcp_compress_bc4 / bcp_decompress_bc4 (third_party/bc_packed.c):
-// one thread decompresses one strip of the BC4 stream, the standard block layout is: two 8-bit
-// endpoints followed by the 48-bit little-endian field of the 16 3-bit indices, 8 bytes per block.
-//
-// mirror of bc4_endpoint_predict (third_party/bc_packed.c): the first row of a strip is predicted from
-// the chain-previous block (the strip seed for the first block), a row start from the top block
-// only, and every other block from the 2D predictor previous + top - top_previous
 uint8_t bc4_endpoint_predict(bool first_row, bool row_start, uint8_t prev, uint8_t top, uint8_t top_prev)
 {
     if (first_row)
