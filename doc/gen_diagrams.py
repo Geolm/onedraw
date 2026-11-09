@@ -312,7 +312,7 @@ def gen_font_pipeline():
     W, H = 1200, 620
     s = Svg(W, H,
             title="Font pipeline",
-            subtitle="baked at build time, uploaded at init, sampled at draw time")
+            subtitle="baked at build time, decoded on the GPU at init, sampled at draw time")
 
     def row_flow(y, steps, first_grey=True):
         x = 70
@@ -325,19 +325,20 @@ def gen_font_pipeline():
             x += 230
 
     s.text(150, 128, "pre-build (build time)", 14, PALETTE["purple"][0], "start", "bold")
-    row_flow(150, [("4 fonts x 9 sizes", "grey"), ("stb_truetype", "blue"), ("one atlas (BC4)", "green"), ("headers", "orange")])
+    row_flow(150, [("4 fonts x 9 sizes", "grey"), ("stb_truetype", "blue"), ("one atlas (BC4)", "green"), ("bc_packed", "purple"), ("headers", "orange")])
     s.line(215, 208, 215, 258, MUTED, 1.5, "6 5")
-    s.text(228, 228, "-> default_font_atlas.h + default_font.h (36 faces, 234 glyphs, plain C, no runtime dep)", 12, MUTED)
+    s.text(228, 228, "-> default_font_atlas.h (bc_packed stream) + default_font.h (36 faces, 234 glyphs, plain C, no runtime dep)", 12, MUTED)
 
     s.text(150, 300, "runtime", 14, PALETTE["green"][0], "start", "bold")
     row_flow(320, [("od_draw_text", "grey"), ("pick face + scale", "blue"), ("char per code point", "green"), ("sample + invert = SDF", "orange")])
 
-    s.card(60, 430, 1080, 148)
+    s.card(60, 430, 1080, 172)
     s.text(90, 465, "a face is a (font, pixel size) pair: 4 fonts x 9 sizes = 36 faces share one BC4 atlas, with a 36 x 256-entry", 13, INK)
-    s.text(90, 488, "glyph table (216 KiB) uploaded once at init. a requested size picks the smallest baked size at or above the", 13, INK)
-    s.text(90, 511, "physical size and scales the glyph by the ratio, so text is only ever minified, never magnified below it.", 13, INK)
-    s.text(90, 534, "at draw time the UV is computed from the pixel, the atlas sampled, and the coverage inverted to act as a", 13, INK)
-    s.text(90, 557, "distance-like mask, so glyph edges are anti-aliased exactly like every other SDF.", 13, INK)
+    s.text(90, 488, "glyph table (216 KiB). the atlas ships as a bc_packed stream: at init a 64-thread compute pass decodes it into", 13, INK)
+    s.text(90, 511, "standard BC4 blocks, which are uploaded into the texture — the decode is lossless, so the sampled coverage is", 13, INK)
+    s.text(90, 534, "bit-identical to a direct upload. a requested size picks the smallest baked size at or above the physical size", 13, INK)
+    s.text(90, 557, "and scales the glyph by the ratio, so text is only ever minified, never magnified below it. at draw time the UV", 13, INK)
+    s.text(90, 580, "is computed from the pixel, the atlas sampled, and the coverage inverted to act as a distance-like mask.", 13, INK)
 
     s.save("doc/font-pipeline.svg")
 

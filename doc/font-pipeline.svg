@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 620" width="1200" height="620" role="img">
 <rect x="0" y="0" width="1200" height="620" rx="16" fill="white" stroke="#E2E8F0" stroke-width="1.5"/>
 <text x="600.0" y="42.0" font-size="20" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">Font pipeline</text>
-<text x="600.0" y="68.0" font-size="13.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">baked at build time, uploaded at init, sampled at draw time</text>
+<text x="600.0" y="68.0" font-size="13.5" fill="#64748B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="normal">baked at build time, decoded on the GPU at init, sampled at draw time</text>
 <text x="150.0" y="128.0" font-size="14" fill="#7B72E3" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">pre-build (build time)</text>
 <rect x="70.0" y="150.0" width="190.0" height="52.0" rx="10" fill="#EEF1F5" stroke="#64748B" stroke-width="1.8"/>
 <text x="165.0" y="181.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">4 fonts x 9 sizes</text>
@@ -15,10 +15,14 @@
 <text x="625.0" y="181.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">one atlas (BC4)</text>
 <line x1="722.0" y1="176.0" x2="758.0" y2="176.0" stroke="#1E293B" stroke-width="2"/>
 <polygon points="758.0,176.0 751.7,179.0 751.7,173.0" fill="#1E293B"/>
-<rect x="760.0" y="150.0" width="190.0" height="52.0" rx="10" fill="#FDEBD3" stroke="#DD8500" stroke-width="1.8"/>
-<text x="855.0" y="181.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">headers</text>
+<rect x="760.0" y="150.0" width="190.0" height="52.0" rx="10" fill="#E9E6FB" stroke="#7B72E3" stroke-width="1.8"/>
+<text x="855.0" y="181.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">bc_packed</text>
+<line x1="952.0" y1="176.0" x2="988.0" y2="176.0" stroke="#1E293B" stroke-width="2"/>
+<polygon points="988.0,176.0 981.7,179.0 981.7,173.0" fill="#1E293B"/>
+<rect x="990.0" y="150.0" width="190.0" height="52.0" rx="10" fill="#FDEBD3" stroke="#DD8500" stroke-width="1.8"/>
+<text x="1085.0" y="181.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">headers</text>
 <line x1="215.0" y1="208.0" x2="215.0" y2="258.0" stroke="#64748B" stroke-width="1.5" stroke-dasharray="6 5"/>
-<text x="228.0" y="228.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">-&gt; default_font_atlas.h + default_font.h (36 faces, 234 glyphs, plain C, no runtime dep)</text>
+<text x="228.0" y="228.0" font-size="12" fill="#64748B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">-&gt; default_font_atlas.h (bc_packed stream) + default_font.h (36 faces, 234 glyphs, plain C, no runtime dep)</text>
 <text x="150.0" y="300.0" font-size="14" fill="#2F9E63" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="bold">runtime</text>
 <rect x="70.0" y="320.0" width="190.0" height="52.0" rx="10" fill="#EEF1F5" stroke="#64748B" stroke-width="1.8"/>
 <text x="165.0" y="351.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">od_draw_text</text>
@@ -34,10 +38,11 @@
 <polygon points="758.0,346.0 751.7,349.0 751.7,343.0" fill="#1E293B"/>
 <rect x="760.0" y="320.0" width="190.0" height="52.0" rx="10" fill="#FDEBD3" stroke="#DD8500" stroke-width="1.8"/>
 <text x="855.0" y="351.0" font-size="13.5" fill="#1E293B" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="bold">sample + invert = SDF</text>
-<rect x="60.0" y="430.0" width="1080.0" height="148.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
+<rect x="60.0" y="430.0" width="1080.0" height="172.0" rx="12" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1.5"/>
 <text x="90.0" y="465.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">a face is a (font, pixel size) pair: 4 fonts x 9 sizes = 36 faces share one BC4 atlas, with a 36 x 256-entry</text>
-<text x="90.0" y="488.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">glyph table (216 KiB) uploaded once at init. a requested size picks the smallest baked size at or above the</text>
-<text x="90.0" y="511.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">physical size and scales the glyph by the ratio, so text is only ever minified, never magnified below it.</text>
-<text x="90.0" y="534.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">at draw time the UV is computed from the pixel, the atlas sampled, and the coverage inverted to act as a</text>
-<text x="90.0" y="557.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">distance-like mask, so glyph edges are anti-aliased exactly like every other SDF.</text>
+<text x="90.0" y="488.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">glyph table (216 KiB). the atlas ships as a bc_packed stream: at init a 64-thread compute pass decodes it into</text>
+<text x="90.0" y="511.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">standard BC4 blocks, which are uploaded into the texture — the decode is lossless, so the sampled coverage is</text>
+<text x="90.0" y="534.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">bit-identical to a direct upload. a requested size picks the smallest baked size at or above the physical size</text>
+<text x="90.0" y="557.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">and scales the glyph by the ratio, so text is only ever minified, never magnified below it. at draw time the UV</text>
+<text x="90.0" y="580.0" font-size="13" fill="#1E293B" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-weight="normal">is computed from the pixel, the atlas sampled, and the coverage inverted to act as a distance-like mask.</text>
 </svg>

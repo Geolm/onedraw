@@ -36,8 +36,8 @@
 #include <stdbool.h>
 
 #define ONEDRAW_MAJOR_VERSION   (3)
-#define ONEDRAW_MINOR_VERSION   (4)
-#define ONEDRAW_PATCH           (0)
+#define ONEDRAW_MINOR_VERSION   (5)
+#define ONEDRAW_PATCH           (1)
 
 //----------------------------------------------------------------------------------------------------------------------------
 // Structures

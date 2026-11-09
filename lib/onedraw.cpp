@@ -9,6 +9,7 @@
 #include "default_font_atlas.h"
 #include "binning.h"
 #include "rasterization.h"
+#include "bc_decompress.h"
 #include <stdatomic.h>
 #include <string.h>
 
@@ -232,6 +233,7 @@ struct onedraw
     {
         MTL::Texture* texture {nullptr};
         MTL::Buffer* glyphs {nullptr};
+        MTL::ComputePipelineState* decompress_pso {nullptr};
         // points at the static table serialized by the baker (default_font.h)
         const font_bank* desc {nullptr};
     } font;
@@ -610,6 +612,7 @@ void od_build_pso(struct onedraw* r)
     SAFE_RELEASE(r->rasterizer.pso);
     SAFE_RELEASE(r->rasterizer.clean_pso);
     SAFE_RELEASE(r->tiles.write_icb_pso);
+    SAFE_RELEASE(r->font.decompress_pso);
 
     NS::Error* pError = nullptr;
     MTL::Library* pLibrary = r->device->newLibrary( NS::String::string(binning_shader, NS::UTF8StringEncoding), nullptr, &pError );
@@ -699,20 +702,45 @@ void od_build_pso(struct onedraw* r)
     }
     else
         od_log(r, "error while compiling rasterization shader : %s", pError->localizedDescription()->utf8String());
+
+    pLibrary = r->device->newLibrary( NS::String::string(bc_decompress_shader, NS::UTF8StringEncoding), nullptr, &pError );
+    if (pLibrary != nullptr)
+    {
+        r->font.decompress_pso = create_pso(r, pLibrary, "bcp_decompress_bc4");
+
+        if (r->font.decompress_pso == nullptr)
+            od_log(r, "error while compiling the bc decompress shader : %s", pError->localizedDescription()->utf8String());
+
+        pLibrary->release();
+    }
+    else
+        od_log(r, "error while compiling the bc decompress shader : %s", pError->localizedDescription()->utf8String());
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
+// matches decode_args_t of bc_decompress.metal, the stream carries no width / height
+struct bc_decode_args
+{
+    uint32_t width;
+    uint32_t height;
+    uint64_t input_length;
+};
+
 void od_build_font(struct onedraw* r)
 {
-    if ((size_t)r->font.desc->texture_width * r->font.desc->texture_height / 2 != default_font_atlas_size)
+    const uint32_t width = r->font.desc->texture_width;
+    const uint32_t height = r->font.desc->texture_height;
+
+    // the packed stream of the raw 1-byte-per-pixel atlas must never exceed the raw size
+    if ((default_font_atlas_size == 0) || (default_font_atlas_size > (size_t)width * height))
     {
-        od_log(r, "error: the baked atlas size does not match its dimensions, re-run the builder");
+        od_log(r, "error: the baked atlas stream size does not match its dimensions, re-run the builder");
         return;
     }
 
     MTL::TextureDescriptor* pTextureDesc = MTL::TextureDescriptor::alloc()->init();
-    pTextureDesc->setWidth(r->font.desc->texture_width);
-    pTextureDesc->setHeight(r->font.desc->texture_height);
+    pTextureDesc->setWidth(width);
+    pTextureDesc->setHeight(height);
     pTextureDesc->setPixelFormat(MTL::PixelFormatBC4_RUnorm);
     pTextureDesc->setTextureType(MTL::TextureType2D);
     pTextureDesc->setMipmapLevelCount(1);
@@ -720,12 +748,45 @@ void od_build_font(struct onedraw* r)
     pTextureDesc->setStorageMode(MTL::StorageModeShared);
 
     r->font.texture = r->device->newTexture(pTextureDesc);
-
-    r->font.texture->replaceRegion( MTL::Region(
-        0, 0, 0,
-        r->font.desc->texture_width, r->font.desc->texture_height, 1 ),
-        0, default_font_atlas, (r->font.desc->texture_width/4) * 8);
     pTextureDesc->release();
+
+    if (r->font.texture == nullptr)
+    {
+        od_log(r, "can't create the font atlas texture");
+        return;
+    }
+
+    if (r->font.decompress_pso == nullptr)
+    {
+        od_log(r, "error: the font atlas decompression pipeline is missing, the atlas will stay empty");
+        return;
+    }
+
+    // decompress the packed stream into a buffer of standard bc4 blocks, then upload it into the texture
+    MTL::Buffer* stream = r->device->newBuffer(default_font_atlas, default_font_atlas_size, MTL::ResourceStorageModeShared);
+    MTL::Buffer* blocks = r->device->newBuffer((width / 4) * (height / 4) * 8, MTL::ResourceStorageModeShared);
+
+    MTL::CommandBuffer* pCommandBuffer = r->command_queue->commandBuffer();
+    MTL::ComputeCommandEncoder* pComputeEncoder = pCommandBuffer->computeCommandEncoder();
+    bc_decode_args args = { width, height, (uint64_t)default_font_atlas_size };
+    pComputeEncoder->setComputePipelineState(r->font.decompress_pso);
+    pComputeEncoder->setBuffer(stream, 0, 0);
+    pComputeEncoder->setBuffer(blocks, 0, 1);
+    pComputeEncoder->setBytes(&args, sizeof(args), 2);
+    pComputeEncoder->dispatchThreads(MTL::Size(64, 1, 1), MTL::Size(1, 1, 1));
+    pComputeEncoder->endEncoding();
+    pCommandBuffer->commit();
+    pCommandBuffer->waitUntilCompleted();
+
+    // replaceRegion reads the cpu pointer at call time, so it must run after the decode is done.
+    // a buffer->texture blit of a compressed format re-interprets the source layout (it scrambled the
+    // block grid), replaceRegion uploads it as-is : one 4-px row per (width/4)*8-byte pitch
+    r->font.texture->replaceRegion( MTL::Region(0, 0, 0, width, height, 1),
+        0, blocks->contents(), (width / 4) * 8);
+
+    SAFE_RELEASE(stream);
+    SAFE_RELEASE(blocks);
+    // the command buffer is autoreleased : the autorelease pool takes it, no manual release
 
     // one-shot upload of the whole gpu glyph table : every face, unscaled sizes (the scale is per command)
     font_char cpu_buffer[MAX_FACES * MAX_GLYPHS];
@@ -1424,6 +1485,7 @@ void od_terminate(struct onedraw* r)
     SAFE_RELEASE(r->command_queue);
     SAFE_RELEASE(r->font.texture);
     SAFE_RELEASE(r->font.glyphs);
+    SAFE_RELEASE(r->font.decompress_pso);
     SAFE_RELEASE(r->screenshot.texture);
     SAFE_RELEASE(r->offscreen.texture);
     SAFE_RELEASE(r->sample_buffer);
