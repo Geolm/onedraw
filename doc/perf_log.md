@@ -48,7 +48,7 @@ gpu time (last 4045 frames) : 0.25 ms (binning 0.17 ms, rasterization 0.08 ms)
 gpu memory : 53661 kb (peak num commands : 2086)
 
 
-## version 3.1.0
+## version 3.4.0
 
 ### no cache
 gpu time (last 4317 frames) : 0.52 ms (binning 0.24 ms, rasterization 0.28 ms)
@@ -57,3 +57,14 @@ gpu memory : 24148 kb (peak num commands : 2009)
 ### cache
 gpu time (last 2552 frames) : 0.27 ms (binning 0.21 ms, rasterization 0.05 ms)
 gpu memory : 27988 kb (peak num commands : 2009)
+
+
+## version 3.4.0
+
+### no cache
+gpu time (last 2088 frames) : 0.52 ms (binning 0.25 ms, rasterization 0.28 ms)
+gpu memory : 24260 kb (peak num commands : 2078)
+
+### cache
+gpu time (last 1497 frames) : 0.26 ms (binning 0.21 ms, rasterization 0.05 ms)
+gpu memory : 28100 kb (peak num commands : 2078)
