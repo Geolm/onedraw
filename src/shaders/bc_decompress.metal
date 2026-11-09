@@ -22,8 +22,13 @@
 // buffer(2): constant decode_args_t
 //
 // The stream layout parsed here mirrors the CPU compressor / decompressor:
-//   BC4 [2 endpoint models][64 index models][strip seed, 2 bytes]
+//   BC4 [2 endpoint models][64 index models][strip seed, 2 bytes][flat index mode + value, 1 byte]
 //       [2-align][63 strip offsets u16, deltas in dword units][4-align][strip bitstreams]
+//
+// The flat index mode (bit 0 of the mode + value byte, the value in the upper bits) is decided once in
+// the first pass: 1 when at least one block has identical endpoints and every such block holds the same
+// uniform 3-bit index value. A block with identical endpoints then stores no index payload: the header
+// value is expanded to all 16 indices, instead of the full index payload.
 //
 // On a corrupted stream the decode runs to completion and the output is garbage, mirroring the
 // CPU version which only reports the failure after the whole strip was decoded. A valid stream
@@ -295,7 +300,7 @@ uint16_t read_u16(const device uint8_t* input, uint64_t pos)
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// bc45_decode_strip: GPU mirror of bcp_compress_bc45 / bcp_decompress_bc45 (third_party/bc_packed.c):
+// bc4_decode_strip: GPU mirror of bcp_compress_bc4 / bcp_decompress_bc4 (third_party/bc_packed.c):
 // one thread decompresses one strip of the BC4 stream, the standard block layout is: two 8-bit
 // endpoints followed by the 48-bit little-endian field of the 16 3-bit indices, 8 bytes per block.
 //
@@ -319,11 +324,10 @@ uint8_t bc4_index_context(uint8_t left, uint8_t top)
     return (uint8_t)(left * BC4_INDEX_DIM + top);
 }
 
-template <uint NumChannels>
-void bc45_decode_strip(const device uint8_t* input,
-                       device uint8_t* output,
-                       constant decode_args_t& args,
-                       uint3 grid_pos)
+void bc4_decode_strip(const device uint8_t* input,
+                      device uint8_t* output,
+                      constant decode_args_t& args,
+                      uint3 grid_pos)
 {
     if ((args.width < 16) || (args.height < 256) || (grid_pos.x >= NUM_STRIPS))
         return;
@@ -335,38 +339,39 @@ void bc45_decode_strip(const device uint8_t* input,
 
     // offset both input and output by run_id so each run reads from and writes to
     // a distinct memory region, exercising DRAM bandwidth instead of staying in L2
-    const uint64_t image_size = (uint64_t)width_blocks * (uint64_t)height_blocks * 8 * NumChannels;
+    const uint64_t image_size = (uint64_t)width_blocks * (uint64_t)height_blocks * 8;
     input += (uint64_t)grid_pos.y * length;
     output += (uint64_t)grid_pos.y * image_size;
 
     //-------------------------------------------------------------------------------------------------------------------------
-    // load the static models: per channel, the 2 endpoint models (256 symbols) then the 64
-    // compact index models (8 symbols)
-    model_t endpoint[NumChannels][2];
-    model8_t index[NumChannels][BC4_INDEX_CONTEXTS];
+    // load the static models: the 2 endpoint models (256 symbols) then the 64 compact index models (8 symbols)
+    model_t endpoint[2];
+    model8_t index[BC4_INDEX_CONTEXTS];
 
     thread uint64_t pos = 0;
-    for (uint c = 0; c < NumChannels; ++c)
-    {
-        for (uint e = 0; e < 2; ++e)
-            if (!load_model(input, length, &pos, &endpoint[c][e]))
-                return;
+    for (uint e = 0; e < 2; ++e)
+        if (!load_model(input, length, &pos, &endpoint[e]))
+            return;
 
-        for (uint i = 0; i < BC4_INDEX_CONTEXTS; ++i)
-            if (!load_model8(input, length, &pos, &index[c][i]))
-                return;
-    }
+    for (uint i = 0; i < BC4_INDEX_CONTEXTS; ++i)
+        if (!load_model8(input, length, &pos, &index[i]))
+            return;
 
-    // strip seed: 2 bytes per channel, endpoint 0 then endpoint 1
-    if (pos + 2 * NumChannels > length)
+    // strip seed: 2 bytes, endpoint 0 then endpoint 1
+    if (pos + 2 > length)
         return;
 
-    uint8_t seed[NumChannels][2];
-    for (uint c = 0; c < NumChannels; ++c)
-    {
-        for (uint e = 0; e < 2; ++e)
-            seed[c][e] = input[pos++];
-    }
+    uint8_t seed[2];
+    for (uint e = 0; e < 2; ++e)
+        seed[e] = input[pos++];
+
+    // flat-index mode + value: one byte (mode | value << 1), after the seeds, before the 2-align
+    if (pos + 1 > length)
+        return;
+
+    uint8_t flat_byte = input[pos++];
+    bool flat_mode = (flat_byte & 1) != 0;
+    uint8_t flat_value = (flat_byte >> 1) & 7;
 
     //-------------------------------------------------------------------------------------------------------------------------
     // strip offsets (deltas in dword units), then the strip bitstream of this thread
@@ -397,22 +402,19 @@ void bc45_decode_strip(const device uint8_t* input,
 
     //-------------------------------------------------------------------------------------------------------------------------
     // decode the strip block by block, zigzag order
-    // seed "previous block" of the strip: one byte per channel and endpoint
-    uint8_t prev_e[NumChannels][2], top_e[NumChannels][2], top_prev_e[NumChannels][2];
-    for (uint c = 0; c < NumChannels; ++c)
+    // seed "previous block" of the strip: one byte per endpoint
+    uint8_t prev_e[2], top_e[2], top_prev_e[2];
+    for (uint e = 0; e < 2; ++e)
     {
-        for (uint e = 0; e < 2; ++e)
-        {
-            prev_e[c][e] = seed[c][e];
-            top_e[c][e] = 0;
-            top_prev_e[c][e] = 0;
-        }
+        prev_e[e] = seed[e];
+        top_e[e] = 0;
+        top_prev_e[e] = 0;
     }
 
     const tile_bounds tb = tile_bounds_get(strip_id, width_blocks, height_blocks);
     const uint tile_width = tb.x1 - tb.x0;
 
-    // the output is read back for the top prediction: the two endpoints of a channel block
+    // the output is read back for the top prediction: the two endpoints of a block
     // sit in the low bytes of one u32 (the block is 8-aligned)
 
     for (uint y = tb.y0; y < tb.y1; ++y)
@@ -425,28 +427,35 @@ void bc45_decode_strip(const device uint8_t* input,
             const bool row_start = (x == 0);
             const uint64_t block_index = (uint64_t)y * width_blocks + zigzag_x;
 
-            for (uint c = 0; c < NumChannels; ++c)
+            device uint8_t* b = output + block_index * 8;
+            uint8_t idx[16];
+
+            if (!first_row)
             {
-                device uint8_t* b = output + (block_index * NumChannels + c) * 8;
-                uint8_t idx[16];
+                const device uint32_t* t = (const device uint32_t*)(output + ((uint64_t)(y - 1) * width_blocks + zigzag_x) * 8);
+                uint32_t top = t[0];
+                top_e[0] = (uint8_t)(top & 0xFF);
+                top_e[1] = (uint8_t)((top >> 8) & 0xFF);
+            }
 
-                if (!first_row)
-                {
-                    const device uint32_t* t = (const device uint32_t*)(output + ((uint64_t)(y - 1) * width_blocks + zigzag_x) * NumChannels * 8 + c * 8);
-                    uint32_t top = t[0];
-                    top_e[c][0] = (uint8_t)(top & 0xFF);
-                    top_e[c][1] = (uint8_t)((top >> 8) & 0xFF);
-                }
+            // endpoint payload: the two wrapped deltas against the strip-chain predictor
+            uint8_t e[2];
+            for (uint j = 0; j < 2; ++j)
+            {
+                uint8_t pred = bc4_endpoint_predict(first_row, row_start, prev_e[j], top_e[j], top_prev_e[j]);
 
-                // endpoint payload: the two wrapped deltas against the strip-chain predictor
-                uint8_t e[2];
-                for (uint j = 0; j < 2; ++j)
-                {
-                    uint8_t pred = bc4_endpoint_predict(first_row, row_start, prev_e[c][j], top_e[c][j], top_prev_e[c][j]);
+                e[j] = (uint8_t)(pred + decode_symbol(&compressed_stream, &endpoint[j]));
+            }
 
-                    e[j] = (uint8_t)(pred + decode_symbol(&compressed_stream, &endpoint[c][j]));
-                }
-
+            // a flat block (identical endpoints, reconstructed exactly like the encoder sees the
+            // source) in mode 1 stores no index payload: the header value is expanded to all 16
+            if ((e[0] == e[1]) && flat_mode)
+            {
+                for (uint i = 0; i < 16; ++i)
+                    idx[i] = flat_value;
+            }
+            else
+            {
                 // index payload: the first index in raw 3 bits, then each index xored with its
                 // intra-block prediction, contextual on the 8 x 8 [left][top] matrix
                 idx[0] = bs_read_bits(&compressed_stream, 3);
@@ -458,26 +467,26 @@ void bc45_decode_strip(const device uint8_t* input,
                     uint8_t top = (i < 4) ? 0 : idx[i - 4];
                     uint8_t p = ((i & 3) == 0) ? top : left;
 
-                    idx[i] = (uint8_t)(p ^ decode_symbol8(&compressed_stream, &index[c][bc4_index_context(left, top)]));
+                    idx[i] = (uint8_t)(p ^ decode_symbol8(&compressed_stream, &index[bc4_index_context(left, top)]));
                 }
-
-                // the standard block: two endpoints + the 48-bit little-endian index field, as two aligned u32 words
-                uint64_t v = 0;
-                for (uint i = 0; i < 16; ++i)
-                    v |= ((uint64_t)idx[i] & 7) << (3 * i);
-
-                device uint32_t* p32 = (device uint32_t*)b;
-                p32[0] = (uint32_t)e[0] | ((uint32_t)e[1] << 8) | ((uint32_t)v << 16);
-                p32[1] = (uint32_t)(v >> 16);
-
-                if (!first_row)
-                {
-                    top_prev_e[c][0] = top_e[c][0];
-                    top_prev_e[c][1] = top_e[c][1];
-                }
-                prev_e[c][0] = e[0];
-                prev_e[c][1] = e[1];
             }
+
+            // the standard block: two endpoints + the 48-bit little-endian index field, as two aligned u32 words
+            uint64_t v = 0;
+            for (uint i = 0; i < 16; ++i)
+                v |= ((uint64_t)idx[i] & 7) << (3 * i);
+
+            device uint32_t* p32 = (device uint32_t*)b;
+            p32[0] = (uint32_t)e[0] | ((uint32_t)e[1] << 8) | ((uint32_t)v << 16);
+            p32[1] = (uint32_t)(v >> 16);
+
+            if (!first_row)
+            {
+                top_prev_e[0] = top_e[0];
+                top_prev_e[1] = top_e[1];
+            }
+            prev_e[0] = e[0];
+            prev_e[1] = e[1];
         }
     }
 }
@@ -487,5 +496,5 @@ kernel void bcp_decompress_bc4(const device uint8_t* input [[buffer(0)]],
                                constant decode_args_t& args [[buffer(2)]],
                                uint3 grid_pos [[thread_position_in_grid]])
 {
-    bc45_decode_strip<1>(input, output, args, grid_pos);
+    bc4_decode_strip(input, output, args, grid_pos);
 }
