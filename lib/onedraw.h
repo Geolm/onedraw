@@ -36,8 +36,8 @@
 #include <stdbool.h>
 
 #define ONEDRAW_MAJOR_VERSION   (3)
-#define ONEDRAW_MINOR_VERSION   (5)
-#define ONEDRAW_PATCH           (2)
+#define ONEDRAW_MINOR_VERSION   (6)
+#define ONEDRAW_PATCH           (0)
 
 //----------------------------------------------------------------------------------------------------------------------------
 // Structures
@@ -117,10 +117,17 @@ extern "C" {
 size_t od_min_memory_size(void);
 
 //-----------------------------------------------------------------------------------------------------------------------------
+// Returns true when the system has a Metal device that supports the onedraw requirements (M1/A14 or later)
+// Use it before od_init() when metal_device is NULL, to tell an unsupported machine from an init failure
+bool od_is_supported(void);
+
+//-----------------------------------------------------------------------------------------------------------------------------
 // Initializes the library
 //      [def]                   must be non-NULL
 //      [preallocated_buffer]   user-allocated memory of od_min_memory_size() bytes, must be aligned on sizeof(uintptr_t)
-//      [metal_device]          pointer to (MTL::Device*) device or obj-C equivalent
+//      [metal_device]          pointer to (MTL::Device*) device or obj-C equivalent. onedraw retains it until
+//                              od_terminate. can be NULL when allow_offscreen is true: onedraw then creates
+//                              the default device
 //      [viewport_width]        must be non-zero
 //      [viewport_height]       must be non-zero
 //      [log_func]              pointer to the log function, can be NULL if no log required
@@ -136,7 +143,7 @@ size_t od_min_memory_size(void);
 //      [allow_offscreen]       if true, a library-owned offscreen render target is allocated (4 bytes per
 //                               pixel, up to ~64 MiB at the 4096x4096 max resolution, in the backbuffer
 //                               pixel format). it is the render target of od_end_frame() when the drawable
-//                               is NULL
+//                               is NULL. required when metal_device is NULL
 //
 // returns NULL on failure (invalid def, unaligned buffer, non M1/A14 GPU, zero viewport, can't create a command queue)
 struct onedraw* od_init(onedraw_def* def);
@@ -237,7 +244,7 @@ void* od_get_offscreen_texture(struct onedraw* r);
 float od_get_average_gputime(struct onedraw* r);
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// Frees GPU and CPU memory used by the renderer
+// Frees GPU and CPU memory used by the renderer and releases the Metal device
 void od_terminate(struct onedraw* r);
 
 //-----------------------------------------------------------------------------------------------------------------------------

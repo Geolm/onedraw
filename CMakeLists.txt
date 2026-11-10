@@ -70,7 +70,6 @@ target_link_libraries(test
 add_executable(headless
     ./lib/onedraw.cpp
     ./tests/headless.c
-    ./tests/metal_device.mm
     ./tests/scene.c
     ./tests/compare.c
 )

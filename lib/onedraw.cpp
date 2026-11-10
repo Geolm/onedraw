@@ -1110,9 +1110,20 @@ size_t od_min_memory_size(void)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
+bool od_is_supported(void)
+{
+    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+    MTL::Device* device = MTL::CreateSystemDefaultDevice();
+    bool supported = (device != nullptr) && device->supportsFamily(MTL::GPUFamilyApple7);
+    SAFE_RELEASE(device);
+    pool->release();
+    return supported;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
 struct onedraw* od_init(onedraw_def* def)
 {
-    if (def == nullptr || def->preallocated_buffer == nullptr || def->metal_device == nullptr)
+    if (def == nullptr || def->preallocated_buffer == nullptr)
         return nullptr;
 
     // a failure must not crash the host, return nullptr instead
@@ -1123,11 +1134,10 @@ struct onedraw* od_init(onedraw_def* def)
         return nullptr;
     }
 
-    // release build has no assert, check the GPU family in all cases
-    if (!((MTL::Device*)def->metal_device)->supportsFamily(MTL::GPUFamilyApple7))
+    if (def->metal_device == nullptr && !def->allow_offscreen)
     {
         if (def->log_func != nullptr)
-            def->log_func("onedraw: requires a M1/A14 (or later) GPU, can't init");
+            def->log_func("onedraw: metal_device is NULL, allow_offscreen must be true to let onedraw create the device");
         return nullptr;
     }
 
@@ -1138,10 +1148,37 @@ struct onedraw* od_init(onedraw_def* def)
         return nullptr;
     }
 
+    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+
+    // the renderer holds its own reference for its whole lifetime, so the caller can release its own at any time
+    MTL::Device* device = (MTL::Device*)def->metal_device;
+    if (device != nullptr)
+        device->retain();
+    else
+        device = MTL::CreateSystemDefaultDevice();
+
+    if (device == nullptr)
+    {
+        if (def->log_func != nullptr)
+            def->log_func("onedraw: can't create the default Metal device, can't init");
+        pool->release();
+        return nullptr;
+    }
+
+    // release build has no assert, check the GPU family in all cases
+    if (!device->supportsFamily(MTL::GPUFamilyApple7))
+    {
+        if (def->log_func != nullptr)
+            def->log_func("onedraw: requires a M1/A14 (or later) GPU, can't init");
+        SAFE_RELEASE(device);
+        pool->release();
+        return nullptr;
+    }
+
     onedraw* r = new(def->preallocated_buffer) onedraw;
 
     r->custom_log = def->log_func;
-    r->device = (MTL::Device*)def->metal_device;
+    r->device = device;
     r->command_queue = r->device->newCommandQueue();
     r->screenshot.allocate_resources = def->allow_screenshot;
     r->offscreen.allocate_resources = def->allow_offscreen;
@@ -1157,6 +1194,8 @@ struct onedraw* od_init(onedraw_def* def)
         r->commands.data_buffer.Terminate();
         r->commands.aabb_buffer.Terminate();
         r->commands.clipshapes_buffer.Terminate();
+        SAFE_RELEASE(r->device);
+        pool->release();
         return nullptr;
     }
 
@@ -1232,6 +1271,7 @@ struct onedraw* od_init(onedraw_def* def)
     if (def->atlas.width != 0)
         od_create_atlas(r, def->atlas.width, def->atlas.height, def->atlas.num_slices);
 
+    pool->release();
     return r;
 }
 
@@ -1492,6 +1532,7 @@ void od_terminate(struct onedraw* r)
         dispatch_release(r->semaphore);
         r->semaphore = nullptr;
     }
+    SAFE_RELEASE(r->device);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

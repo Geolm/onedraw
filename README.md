@@ -30,6 +30,8 @@
 3. Create your window and provide the Metal device and drawable object.
 4. Link with Metal framework
 
+For offscreen rendering only, no window or device is needed: set `allow_offscreen` and pass `NULL` as `metal_device`, then call `od_end_frame()` with a `NULL` drawable.
+
 
 ### Minimal example
 ```c
