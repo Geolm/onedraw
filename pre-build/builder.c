@@ -13,12 +13,9 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
-// arena.h : the backend must be selected before its first inclusion (shader_reader.h does
-// one, declaration-only), and the implementation pass (ARENA_IMPLEMENTATION, which sits
-// outside the include guard) must run exactly once - after that first inclusion
+// arena.h : the backend must be selected before its first inclusion, and the implementation
+// pass (ARENA_IMPLEMENTATION, which sits outside the include guard) must run exactly once
 #define ARENA_BACKEND ARENA_BACKEND_LINUX_MMAP
-
-#include "shader_reader.h"
 
 #define ARENA_NOSTDIO
 #define ARENA_IMPLEMENTATION
@@ -35,10 +32,8 @@
 #define ATLAS_PADDING   (1)   // 1 px gutter, the packer stores it on the left and top of every glyph
 #define FONT_H "lib/default_font_atlas.h"
 #define GLYPH_H "lib/default_font.h"
+#define SHADERS_H "lib/shaders.h"
 #define SHADERS_FOLDER    "src/shaders/"
-#define BINNING_SHADER          "binning.metal"
-#define RASTERIZER_SHADER       "rasterizer.metal"
-#define BC_DECOMPRESS_SHADER    "bc_decompress.metal"
 #define CPU_GPU_COMMON_FILE     "common.h"
 
 // the sizes are physical pixels, shared by every font, and must match OD_NUM_FONT_SIZES
@@ -120,15 +115,16 @@ static bool verify_inputs(void)
     for (int i = 0; i < OD_NUM_FONTS; ++i)
     {
         if (!file_exists(FONT_FILES[i]))
+        {
             fprintf(stderr, "error: could not find the font file '%s'\n", FONT_FILES[i]);
+            ok = false;
+        }
     }
 
-    const char* inputs[] = {SHADERS_FOLDER BINNING_SHADER, SHADERS_FOLDER RASTERIZER_SHADER, SHADERS_FOLDER BC_DECOMPRESS_SHADER, SHADERS_FOLDER CPU_GPU_COMMON_FILE};
-
-    for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i)
+    if (!file_exists(SHADERS_FOLDER CPU_GPU_COMMON_FILE))
     {
-        if (!file_exists(inputs[i]))
-            fprintf(stderr, "error: could not find '%s'\n", inputs[i]);
+        fprintf(stderr, "error: could not find '%s'\n", SHADERS_FOLDER CPU_GPU_COMMON_FILE);
+        ok = false;
     }
 
     if (!ok)
@@ -588,61 +584,18 @@ bool build_fonts(Arena* arena)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-bool prepare_shaders(Arena* arena)
+bool prepare_shaders(Arena* arena, const char* metallib)
 {
-    fprintf(stdout, "\npreparing shaders\n");
+    fprintf(stdout, "\nwritting %s : ", SHADERS_H);
 
-    fprintf(stdout, "opening %s : ", BINNING_SHADER);
-    char* shader = read_shader_include(arena, SHADERS_FOLDER, BINNING_SHADER);
+    size_t size = 0;
+    void* binary = read_file(metallib, &size, arena);
 
-    if (shader == NULL)
-        return false; // read_shader_include reported the error
+    if (binary == NULL)
+        return false; // read_file reported the error
 
-    if (strlen(shader) == 0)
-    {
-        fprintf(stderr, "error: shader '%s%s' is empty\n", SHADERS_FOLDER, BINNING_SHADER);
-        return false;
-    }
-
-    fprintf(stdout, "ok\nwritting %s : ", LIB_FOLDER"binning.h");
-    if (!string2h(LIB_FOLDER"binning.h", "binning_shader", shader, strlen(shader)))
-        return false; // string2h reported the error
-
-    fprintf(stdout, "ok\n");
-
-    fprintf(stdout, "opening %s : ", RASTERIZER_SHADER);
-    shader = read_shader_include(arena, SHADERS_FOLDER, RASTERIZER_SHADER);
-
-    if (shader == NULL)
-        return false; // read_shader_include reported the error
-
-    if (strlen(shader) == 0)
-    {
-        fprintf(stderr, "error: shader '%s%s' is empty\n", SHADERS_FOLDER, RASTERIZER_SHADER);
-        return false;
-    }
-
-    fprintf(stdout, "ok\nwritting %s : ", LIB_FOLDER"rasterization.h");
-    if (!string2h(LIB_FOLDER"rasterization.h", "rasterization_shader", shader, strlen(shader)))
-        return false; // string2h reported the error
-
-    fprintf(stdout, "ok\n");
-
-    fprintf(stdout, "opening %s : ", BC_DECOMPRESS_SHADER);
-    shader = read_shader_include(arena, SHADERS_FOLDER, BC_DECOMPRESS_SHADER);
-
-    if (shader == NULL)
-        return false; // read_shader_include reported the error
-
-    if (strlen(shader) == 0)
-    {
-        fprintf(stderr, "error: shader '%s%s' is empty\n", SHADERS_FOLDER, BC_DECOMPRESS_SHADER);
-        return false;
-    }
-
-    fprintf(stdout, "ok\nwritting %s : ", LIB_FOLDER"bc_decompress.h");
-    if (!string2h(LIB_FOLDER"bc_decompress.h", "bc_decompress_shader", shader, strlen(shader)))
-        return false; // string2h reported the error
+    if (!bin2h(SHADERS_H, "shaders_metallib", binary, size))
+        return false; // bin2h reported the error
 
     fprintf(stdout, "ok\n");
     return true;
@@ -672,9 +625,15 @@ static void track_peak_memory(Arena* arena, size_t* peak)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-int main(void)
+int main(int argc, char** argv)
 {
     fprintf(stdout, "onedraw %d.%d.%d library builder\n\n", ONEDRAW_MAJOR_VERSION, ONEDRAW_MINOR_VERSION, ONEDRAW_PATCH);
+
+    if (argc < 2)
+    {
+        fprintf(stderr, "usage: %s <metallib>\n", argv[0]);
+        return 1;
+    }
 
     if (!build_codepoints())
         return 1;
@@ -690,7 +649,7 @@ int main(void)
     track_peak_memory(&arena, &peak_memory);
     arena_reset(&arena);
 
-    success = success && prepare_shaders(&arena);
+    success = success && prepare_shaders(&arena, argv[1]);
 
     track_peak_memory(&arena, &peak_memory);
     arena_reset(&arena);

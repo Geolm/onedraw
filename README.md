@@ -88,10 +88,13 @@ See [tests/test.c](tests/test.c) for an example testing all features using [soko
 Follow the step to build and run the test program
 
 * mkdir build
-* cd build
-* cmake ..
-* make
-* ./test
+* cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+* cmake --build build
+* build/test
+
+The pre-build step compiles the Metal shaders, so it requires the Metal Toolchain (Xcode 26 and later ship it as an optional component): `xcodebuild -downloadComponent metalToolchain`.
+
+Set `-DONEDRAW_SHADER_DEBUG_INFO=ON` to compile the shaders with `-g -frecord-sources` for source-level shader debugging; it is off by default.
 
 ### Links and references
 

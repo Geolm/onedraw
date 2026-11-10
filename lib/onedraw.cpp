@@ -7,9 +7,7 @@
 #include "common.h"
 #include "default_font.h"
 #include "default_font_atlas.h"
-#include "binning.h"
-#include "rasterization.h"
-#include "bc_decompress.h"
+#include "shaders.h"
 #include <stdatomic.h>
 #include <string.h>
 
@@ -588,6 +586,15 @@ static inline void merge_quantized_aabb(quantized_aabb* merge, const quantized_a
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
+MTL::Library* create_library(struct onedraw* r, const void* binary, size_t size, NS::Error** pError)
+{
+    dispatch_data_t data = dispatch_data_create(binary, size, nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+    MTL::Library* pLibrary = r->device->newLibrary(data, pError);
+    dispatch_release(data);
+    return pLibrary;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
 MTL::ComputePipelineState* create_pso(struct onedraw* r, MTL::Library* pLibrary, const char* function_name)
 {
     MTL::Function *pFunction = pLibrary->newFunction(NS::String::string(function_name, NS::UTF8StringEncoding));
@@ -615,106 +622,97 @@ void od_build_pso(struct onedraw* r)
     SAFE_RELEASE(r->font.decompress_pso);
 
     NS::Error* pError = nullptr;
-    MTL::Library* pLibrary = r->device->newLibrary( NS::String::string(binning_shader, NS::UTF8StringEncoding), nullptr, &pError );
-    if (pLibrary != nullptr)
+    MTL::Library* pLibrary = create_library(r, shaders_metallib, shaders_metallib_size, &pError);
+    if (pLibrary == nullptr)
     {
-        MTL::Function* pTileBinningFunction = pLibrary->newFunction(NS::String::string("tile_bin", NS::UTF8StringEncoding));
-        NS::Error* pError = nullptr;
-        r->tiles.binning_pso = r->device->newComputePipelineState(pTileBinningFunction, &pError);
+        od_log(r, "error while loading the shaders library : %s", pError->localizedDescription()->utf8String());
+        return;
+    }
 
-        if (r->tiles.binning_pso == nullptr)
-        {
-            od_log(r, "%s", pError->localizedDescription()->utf8String());
-            return;
-        }
+    MTL::Function* pTileBinningFunction = pLibrary->newFunction(NS::String::string("tile_bin", NS::UTF8StringEncoding));
+    r->tiles.binning_pso = r->device->newComputePipelineState(pTileBinningFunction, &pError);
 
-        MTL::ArgumentEncoder* inputArgumentEncoder = pTileBinningFunction->newArgumentEncoder(0);
-        MTL::ArgumentEncoder* outputArgumentEncoder = pTileBinningFunction->newArgumentEncoder(1);
-
-        r->commands.draw_arg.Init(r->device, inputArgumentEncoder->encodedLength());
-        r->commands.bin_output_arg.Init(r->device, outputArgumentEncoder->encodedLength());
-
+    if (r->tiles.binning_pso == nullptr)
+    {
+        od_log(r, "%s", pError->localizedDescription()->utf8String());
         pTileBinningFunction->release();
-        inputArgumentEncoder->release();
-        outputArgumentEncoder->release();
+        pLibrary->release();
+        return;
+    }
 
-        MTL::Function* pWriteIcbFunction = pLibrary->newFunction(NS::String::string("write_icb", NS::UTF8StringEncoding));
-        r->tiles.write_icb_pso = r->device->newComputePipelineState(pWriteIcbFunction, &pError);
-        if (r->tiles.write_icb_pso == nullptr)
-        {
-            od_log(r, "%s", pError->localizedDescription()->utf8String());
-            return;
-        }
+    MTL::ArgumentEncoder* inputArgumentEncoder = pTileBinningFunction->newArgumentEncoder(0);
+    MTL::ArgumentEncoder* outputArgumentEncoder = pTileBinningFunction->newArgumentEncoder(1);
 
-        r->tiles.indirect_arg = r->device->newBuffer(2 * sizeof(MTL::DrawPrimitivesIndirectArguments), MTL::ResourceStorageModeShared);
+    r->commands.draw_arg.Init(r->device, inputArgumentEncoder->encodedLength());
+    r->commands.bin_output_arg.Init(r->device, outputArgumentEncoder->encodedLength());
 
+    pTileBinningFunction->release();
+    inputArgumentEncoder->release();
+    outputArgumentEncoder->release();
+
+    MTL::Function* pWriteIcbFunction = pLibrary->newFunction(NS::String::string("write_icb", NS::UTF8StringEncoding));
+    r->tiles.write_icb_pso = r->device->newComputePipelineState(pWriteIcbFunction, &pError);
+
+    if (r->tiles.write_icb_pso == nullptr)
+    {
+        od_log(r, "%s", pError->localizedDescription()->utf8String());
         pWriteIcbFunction->release();
-
-        r->regions.binning_pso = create_pso(r, pLibrary, "region_bin");
-        r->tiles.hash_pso = create_pso(r, pLibrary, "hash_commands");
         pLibrary->release();
+        return;
     }
-    else
-        od_log(r, "error while compiling binning shader : %s", pError->localizedDescription()->utf8String());
 
-    pLibrary = r->device->newLibrary( NS::String::string(rasterization_shader, NS::UTF8StringEncoding), nullptr, &pError );
-    if (pLibrary != nullptr)
+    r->tiles.indirect_arg = r->device->newBuffer(2 * sizeof(MTL::DrawPrimitivesIndirectArguments), MTL::ResourceStorageModeShared);
+
+    pWriteIcbFunction->release();
+
+    r->regions.binning_pso = create_pso(r, pLibrary, "region_bin");
+    r->tiles.hash_pso = create_pso(r, pLibrary, "hash_commands");
+
+    MTL::Function* pVertexFunction = pLibrary->newFunction(NS::String::string("tile_vs", NS::UTF8StringEncoding));
+    MTL::Function* pFragmentFunction = pLibrary->newFunction(NS::String::string("tile_fs", NS::UTF8StringEncoding));
+
+    MTL::RenderPipelineDescriptor* pDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    pDesc->setVertexFunction(pVertexFunction);
+    pDesc->setFragmentFunction(pFragmentFunction);
+
+    MTL::RenderPipelineColorAttachmentDescriptor *pRenderbufferAttachment = pDesc->colorAttachments()->object(0);
+    pRenderbufferAttachment->setPixelFormat(r->rasterizer.srgb_backbuffer ? MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormat::PixelFormatBGRA8Unorm);
+    pRenderbufferAttachment->setBlendingEnabled(false);
+    r->rasterizer.pso = r->device->newRenderPipelineState( pDesc, &pError );
+
+    if (r->rasterizer.pso == nullptr)
+        od_log(r, "error while creating rasterizer pso : %s", pError->localizedDescription()->utf8String());
+
+    if (r->cache)
     {
-        MTL::Function* pVertexFunction = pLibrary->newFunction(NS::String::string("tile_vs", NS::UTF8StringEncoding));
-        MTL::Function* pFragmentFunction = pLibrary->newFunction(NS::String::string("tile_fs", NS::UTF8StringEncoding));
+        MTL::Function* pCleanFragmentFunction = pLibrary->newFunction(NS::String::string("clean_fs", NS::UTF8StringEncoding));
 
-        MTL::RenderPipelineDescriptor* pDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-        pDesc->setVertexFunction(pVertexFunction);
-        pDesc->setFragmentFunction(pFragmentFunction);
+        MTL::RenderPipelineDescriptor* pCleanDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+        pCleanDesc->setVertexFunction(pVertexFunction);
+        pCleanDesc->setFragmentFunction(pCleanFragmentFunction);
 
-        MTL::RenderPipelineColorAttachmentDescriptor *pRenderbufferAttachment = pDesc->colorAttachments()->object(0);
-        pRenderbufferAttachment->setPixelFormat(r->rasterizer.srgb_backbuffer ? MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormat::PixelFormatBGRA8Unorm);
-        pRenderbufferAttachment->setBlendingEnabled(false);
-        r->rasterizer.pso = r->device->newRenderPipelineState( pDesc, &pError );
+        MTL::RenderPipelineColorAttachmentDescriptor* pCleanAttachment = pCleanDesc->colorAttachments()->object(0);
+        pCleanAttachment->setPixelFormat(r->rasterizer.srgb_backbuffer ? MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormat::PixelFormatBGRA8Unorm);
+        pCleanAttachment->setBlendingEnabled(false);
+        r->rasterizer.clean_pso = r->device->newRenderPipelineState( pCleanDesc, &pError );
 
-        if (r->rasterizer.pso == nullptr)
-            od_log(r, "error while creating rasterizer pso : %s", pError->localizedDescription()->utf8String());
+        if (r->rasterizer.clean_pso == nullptr)
+            od_log(r, "error while creating clean rasterizer pso : %s", pError->localizedDescription()->utf8String());
 
-        if (r->cache)
-        {
-            MTL::Function* pCleanFragmentFunction = pLibrary->newFunction(NS::String::string("clean_fs", NS::UTF8StringEncoding));
-
-            MTL::RenderPipelineDescriptor* pCleanDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-            pCleanDesc->setVertexFunction(pVertexFunction);
-            pCleanDesc->setFragmentFunction(pCleanFragmentFunction);
-
-            MTL::RenderPipelineColorAttachmentDescriptor* pCleanAttachment = pCleanDesc->colorAttachments()->object(0);
-            pCleanAttachment->setPixelFormat(r->rasterizer.srgb_backbuffer ? MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormat::PixelFormatBGRA8Unorm);
-            pCleanAttachment->setBlendingEnabled(false);
-            r->rasterizer.clean_pso = r->device->newRenderPipelineState( pCleanDesc, &pError );
-
-            if (r->rasterizer.clean_pso == nullptr)
-                od_log(r, "error while creating clean rasterizer pso : %s", pError->localizedDescription()->utf8String());
-
-            pCleanFragmentFunction->release();
-            pCleanDesc->release();
-        }
-
-        pVertexFunction->release();
-        pFragmentFunction->release();
-        pDesc->release();
-        pLibrary->release();
+        pCleanFragmentFunction->release();
+        pCleanDesc->release();
     }
-    else
-        od_log(r, "error while compiling rasterization shader : %s", pError->localizedDescription()->utf8String());
 
-    pLibrary = r->device->newLibrary( NS::String::string(bc_decompress_shader, NS::UTF8StringEncoding), nullptr, &pError );
-    if (pLibrary != nullptr)
-    {
-        r->font.decompress_pso = create_pso(r, pLibrary, "bcp_decompress_bc4");
+    pVertexFunction->release();
+    pFragmentFunction->release();
+    pDesc->release();
 
-        if (r->font.decompress_pso == nullptr)
-            od_log(r, "error while compiling the bc decompress shader : %s", pError->localizedDescription()->utf8String());
+    r->font.decompress_pso = create_pso(r, pLibrary, "bcp_decompress_bc4");
 
-        pLibrary->release();
-    }
-    else
-        od_log(r, "error while compiling the bc decompress shader : %s", pError->localizedDescription()->utf8String());
+    if (r->font.decompress_pso == nullptr)
+        od_log(r, "error while creating the bc decompress pso : %s", pError->localizedDescription()->utf8String());
+
+    pLibrary->release();
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

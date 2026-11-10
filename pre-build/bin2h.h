@@ -11,7 +11,6 @@ extern "C" {
 
 bool bin2h(const char* filename, const char* variable, const void* buffer, size_t length);
 bool bin2h_u64(const char* filename, const char* variable, const void* buffer, size_t length);
-bool string2h(const char* filename, const char* variable, const char* string, size_t length);
 bool uint2h(const char* filename, const char* variable, const uint32_t* buffer, size_t length);
 bool copy_file(const char *src, const char *dst);
 
