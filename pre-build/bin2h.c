@@ -34,7 +34,7 @@ static FILE* open_header(const char* filename)
 }
 
 //-------------------------------------------------------------------------------------------------
-bool bin2h(const char* filename, const char* variable, const void* buffer, size_t length)
+bool bin2h_tagged(const char* filename, const char* variable, const char* comment, const void* buffer, size_t length)
 {
     if (length == 0)
     {
@@ -47,8 +47,10 @@ bool bin2h(const char* filename, const char* variable, const void* buffer, size_
         return false;
 
     fprintf(f, "#ifndef __%s__H__\n", variable);
-    fprintf(f, "#define __%s__H__\n\n", variable);
-    fprintf(f, "#include <stdint.h>\n");
+    fprintf(f, "#define __%s__H__\n", variable);
+    if (comment != NULL)
+        fprintf(f, "/* %s */\n", comment);
+    fprintf(f, "\n#include <stdint.h>\n");
     fprintf(f, "#include <stddef.h>\n\n");
     fprintf(f, "static const size_t %s_size = %zu;\n", variable, length);
     fprintf(f, "static const uint8_t %s[] =\n{\n    ", variable);
@@ -66,6 +68,12 @@ bool bin2h(const char* filename, const char* variable, const void* buffer, size_
     fprintf(f, "0x%02X\n};\n#endif\n", input[index]);
 
     return finish_header(f, filename);
+}
+
+//-------------------------------------------------------------------------------------------------
+bool bin2h(const char* filename, const char* variable, const void* buffer, size_t length)
+{
+    return bin2h_tagged(filename, variable, NULL, buffer, length);
 }
 
 //-------------------------------------------------------------------------------------------------

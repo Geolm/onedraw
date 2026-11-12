@@ -36,6 +36,10 @@
 #define SHADERS_FOLDER    "src/shaders/"
 #define CPU_GPU_COMMON_FILE     "common.h"
 
+// the .metal files feeding the metallib : lib/shaders.h is stamped with a hash of these (plus common.h
+// and the compile flags), so a rebuild can tell whether the sources changed and keep the existing file
+static const char* const SHADER_FILES[] = { "binning.metal", "rasterizer.metal", "bc_decompress.metal" };
+
 // the sizes are physical pixels, shared by every font, and must match OD_NUM_FONT_SIZES
 static const float FONT_SIZES[OD_NUM_FONT_SIZES] = {12.0f, 16.0f, 20.0f, 24.0f, 32.0f, 40.0f, 48.0f, 56.0f, 64.0f};
 static const char* const FONT_FILES[OD_NUM_FONTS] = {FONT_FILENAME_REGULAR, FONT_FILENAME_BOLD, FONT_FILENAME_ITALIC, FONT_FILENAME_MONO};
@@ -584,8 +588,101 @@ bool build_fonts(Arena* arena)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-bool prepare_shaders(Arena* arena, const char* metallib)
+// FNV-1a 64 : the stamp is a plain content hash, with no error-detection requirements
+static uint64_t fnv1a64(const void* data, size_t size, uint64_t hash)
 {
+    const uint8_t* bytes = (const uint8_t*)data;
+
+    for (size_t i = 0; i < size; ++i)
+    {
+        hash ^= bytes[i];
+        hash *= 0x00000100000001B3ull;
+    }
+
+    return hash;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// the metallib bytes depend on the version of the metal compiler of the machine that built them, so the
+// stamp only covers the shader sources and the compile flags : a matching stamp means the sources did
+// not change, and the existing header stays valid whatever the local toolchain
+static bool compute_shader_stamp(Arena* arena, const char* flags, uint64_t* out_stamp)
+{
+    char path[256];
+    uint64_t hash = 0xcbf29ce484222325ull; // the fnv-1a 64 offset basis
+
+    for (int i = 0; i < (int)(sizeof(SHADER_FILES) / sizeof(SHADER_FILES[0])); ++i)
+    {
+        size_t file_size = 0;
+
+        snprintf(path, sizeof(path), SHADERS_FOLDER "%s", SHADER_FILES[i]);
+
+        void* data = read_file(path, &file_size, arena);
+        if (data == NULL)
+            return false; // read_file reported the error
+
+        hash = fnv1a64(path, strlen(path), hash);
+        hash = fnv1a64(data, file_size, hash);
+        arena_reset(arena);
+    }
+
+    size_t file_size = 0;
+    snprintf(path, sizeof(path), SHADERS_FOLDER CPU_GPU_COMMON_FILE);
+
+    void* data = read_file(path, &file_size, arena);
+    if (data == NULL)
+        return false; // read_file reported the error
+
+    hash = fnv1a64(path, strlen(path), hash);
+    hash = fnv1a64(data, file_size, hash);
+    arena_reset(arena);
+
+    if (flags[0] != '\0')
+        hash = fnv1a64(flags, strlen(flags), hash);
+
+    *out_stamp = hash;
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// 0 when the file is missing or carries no stamp (a header generated before stamps existed)
+static uint64_t existing_shader_stamp(const char* filename)
+{
+    char head[4096];
+
+    FILE* f = fopen(filename, "rb");
+    if (f == NULL)
+        return 0;
+
+    size_t n = fread(head, 1, sizeof(head) - 1, f);
+    fclose(f);
+    head[n] = '\0';
+
+    char* marker = strstr(head, "source-stamp");
+    if (marker == NULL)
+        return 0;
+
+    marker += strlen("source-stamp");
+    while (*marker == ' ')
+        marker++;
+
+    return (uint64_t)strtoull(marker, NULL, 16);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+bool prepare_shaders(Arena* arena, const char* metallib, const char* flags, bool force)
+{
+    uint64_t stamp = 0;
+    if (!compute_shader_stamp(arena, flags, &stamp))
+        return false;
+
+    if (!force && existing_shader_stamp(SHADERS_H) == stamp)
+    {
+        // keep the existing header byte for byte : the sources did not change, only the local toolchain would
+        fprintf(stdout, "\nshader sources unchanged, keeping the existing %s\n", SHADERS_H);
+        return true;
+    }
+
     fprintf(stdout, "\nwritting %s : ", SHADERS_H);
 
     size_t size = 0;
@@ -594,7 +691,10 @@ bool prepare_shaders(Arena* arena, const char* metallib)
     if (binary == NULL)
         return false; // read_file reported the error
 
-    if (!bin2h(SHADERS_H, "shaders_metallib", binary, size))
+    char comment[64];
+    snprintf(comment, sizeof(comment), "source-stamp 0x%016llX", (unsigned long long)stamp);
+
+    if (!bin2h_tagged(SHADERS_H, "shaders_metallib", comment, binary, size))
         return false; // bin2h reported the error
 
     fprintf(stdout, "ok\n");
@@ -631,8 +731,28 @@ int main(int argc, char** argv)
 
     if (argc < 2)
     {
-        fprintf(stderr, "usage: %s <metallib>\n", argv[0]);
+        fprintf(stderr, "usage: %s <metallib> [shader compile flags] [--force]\n", argv[0]);
         return 1;
+    }
+
+    const char* metallib = argv[1];
+
+    // the shader compile flags are folded into the source stamp, so toggling them regenerates the header
+    char flags[256] = "";
+    bool force = false;
+
+    for (int i = 2; i < argc; ++i)
+    {
+        if (strcmp(argv[i], "--force") == 0)
+        {
+            force = true;
+            continue;
+        }
+
+        size_t len = strlen(flags);
+        if (len > 0)
+            flags[len++] = ' ';
+        strcpy(&flags[len], argv[i]);
     }
 
     if (!build_codepoints())
@@ -649,7 +769,7 @@ int main(int argc, char** argv)
     track_peak_memory(&arena, &peak_memory);
     arena_reset(&arena);
 
-    success = success && prepare_shaders(&arena, argv[1]);
+    success = success && prepare_shaders(&arena, metallib, flags, force);
 
     track_peak_memory(&arena, &peak_memory);
     arena_reset(&arena);

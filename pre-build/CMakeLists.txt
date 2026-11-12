@@ -3,6 +3,11 @@ project(prebuild)
 
 option(ONEDRAW_SHADER_DEBUG_INFO "Compile the shaders with -g -frecord-sources" OFF)
 
+# the minimum macOS the precompiled shaders must run on : it is baked into the Metal library's target
+# tag and is the runtime floor of the library (the consuming app's own deployment target does not
+# affect it) ; the shader sources currently compile down to 15.0 (AIR v27) if a wider floor is wanted
+set(ONEDRAW_DEPLOY_TARGET "26.0" CACHE STRING "Minimum macOS version for the precompiled shaders")
+
 add_executable(builder
     bc4_encoder.c
     bin2h.c
@@ -14,9 +19,9 @@ target_include_directories(builder PRIVATE ../third_party)
 
 set(shader_dir ${CMAKE_CURRENT_BINARY_DIR}/shaders)
 set(shader_flags_stamp ${CMAKE_CURRENT_BINARY_DIR}/shader_flags.txt)
-file(CONFIGURE OUTPUT ${shader_flags_stamp} CONTENT "${ONEDRAW_SHADER_DEBUG_INFO}" @ONLY)
+file(CONFIGURE OUTPUT ${shader_flags_stamp} CONTENT "${ONEDRAW_SHADER_DEBUG_INFO}:${ONEDRAW_DEPLOY_TARGET}" @ONLY)
 
-set(shader_flags)
+set(shader_flags -mmacosx-version-min=${ONEDRAW_DEPLOY_TARGET})
 if(ONEDRAW_SHADER_DEBUG_INFO)
     list(APPEND shader_flags -g -frecord-sources)
 endif()
@@ -70,7 +75,7 @@ set(prebuild_outputs
 
 add_custom_command(
     OUTPUT ${prebuild_outputs}
-    COMMAND builder ${shader_library}
+    COMMAND builder ${shader_library} ${shader_flags}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     DEPENDS builder ${prebuild_inputs} ${shader_library}
     COMMENT "Building library ..."
