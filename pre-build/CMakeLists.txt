@@ -73,9 +73,11 @@ set(prebuild_outputs
     ${CMAKE_SOURCE_DIR}/lib/common.h
 )
 
+list(JOIN shader_flags " " shader_flags_str)
+
 add_custom_command(
     OUTPUT ${prebuild_outputs}
-    COMMAND builder ${shader_library} ${shader_flags}
+    COMMAND builder -shader-flags=${shader_flags_str} ${shader_library}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     DEPENDS builder ${prebuild_inputs} ${shader_library}
     COMMENT "Building library ..."

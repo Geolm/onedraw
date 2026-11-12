@@ -21,6 +21,9 @@
 #define ARENA_IMPLEMENTATION
 #include "arena.h"
 
+#define FLAG_IMPLEMENTATION
+#include "flag.h"
+
 
 
 #define LIB_FOLDER "lib/"
@@ -729,31 +732,25 @@ int main(int argc, char** argv)
 {
     fprintf(stdout, "onedraw %d.%d.%d library builder\n\n", ONEDRAW_MAJOR_VERSION, ONEDRAW_MINOR_VERSION, ONEDRAW_PATCH);
 
-    if (argc < 2)
+    // the metal compile flags arrive as a single string from the build system : they are folded into
+    // the source stamp, so toggling them regenerates the header
+    char** shader_flags = flag_str("shader-flags", "", "the metal compile flags, folded into the source stamp");
+    bool force = false;
+    flag_bool_var(&force, "force", false, "regenerate the header even if the shader sources are unchanged");
+
+    if (!flag_parse(argc, argv))
     {
-        fprintf(stderr, "usage: %s <metallib> [shader compile flags] [--force]\n", argv[0]);
+        flag_print_error(stderr);
         return 1;
     }
 
-    const char* metallib = argv[1];
-
-    // the shader compile flags are folded into the source stamp, so toggling them regenerates the header
-    char flags[256] = "";
-    bool force = false;
-
-    for (int i = 2; i < argc; ++i)
+    if (flag_rest_argc() != 1)
     {
-        if (strcmp(argv[i], "--force") == 0)
-        {
-            force = true;
-            continue;
-        }
-
-        size_t len = strlen(flags);
-        if (len > 0)
-            flags[len++] = ' ';
-        strcpy(&flags[len], argv[i]);
+        fprintf(stderr, "usage: %s [-shader-flags <flags>] [-force] <metallib>\n", flag_program_name());
+        return 1;
     }
+
+    const char* metallib = flag_rest_argv()[0];
 
     if (!build_codepoints())
         return 1;
@@ -769,7 +766,7 @@ int main(int argc, char** argv)
     track_peak_memory(&arena, &peak_memory);
     arena_reset(&arena);
 
-    success = success && prepare_shaders(&arena, metallib, flags, force);
+    success = success && prepare_shaders(&arena, metallib, *shader_flags, force);
 
     track_peak_memory(&arena, &peak_memory);
     arena_reset(&arena);
