@@ -499,6 +499,11 @@ static inline uint32_t le_symbol_cost(const le_model* model, uint8_t value)
 #define BC4_INDEX_CONTEXTS      (BC4_INDEX_DIM * BC4_INDEX_DIM)
 #define BCP_MAX_CHANNELS        (2)
 
+// bc4/bc5 endpoint MTF: the length of the per-tile move-to-front list of distinct
+// (endpoint0, endpoint1) pairs; rank BC4_MTF_SIZE is the escape symbol, so the MTF model
+// holds BC4_MTF_SIZE + 1 symbols
+#define BC4_MTF_SIZE            (8)
+
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Structures
@@ -529,25 +534,14 @@ struct bcp_context
     uint32_t strip_seed;
 
     // per-strip color predictor: bit s = 1 → strip s predicts endpoint colors from the block of the row above,
-    // same zigzag position (visually: the horizontally mirrored column of the previous row), after its first
-    // scanline; 0 → zigzag-previous block. the first scanline of every strip is always predicted from the
-    // strip seed via the zigzag chain, as there is no previous row within the strip
     uint64_t strip_predictor;
 
     // per-strip color-pair dictionary: bit s = 1 → strip s writes the 1-bit flag + reference / delta
     // choice per block; 0 → the block colors are always the six deltas (no flag), i.e. the baseline.
-    // a strip enables the dictionary only when it saves bits overall, so feature-rich strips (few
-    // matching blocks) pay no flag overhead. see the per-strip dictionary enable in init_static_models
     uint64_t strip_dict_enable;
 
     // flat-index mode of the whole stream: 1 → a block whose two endpoints are identical stores no
     // index payload; the decoder expands the 2-bit value from the stream header to all 16 indices,
-    // instead of the reference + mask + differences; 0 → every block stores its indices as usual.
-    // decided once in the first pass: 1 only if at least one block has identical endpoints and every
-    // such block holds the same uniform index word, else 0 (an encoder that leaves garbage or
-    // differing indices on flat blocks forces mode 0, keeping the roundtrip byte-exact). the mode and
-    // the value share one header byte (mode | value << 1) written in the stream header's alignment
-    // padding, absorbed except in the worst parity case (a few bytes, covered by packed_bc1_maxsize)
     uint8_t bc1_index_mode;
     uint8_t bc1_index_value; // 2-bit value of the shared index word, expanded to all 16 indices, mode 1 only
 
@@ -561,11 +555,21 @@ struct bcp_context
     // per-channel flat-index mode: 1 → a block whose two endpoints are identical stores no index
     // payload; the decoder expands the 3-bit value from the stream header to all 16 indices, instead
     // of the 15 contextual symbols; 0 → the indices are stored as usual. decided per channel in the
-    // first pass, same rule as the BC1 mode. the mode and the value share one header byte per channel
-    // (mode | value << 1) after the seeds, in the 2-byte alignment padding (worst case a couple bytes,
-    // covered by packed_bc4_maxsize / packed_bc5_maxsize)
     uint8_t bc4_index_mode[BCP_MAX_CHANNELS]; // [channel]
     uint8_t bc4_index_value[BCP_MAX_CHANNELS]; // [channel] 3-bit value, expanded to all 16 indices, mode 1 only
+
+    // per-channel endpoint MTF-8: a 9-symbol model (rank 0..7 = the (endpoint0, endpoint1) pair at
+    // that move-to-front position, 8 = escape to the two endpoint deltas), one bit per channel in the
+    // flat-index header byte (bit 4). the stream layout is fixed, so the MTF model is written even
+    // when disabled (a dummy 1-symbol model the decoder never reads from). the endpoint models are
+    // fit on the escaped blocks only when enabled, on every block otherwise
+    le_model bc4_mtf_model[BCP_MAX_CHANNELS]; // [channel]
+    uint8_t bc4_mtf_enable[BCP_MAX_CHANNELS]; // [channel]
+
+    // per-channel first-index model: one 8-symbol static model for the first index of each non-flat
+    // block, replacing the raw 3-bit field; the Rice / raw fallback of le_static_model_init is the
+    // self-gate, no header flag
+    le_model bc4_first_index_model[BCP_MAX_CHANNELS]; // [channel]
 };
 
 typedef struct bc1_block
@@ -1547,6 +1551,90 @@ static inline void bc4_pack_indices(const uint8_t idx[16], bc4_block* b)
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
+// MTF-8 list of the last distinct (endpoint0, endpoint1) pairs of a tile's zigzag chain,
+// cleared per tile: pair = endpoint0 | endpoint1 << 8
+typedef struct mtf_list
+{
+    uint16_t pair[BC4_MTF_SIZE];
+    uint32_t count; // distinct pairs seen so far in the tile, 0..BC4_MTF_SIZE
+} mtf_list;
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// rank of [pair] in the MTF list, BC4_MTF_SIZE if absent (the escape symbol)
+static inline uint32_t mtf_rank(const mtf_list* m, uint16_t pair)
+{
+    for (uint32_t i = 0; i < m->count; ++i)
+        if (m->pair[i] == pair)
+            return i;
+
+    return BC4_MTF_SIZE;
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// move [pair] to the front of the list, inserting it if new: the list holds distinct pairs,
+// the oldest one is dropped once it is full
+static inline void mtf_touch(mtf_list* m, uint16_t pair)
+{
+    int32_t at = -1;
+    for (uint32_t i = 0; i < m->count; ++i)
+        if (m->pair[i] == pair)
+        {
+            at = (int32_t)i;
+            break;
+        }
+
+    if (at >= 0)
+    {
+        for (int32_t j = at; j > 0; --j)
+            m->pair[j] = m->pair[j - 1];
+    }
+    else if (m->count < BC4_MTF_SIZE)
+    {
+        for (uint32_t j = m->count; j > 0; --j)
+            m->pair[j] = m->pair[j - 1];
+        m->count++;
+    }
+    else
+    {
+        for (uint32_t j = BC4_MTF_SIZE - 1; j > 0; --j)
+            m->pair[j] = m->pair[j - 1];
+    }
+
+    m->pair[0] = pair;
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// packs the per-channel header byte: flat-index mode (bit 0), the 3-bit flat value (bits 1..3),
+// the endpoint MTF-8 enable (bit 4)
+static inline uint8_t bc4_header_byte(uint8_t mode, uint8_t value, uint8_t mtf_enable)
+{
+    return (uint8_t)(mode | (value << 1) | (mtf_enable << 4));
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// unpacks a header byte written by bc4_header_byte into the [channel] fields of [ctx]
+static inline void bc4_header_parse(bcp_context* ctx, uint32_t channel, uint8_t byte)
+{
+    ctx->bc4_index_mode[channel] = byte & 1;
+    ctx->bc4_index_value[channel] = (byte >> 1) & 7;
+    ctx->bc4_mtf_enable[channel] = (byte >> 4) & 1;
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// total Rice / raw payload bits of [hist] under the static [model]: sum of the per-symbol cost,
+// the same bits le_encode_symbol would write
+static inline uint64_t model_total_cost(const le_model* model, const uint32_t* hist, uint32_t num_symbols)
+{
+    uint64_t bits = 0;
+
+    for (uint32_t s = 0; s < num_symbols; ++s)
+        if (hist[s])
+            bits += (uint64_t)hist[s] * le_symbol_cost(model, (uint8_t)s);
+
+    return bits;
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
 // Per-channel histogram of the bc4/bc5 payload symbols: 2 endpoint models (256 symbols) +
 // 64 index models (8 symbols each)
 typedef struct bc4_hists
@@ -1562,10 +1650,15 @@ typedef struct bc4_hists
 // the per-channel flat-index mode is also decided in the histogram pass: mode 1 (a block whose
 // two endpoints are identical stores no index payload, the decoder expands the header value) only if
 // at least one such block exists and every such block holds the same uniform 3-bit value, else mode
-// 0 (garbage or differing indices on a flat block force the full 15-symbol encoding)
+// 0 (garbage or differing indices on a flat block force the full 15-symbol encoding). the
+// endpoint MTF-8 decision is priced in the same pass: the endpoint histogram with and without MTF
+// is both priced against its own fitted models and the cheaper one wins per channel
 static void bc4_init_models(bcp_context* ctx, const void* image, uint32_t width_blocks, uint32_t height_blocks, uint32_t num_strips, uint32_t num_channels, uint32_t block_stride)
 {
     bc4_hists hist[BCP_MAX_CHANNELS] = { 0 };
+    uint32_t esc_hist[BCP_MAX_CHANNELS][2][256] = { 0 }; // endpoint deltas of the MTF-escaped blocks
+    uint32_t mtf_hist[BCP_MAX_CHANNELS][BC4_MTF_SIZE + 1] = { 0 }; // MTF ranks 0..BC4_MTF_SIZE-1 + escape
+    uint32_t first_hist[BCP_MAX_CHANNELS][8] = { 0 }; // first index of the non-flat blocks
     uint32_t sums[BCP_MAX_CHANNELS][2] = { 0 };
     uint8_t prev_e[BCP_MAX_CHANNELS][2], top_e[BCP_MAX_CHANNELS][2], top_prev_e[BCP_MAX_CHANNELS][2];
     bool flat_block[BCP_MAX_CHANNELS] = { false, false };
@@ -1608,6 +1701,11 @@ static void bc4_init_models(bcp_context* ctx, const void* image, uint32_t width_
             }
         }
 
+        // the MTF list is cleared per tile, mirroring the encoder
+        mtf_list mtf[BCP_MAX_CHANNELS];
+        for(uint32_t c=0; c<num_channels; ++c)
+            mtf[c].count = 0;
+
         tile_bounds tb = tile_bounds_get(strip_index, width_blocks, height_blocks, num_strips);
         uint32_t tile_width = tb.x1 - tb.x0;
 
@@ -1633,14 +1731,25 @@ static void bc4_init_models(bcp_context* ctx, const void* image, uint32_t width_
                         top_e[c][1] = t->endpoint[1];
                     }
 
+                    // endpoint payload with and without MTF-8, priced in both: the MTF rank of
+                    // the block's endpoint pair and, on escape, the two endpoint deltas
+                    uint16_t pair = (uint16_t)(b->endpoint[0] | (b->endpoint[1] << 8));
+                    uint32_t rank = mtf_rank(&mtf[c], pair);
+                    mtf_hist[c][rank]++;
+                    mtf_touch(&mtf[c], pair);
+
                     for(uint32_t e=0; e<2; ++e)
                     {
                         uint8_t pred = bc4_endpoint_predict(first_row, row_start, prev_e[c][e], top_e[c][e], top_prev_e[c][e]);
+                        uint8_t delta = delta_encode_wrap(pred, b->endpoint[e]);
 
-                        hist[c].endpoint[e][delta_encode_wrap(pred, b->endpoint[e])]++;
+                        hist[c].endpoint[e][delta]++;
+                        if (rank >= BC4_MTF_SIZE)
+                            esc_hist[c][e][delta]++;
                     }
 
                     bc4_unpack_indices(b, idx);
+                    first_hist[c][idx[0]]++;
 
                     if (b->endpoint[0] == b->endpoint[1])
                     {
@@ -1700,8 +1809,34 @@ static void bc4_init_models(bcp_context* ctx, const void* image, uint32_t width_
 
     for(uint32_t c=0; c<num_channels; ++c)
     {
+        // price the endpoint pass with and without MTF-8 against the models each one would fit:
+        // the payload bits plus the model headers they store (a disabled MTF writes a dummy
+        // 1-symbol model, the stream layout is fixed). the cheaper wins, per channel
+        le_model ep_no[2], ep_mtf[2], mtf_model;
         for(uint32_t e=0; e<2; ++e)
-            le_static_model_init(&ctx->bc4_endpoint_model[c][e], &hist[c].endpoint[e][0], 256);
+        {
+            le_static_model_init(&ep_no[e], &hist[c].endpoint[e][0], 256);
+            le_static_model_init(&ep_mtf[e], &esc_hist[c][e][0], 256);
+        }
+        le_static_model_init(&mtf_model, mtf_hist[c], BC4_MTF_SIZE + 1);
+
+        uint64_t cost_no = (uint64_t)(3 + 1) * 8; // the dummy MTF model of a disabled channel
+        uint64_t cost_mtf = (uint64_t)(3 + mtf_model.num_symbols) * 8 + model_total_cost(&mtf_model, mtf_hist[c], BC4_MTF_SIZE + 1);
+        for(uint32_t e=0; e<2; ++e)
+        {
+            cost_no += (uint64_t)(3 + ep_no[e].num_symbols) * 8 + model_total_cost(&ep_no[e], &hist[c].endpoint[e][0], 256);
+            cost_mtf += (uint64_t)(3 + ep_mtf[e].num_symbols) * 8 + model_total_cost(&ep_mtf[e], &esc_hist[c][e][0], 256);
+        }
+
+        ctx->bc4_mtf_enable[c] = (uint8_t)(cost_mtf < cost_no);
+        for(uint32_t e=0; e<2; ++e)
+            ctx->bc4_endpoint_model[c][e] = ctx->bc4_mtf_enable[c] ? ep_mtf[e] : ep_no[e];
+        if (ctx->bc4_mtf_enable[c])
+            ctx->bc4_mtf_model[c] = mtf_model;
+        else
+            le_static_model_init(&ctx->bc4_mtf_model[c], NULL, BC4_MTF_SIZE + 1); // all-zero histogram: a dummy 1-symbol model, never used
+
+        le_static_model_init(&ctx->bc4_first_index_model[c], first_hist[c], 8);
         for(uint32_t i=0; i<BC4_INDEX_CONTEXTS; ++i)
             le_static_model_init(&ctx->bc4_index_model[c][i], &hist[c].index[i][0], 8);
     }
@@ -1724,12 +1859,18 @@ static size_t bcp_compress_bc45(bcp_context* ctx, const void* image, uint32_t wi
 
     byte_stream stream = {.buffer = output, .length = output_length, .pos = 0};
 
-    // store models: per channel, the 2 endpoint models (256 symbols) then the 64 index models (8 symbols)
+    // store models: per channel, the 2 endpoint models (256 symbols), the endpoint MTF-8 model
+    // (9 symbols, a dummy 1-symbol model when the channel's MTF is disabled), the first-index
+    // model (8 symbols) then the 64 index models (8 symbols)
     for(uint32_t c=0; c<num_channels; ++c)
     {
         for(uint32_t e=0; e<2; ++e)
             if (!save_static_model(&ctx->bc4_endpoint_model[c][e], &stream))
                 return 0;
+        if (!save_static_model(&ctx->bc4_mtf_model[c], &stream))
+            return 0;
+        if (!save_static_model(&ctx->bc4_first_index_model[c], &stream))
+            return 0;
         for(uint32_t i=0; i<BC4_INDEX_CONTEXTS; ++i)
             if (!save_static_model(&ctx->bc4_index_model[c][i], &stream))
                 return 0;
@@ -1745,14 +1886,11 @@ static size_t bcp_compress_bc45(bcp_context* ctx, const void* image, uint32_t wi
             stream.buffer[stream.pos++] = ctx->bc4_strip_seed[c][e];
     }
 
-    // flat-index mode + value, one byte per channel (mode | value << 1), written right after the
-    // seeds. the model region is always even-sized, so these bytes sit on an odd stream position and
-    // the 2-align below can never land on them and zero them, keeping the encoder and the decoder in
-    // agreement
+    // flat-index mode + value + endpoint MTF-8 enable, one byte per channel
     if (stream.pos + num_channels > stream.length)
         return 0;
     for(uint32_t c=0; c<num_channels; ++c)
-        stream.buffer[stream.pos++] = (uint8_t)(ctx->bc4_index_mode[c] | (ctx->bc4_index_value[c] << 1));
+        stream.buffer[stream.pos++] = bc4_header_byte(ctx->bc4_index_mode[c], ctx->bc4_index_value[c], ctx->bc4_mtf_enable[c]);
 
     stream_align(&stream, sizeof(uint16_t));
     size_t strips_offset_array_size = sizeof(uint16_t) * (*num_strips - 1);
@@ -1792,6 +1930,11 @@ static size_t bcp_compress_bc45(bcp_context* ctx, const void* image, uint32_t wi
             }
         }
 
+        // the MTF list is cleared per tile
+        mtf_list mtf[BCP_MAX_CHANNELS];
+        for(uint32_t c=0; c<num_channels; ++c)
+            mtf[c].count = 0;
+
         tile_bounds tb = tile_bounds_get(strip_index, width_blocks, height_blocks, *num_strips);
         uint32_t tile_width = tb.x1 - tb.x0;
 
@@ -1816,16 +1959,40 @@ static size_t bcp_compress_bc45(bcp_context* ctx, const void* image, uint32_t wi
                         top_e[c][1] = t->endpoint[1];
                     }
 
-                    // endpoint payload: the two wrapped deltas against the strip-chain predictor
-                    for(uint32_t e=0; e<2; ++e)
+                    // endpoint payload: with MTF, the 9-symbol rank of the block's endpoint pair
+                    // (0..7 = the pair at that list position, 8 = escape to the two wrapped deltas
+                    // against the strip-chain predictor, the list updated in either case); without
+                    // MTF, the two deltas only
+                    if (ctx->bc4_mtf_enable[c])
                     {
-                        uint8_t pred = bc4_endpoint_predict(first_row, row_start, prev_e[c][e], top_e[c][e], top_prev_e[c][e]);
+                        uint16_t pair = (uint16_t)(b->endpoint[0] | (b->endpoint[1] << 8));
+                        uint32_t rank = mtf_rank(&mtf[c], pair);
 
-                        le_encode_symbol(&compressed_stream, &ctx->bc4_endpoint_model[c][e], delta_encode_wrap(pred, b->endpoint[e]));
+                        le_encode_symbol(&compressed_stream, &ctx->bc4_mtf_model[c], (uint8_t)rank);
+                        mtf_touch(&mtf[c], pair);
+
+                        if (rank >= BC4_MTF_SIZE)
+                        {
+                            for(uint32_t e=0; e<2; ++e)
+                            {
+                                uint8_t pred = bc4_endpoint_predict(first_row, row_start, prev_e[c][e], top_e[c][e], top_prev_e[c][e]);
+
+                                le_encode_symbol(&compressed_stream, &ctx->bc4_endpoint_model[c][e], delta_encode_wrap(pred, b->endpoint[e]));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for(uint32_t e=0; e<2; ++e)
+                        {
+                            uint8_t pred = bc4_endpoint_predict(first_row, row_start, prev_e[c][e], top_e[c][e], top_prev_e[c][e]);
+
+                            le_encode_symbol(&compressed_stream, &ctx->bc4_endpoint_model[c][e], delta_encode_wrap(pred, b->endpoint[e]));
+                        }
                     }
 
-                    // index payload: the first index in raw 3 bits, then each index xored with its
-                    // intra-block prediction, contextual on the 8 x 8 [left][top] matrix
+                    // index payload: the first index with its 8-symbol model, then each index xored
+                    // with its intra-block prediction, contextual on the 8 x 8 [left][top] matrix
                     bc4_unpack_indices(b, idx);
 
                     // a flat block (identical endpoints) in mode 1 stores no index payload: the
@@ -1834,7 +2001,7 @@ static size_t bcp_compress_bc45(bcp_context* ctx, const void* image, uint32_t wi
                     const bool flat = (b->endpoint[0] == b->endpoint[1]);
                     if (!(flat && ctx->bc4_index_mode[c]))
                     {
-                        le_write_bits(&compressed_stream, idx[0], 3);
+                        le_encode_symbol(&compressed_stream, &ctx->bc4_first_index_model[c], idx[0]);
 
                         for(uint32_t i=1; i<16; ++i)
                         {
@@ -1885,12 +2052,17 @@ static bool bcp_decompress_bc45(bcp_context* ctx, const void* input, size_t inpu
 
     byte_stream stream = {.buffer = (uint8_t*)input, .length = input_length, .pos = 0};
 
-    // load models: per channel, the 2 endpoint models then the 64 index models
+    // load models: per channel, the 2 endpoint models, the endpoint MTF-8 model, the first-index
+    // model then the 64 index models
     for(uint32_t c=0; c<num_channels; ++c)
     {
         for(uint32_t e=0; e<2; ++e)
             if (!load_static_model(&ctx->bc4_endpoint_model[c][e], &stream))
                 return false;
+        if (!load_static_model(&ctx->bc4_mtf_model[c], &stream))
+            return false;
+        if (!load_static_model(&ctx->bc4_first_index_model[c], &stream))
+            return false;
         for(uint32_t i=0; i<BC4_INDEX_CONTEXTS; ++i)
             if (!load_static_model(&ctx->bc4_index_model[c][i], &stream))
                 return false;
@@ -1908,11 +2080,7 @@ static bool bcp_decompress_bc45(bcp_context* ctx, const void* input, size_t inpu
     if (stream.pos + num_channels > stream.length)
         return false;
     for(uint32_t c=0; c<num_channels; ++c)
-    {
-        const uint8_t flat_byte = stream.buffer[stream.pos++]; // flat-index mode + value, after the seeds (see bc4_index_mode)
-        ctx->bc4_index_mode[c] = flat_byte & 1;
-        ctx->bc4_index_value[c] = (flat_byte >> 1) & 7;
-    }
+        bc4_header_parse(ctx, c, stream.buffer[stream.pos++]); // flat-index mode + value + MTF enable, after the seeds
 
     read_stream_align(&stream, sizeof(uint16_t));
     size_t strips_offset_array_size = sizeof(uint16_t) * (num_strips - 1);
@@ -1947,6 +2115,10 @@ static bool bcp_decompress_bc45(bcp_context* ctx, const void* input, size_t inpu
         }
     }
 
+    mtf_list mtf[BCP_MAX_CHANNELS];
+    for(uint32_t c=0; c<num_channels; ++c)
+        mtf[c].count = 0;
+
     tile_bounds tb = tile_bounds_get(strip_index, width_blocks, height_blocks, num_strips);
     uint32_t tile_width = tb.x1 - tb.x0;
 
@@ -1971,18 +2143,38 @@ static bool bcp_decompress_bc45(bcp_context* ctx, const void* input, size_t inpu
                     top_e[c][1] = t->endpoint[1];
                 }
 
-                // endpoint payload: the two wrapped deltas against the strip-chain predictor
-                for(uint32_t e=0; e<2; ++e)
+                if (ctx->bc4_mtf_enable[c])
                 {
-                    uint8_t pred = bc4_endpoint_predict(first_row, row_start, prev_e[c][e], top_e[c][e], top_prev_e[c][e]);
+                    uint32_t rank = le_decode_symbol(&compressed_stream, &ctx->bc4_mtf_model[c]);
 
-                    b->endpoint[e] = delta_decode_wrap(pred, le_decode_symbol(&compressed_stream, &ctx->bc4_endpoint_model[c][e]));
+                    if (rank < BC4_MTF_SIZE)
+                    {
+                        b->endpoint[0] = (uint8_t)(mtf[c].pair[rank] & 0xFF);
+                        b->endpoint[1] = (uint8_t)(mtf[c].pair[rank] >> 8);
+                    }
+                    else
+                    {
+                        for(uint32_t e=0; e<2; ++e)
+                        {
+                            uint8_t pred = bc4_endpoint_predict(first_row, row_start, prev_e[c][e], top_e[c][e], top_prev_e[c][e]);
+
+                            b->endpoint[e] = delta_decode_wrap(pred, le_decode_symbol(&compressed_stream, &ctx->bc4_endpoint_model[c][e]));
+                        }
+                    }
+
+                    mtf_touch(&mtf[c], (uint16_t)(b->endpoint[0] | (b->endpoint[1] << 8)));
+                }
+                else
+                {
+                    for(uint32_t e=0; e<2; ++e)
+                    {
+                        uint8_t pred = bc4_endpoint_predict(first_row, row_start, prev_e[c][e], top_e[c][e], top_prev_e[c][e]);
+
+                        b->endpoint[e] = delta_decode_wrap(pred, le_decode_symbol(&compressed_stream, &ctx->bc4_endpoint_model[c][e]));
+                    }
                 }
 
-                // index payload: the first index in raw 3 bits, then each index xored with its
-                // intra-block prediction, contextual on the 8 x 8 [left][top] matrix
-                // a flat block (identical endpoints, reconstructed exactly like the encoder sees the
-                // source) in mode 1 stores no index payload: the header value is expanded to all 16
+                // flat block don't store indices bits
                 const bool flat = (b->endpoint[0] == b->endpoint[1]);
                 if (flat && ctx->bc4_index_mode[c])
                 {
@@ -1991,7 +2183,7 @@ static bool bcp_decompress_bc45(bcp_context* ctx, const void* input, size_t inpu
                 }
                 else
                 {
-                    idx[0] = le_read_bits(&compressed_stream, 3);
+                    idx[0] = le_decode_symbol(&compressed_stream, &ctx->bc4_first_index_model[c]);
 
                     for(uint32_t i=1; i<16; ++i)
                     {
@@ -2445,18 +2637,16 @@ bool bcp_decompress_bc1(bcp_context* ctx, const void* input, size_t input_length
 //-----------------------------------------------------------------------------------------------------------------------------
 size_t packed_bc4_maxsize(uint32_t width, uint32_t height)
 {
-    // very rough: 2x the standard BC4 block size, the BC1 convention. the +2 covers the worst-case
-    // header growth of the flat-index mode byte (one byte, before the 2-byte align = the align quantum)
-    return (width/4) * (height/4) * 2 * sizeof(bc4_block) + 2;
+    // very rough: 2x the standard BC4 block size, the BC1 convention. the +26 covers the worst-case
+    // header growth of the two per-channel models (the MTF-8 model, 3 + 9 bytes, and the first-index
+    // model, 3 + 8 bytes) plus the flat-index mode byte before the 2-byte align
+    return (width/4) * (height/4) * 2 * sizeof(bc4_block) + 26;
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
 size_t packed_bc5_maxsize(uint32_t width, uint32_t height)
 {
-    // very rough: 2x the standard BC5 block size (a red + a green bc4_block). the +3 covers the
-    // worst-case header growth of the flat-index mode bytes (2 bytes, before the 2-byte align, plus
-    // the alignment itself in the worst parity case)
-    return (width/4) * (height/4) * 2 * (2 * sizeof(bc4_block)) + 3;
+    return 2 * packed_bc4_maxsize(width, height);
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
