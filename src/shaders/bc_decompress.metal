@@ -1,46 +1,7 @@
 //-----------------------------------------------------------------------------------------------------------------------------
 // bc_decompress.metal
 //
-// GPU mirror of the CPU decompressor of third_party/bc_packed.c: one thread decompresses one strip of
-// a bc_packed BC4 stream. The compressed stream is read from a device buffer, the decoded standard
-// blocks are written to an output device buffer laid out as a row-major grid of
-// width/4 x height/4 blocks:
-//   "bcp_decompress_bc4"  the standard BC4 block: two 8-bit endpoints followed by the
-//                         48-bit little-endian field of the 16 3-bit indices, 8 bytes per block
-//
-// Dispatch 64 threads, one per strip:
-//
-//     decode_args_t args = { width, height, (uint64_t)stream_length };
-//     encoder.setComputePipelineState(pipeline);   // pipeline built from the "bcp_decompress_bc4" kernel
-//     encoder.setBytes(&args, sizeof(args), 2);
-//     encoder.setBuffer(stream_buffer, NULL, 0, 0);
-//     encoder.setBuffer(output_buffer, NULL, 1, 0);
-//     encoder.dispatchThreads(threadgrid(64, 1, 1));
-//
-// buffer(0): device const uint8_t*  the compressed stream (output of bcp_compress_bc4)
-// buffer(1): device uint8_t*        output blocks, width/4 * height/4 * 8 bytes
-// buffer(2): constant decode_args_t
-//
-// The stream layout parsed here mirrors the CPU compressor / decompressor:
-//   BC4 [2 endpoint models][endpoint MTF-8 model (9 symbols)][first-index model (8 symbols)][64 index
-//       models][strip seed, 2 bytes][flat index mode + value + MTF-8 enable, 1 byte][2-align]
-//       [63 strip offsets u16, deltas in dword units][4-align][strip bitstreams]
-//
-// The flat index mode (bit 0 of the mode + value byte, the value in the upper bits) is decided once in
-// the first pass: 1 when at least one block has identical endpoints and every such block holds the same
-// uniform 3-bit index value. A block with identical endpoints then stores no index payload: the header
-// value is expanded to all 16 indices, instead of the full index payload.
-//
-// The endpoint MTF-8 enable (bit 4 of the mode + value byte) is priced: when enabled, each block's
-// endpoints are written as one 9-symbol MTF rank (0..7 = the (endpoint0, endpoint1) pair at that
-// position of the per-tile 8-entry move-to-front list, 8 = escape to the two endpoint deltas, the list
-// updated in either case, cleared per tile); when disabled the two endpoint deltas are written as usual
-// and the MTF model in the header is a dummy the decoder never reads from. The first index of a non-flat
-// block is the symbol of the 8-symbol first-index model, instead of the raw 3-bit field.
-//
-// On a corrupted stream the decode runs to completion and the output is garbage, mirroring the
-// CPU version which only reports the failure after the whole strip was decoded. A valid stream
-// always decodes bit-identically to the CPU version.
+// For more details about the algorithm : https://github.com/Geolm/bc_packed
 //-----------------------------------------------------------------------------------------------------------------------------
 
 #include <metal_stdlib>
@@ -51,6 +12,7 @@ constant uint LE_ALPHABET_SIZE = 256;
 constant uint BC4_INDEX_ALPHABET_SIZE = 8; // bc4 index models: 8 prediction values
 constant uint BC4_INDEX_DIM = 8;           // bc4 index context: the 8 x 8 [left][top] matrix
 constant uint BC4_INDEX_CONTEXTS = BC4_INDEX_DIM * BC4_INDEX_DIM;
+constant uint BC4_DICT_SIZE = 255;         // bc4 index-word dictionary: list length, the rank model holds + 1 escape
 constant uint LE_MAX_K = 8;
 
 // shared by every kernel: the stream carries no width / height / format, the caller provides them
@@ -300,11 +262,16 @@ bool load_model8(const device uint8_t* input, uint64_t length, thread uint64_t* 
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
-// little endian u16 read from the stream: the strip offsets are aligned on u16, so read the word
-// directly (cheaper than per-byte gather)
+// little endian u16 / u32 reads from the stream. The stream aligns strip offsets on u16 and
+// the dictionary enable word on u32, so read the word directly (cheaper than per-byte gather)
 uint16_t read_u16(const device uint8_t* input, uint64_t pos)
 {
     return ((const device uint16_t*)input)[pos >> 1];
+}
+
+uint32_t read_u32(const device uint8_t* input, uint64_t pos)
+{
+    return ((const device uint32_t*)input)[pos >> 2];
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
@@ -369,6 +336,50 @@ void mtf_touch(thread uint16_t* list, thread uint* count, uint16_t pair)
     list[0] = pair;
 }
 
+// mirror of bc4_dict_touch (third_party/bc_packed.c) without the lookup map: [rank] < BC4_DICT_SIZE
+// promotes the list position (the permutation shifts only), otherwise [new_word] takes a
+// fresh slot (the tail slot is evicted once the list is full). [word] holds the fixed slots,
+// [order] the recency permutation, order[i] = slot of rank i, [count] the valid entries
+void bc4_dict_touch(thread uint8_t* word, thread uint8_t* order, thread uint* count,
+                    const thread uint8_t* new_word, uint rank)
+{
+    if (rank < BC4_DICT_SIZE)
+    {
+        uint8_t slot = order[rank];
+        for (uint j = rank; j > 0; --j)
+            order[j] = order[j - 1];
+        order[0] = slot;
+        return;
+    }
+
+    uint c = *count;
+    uint slot = (c < BC4_DICT_SIZE) ? c : order[BC4_DICT_SIZE - 1];
+    for (uint j = 0; j < 6; ++j)
+        word[slot * 6 + j] = new_word[j];
+    for (uint j = (c < BC4_DICT_SIZE) ? c : BC4_DICT_SIZE - 1; j > 0; --j)
+        order[j] = order[j - 1];
+    order[0] = (uint8_t)slot;
+    *count = (c < BC4_DICT_SIZE) ? c + 1 : BC4_DICT_SIZE;
+}
+
+// mirror of bc4_decode_index_payload (third_party/bc_packed.c): the first index with its 8-symbol
+// model, then each index xored with its intra-block prediction
+void bc4_decode_index_payload(thread bit_stream_t* s, const thread model8_t* first_index,
+                              const thread model8_t* index, thread uint8_t* idx)
+{
+    idx[0] = decode_symbol8(s, first_index);
+
+    for (uint i = 1; i < 16; ++i)
+    {
+        // the missing neighbor of the pixel (first row, row start) defaults to 0
+        uint8_t left = ((i & 3) == 0) ? 0 : idx[i - 1];
+        uint8_t top = (i < 4) ? 0 : idx[i - 4];
+        uint8_t p = ((i & 3) == 0) ? top : left;
+
+        idx[i] = (uint8_t)(p ^ decode_symbol8(s, &index[bc4_index_context(left, top)]));
+    }
+}
+
 void bc4_decode_strip(const device uint8_t* input,
                       device uint8_t* output,
                       constant decode_args_t& args,
@@ -391,9 +402,11 @@ void bc4_decode_strip(const device uint8_t* input,
     //-------------------------------------------------------------------------------------------------------------------------
     // load the static models: the 2 endpoint models (256 symbols), the endpoint MTF-8 model
     // (9 symbols, a dummy 1-symbol model when the MTF is disabled), the first-index model
-    // (8 symbols) then the 64 compact index models (8 symbols)
+    // (8 symbols), the index-word dictionary rank model (256 symbols, a dummy 1-symbol model
+    // when no tile is enabled) then the 64 compact index models (8 symbols)
     model_t endpoint[2];
     model_t mtf;
+    model_t dict_rank;
     model8_t first_index;
     model8_t index[BC4_INDEX_CONTEXTS];
 
@@ -406,6 +419,9 @@ void bc4_decode_strip(const device uint8_t* input,
         return;
 
     if (!load_model8(input, length, &pos, &first_index))
+        return;
+
+    if (!load_model(input, length, &pos, &dict_rank))
         return;
 
     for (uint i = 0; i < BC4_INDEX_CONTEXTS; ++i)
@@ -421,7 +437,7 @@ void bc4_decode_strip(const device uint8_t* input,
         seed[e] = input[pos++];
 
     // flat-index mode + value + endpoint MTF-8 enable: one byte (mode | value << 1 | mtf << 4),
-    // after the seeds, before the 2-align
+    // after the seeds, before the 4-align
     if (pos + 1 > length)
         return;
 
@@ -429,6 +445,16 @@ void bc4_decode_strip(const device uint8_t* input,
     bool flat_mode = (flat_byte & 1) != 0;
     uint8_t flat_value = (flat_byte >> 1) & 7;
     bool mtf_enable = (flat_byte >> 4) != 0;
+
+    // index-word dictionary enable: one u64, bit i = tile i, u32-aligned in the stream,
+    // so read the words directly
+    if (pos + 8 > length)
+        return;
+
+    pos = (pos + 3) & ~(uint64_t)3;
+    uint64_t enable = (uint64_t)read_u32(input, pos) | ((uint64_t)read_u32(input, pos + 4) << 32);
+    pos += 8;
+    bool dict_enable = ((enable >> strip_id) & 1) != 0;
 
     //-------------------------------------------------------------------------------------------------------------------------
     // strip offsets (deltas in dword units), then the strip bitstream of this thread
@@ -468,9 +494,15 @@ void bc4_decode_strip(const device uint8_t* input,
         top_prev_e[e] = 0;
     }
 
-    // the MTF list is cleared per tile: one thread decodes one tile, so this is the whole state
+    // the MTF list and the index-word dictionary are cleared per tile: one thread decodes one
+    // tile, so this is the whole state; the decoder keeps no lookup map (the rank names the
+    // list position directly)
     uint16_t mtf_pair[8];
     uint mtf_count = 0;
+
+    thread uint8_t dict_word[BC4_DICT_SIZE][6];
+    thread uint8_t dict_order[BC4_DICT_SIZE];
+    thread uint dict_count = 0;
 
     const tile_bounds tb = tile_bounds_get(strip_id, width_blocks, height_blocks);
     const uint tile_width = tb.x1 - tb.x0;
@@ -536,28 +568,50 @@ void bc4_decode_strip(const device uint8_t* input,
                 }
             }
 
-            // a flat block (identical endpoints, reconstructed exactly like the encoder sees the
-            // source) in mode 1 stores no index payload: the header value is expanded to all 16
+            // index payload: with the dictionary enabled for the tile, one 256-symbol rank of
+            // the block's 48-bit index word (0..254 = the word at that move-to-front position,
+            // expanded into the index field; 255 = the escape, the full payload below, the
+            // word inserted at the front of the list); otherwise the full payload. a flat
+            // block (identical endpoints, reconstructed exactly like the encoder sees the
+            // source) in mode 1 stores no index payload at all: the header value is expanded
+            // to all 16
             if ((e[0] == e[1]) && flat_mode)
             {
                 for (uint i = 0; i < 16; ++i)
                     idx[i] = flat_value;
             }
+            else if (dict_enable)
+            {
+                uint rank = decode_symbol(&compressed_stream, &dict_rank);
+
+                if (rank < BC4_DICT_SIZE)
+                {
+                    const thread uint8_t* w = &dict_word[dict_order[rank]][0];
+                    uint64_t wv = 0;
+                    for (uint j = 0; j < 6; ++j)
+                        wv |= ((uint64_t)w[j]) << (8 * j);
+                    for (uint i = 0; i < 16; ++i)
+                        idx[i] = (uint8_t)((wv >> (3 * i)) & 7);
+
+                    bc4_dict_touch(&dict_word[0][0], &dict_order[0], &dict_count, w, rank);
+                }
+                else
+                {
+                    bc4_decode_index_payload(&compressed_stream, &first_index, &index[0], idx);
+
+                    thread uint8_t w[6];
+                    uint64_t wv = 0;
+                    for (uint i = 0; i < 16; ++i)
+                        wv |= ((uint64_t)idx[i] & 7) << (3 * i);
+                    for (uint j = 0; j < 6; ++j)
+                        w[j] = (uint8_t)(wv >> (8 * j));
+
+                    bc4_dict_touch(&dict_word[0][0], &dict_order[0], &dict_count, w, BC4_DICT_SIZE);
+                }
+            }
             else
             {
-                // index payload: the first index with its 8-symbol model, then each index
-                // xored with its intra-block prediction, contextual on the 8 x 8 [left][top] matrix
-                idx[0] = decode_symbol8(&compressed_stream, &first_index);
-
-                for (uint i = 1; i < 16; ++i)
-                {
-                    // the missing neighbor of the pixel (first row, row start) defaults to 0
-                    uint8_t left = ((i & 3) == 0) ? 0 : idx[i - 1];
-                    uint8_t top = (i < 4) ? 0 : idx[i - 4];
-                    uint8_t p = ((i & 3) == 0) ? top : left;
-
-                    idx[i] = (uint8_t)(p ^ decode_symbol8(&compressed_stream, &index[bc4_index_context(left, top)]));
-                }
+                bc4_decode_index_payload(&compressed_stream, &first_index, &index[0], idx);
             }
 
             // the standard block: two endpoints + the 48-bit little-endian index field, as two aligned u32 words
