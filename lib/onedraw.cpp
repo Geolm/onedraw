@@ -2096,8 +2096,13 @@ void od_draw_string_view(struct onedraw* r, float x, float y, const char* text, 
 
         if (glyph_index < MAX_GLYPHS)
         {
-            draw_char(r, px, py, face, glyph_index, scale, srgb_color);
-            px += f->glyphs[glyph_index].advance_x * scale;
+            const glyph& glyph = f->glyphs[glyph_index];
+
+            // the space bakes to an empty box and renders no pixel : advance only, no command
+            if (glyph.x1 != glyph.x0 && glyph.y1 != glyph.y0)
+                draw_char(r, px, py, face, glyph_index, scale, srgb_color);
+
+            px += glyph.advance_x * scale;
         }
         else
             px += space_advance;
