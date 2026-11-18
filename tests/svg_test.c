@@ -388,6 +388,7 @@ static void cleanup(void)
         {
             uint32_t c, d;
             svg_report(files[i].list, &c, &d);
+            fprintf(stdout, "svg [%s] : %u commands, %u draw data floats\n", files[i].name, c, d);
             num_commands += c;
             num_data_floats += d;
         }
