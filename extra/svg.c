@@ -3394,6 +3394,46 @@ static void prep_push_clip(svg_prep* p, uint8_t kind, const float* d, uint32_t n
     prep_cmd_data(p, kind, d, num_data, box, 0);
 }
 
+// Pushes a rect / rounded-rect / disc clip mapped by [m]. onedraw clips are axis aligned, so a rotated
+// or skewed mapping is reported and left unclipped. Returns false when the clip can't be mapped.
+static bool prep_clip_rect_xform(svg_prep* p, const svg_xform* m, float x, float y, float w, float h, float r)
+{
+    if (m->b != 0.f || m->c != 0.f)
+        return false;
+    svg_pt a = svg_xform_pt(m, x, y);
+    svg_pt b = svg_xform_pt(m, x + w, y + h);
+    float box[4] = {fminf(a.x, b.x), fminf(a.y, b.y), fmaxf(a.x, b.x), fmaxf(a.y, b.y)};
+    float sx = fabsf(m->a), sy = fabsf(m->d);
+    float sr = r * fminf(sx, sy);
+    if (r > 0.f && fabsf(sx - sy) > 1e-4f * fmaxf(sx, sy))
+        p->doc->flags |= svg_flag_clip_unsupported;
+    if (sr > 0.f)
+    {
+        float d[5] = {box[0], box[1], box[2], box[3], sr};
+        prep_push_clip(p, svg_cmd_clip_rect_rounded, d, 5, box);
+    }
+    else
+        prep_push_clip(p, svg_cmd_clip_rect, box, 4, box);
+    return true;
+}
+
+static bool prep_clip_disc_xform(svg_prep* p, const svg_xform* m, float cx, float cy, float r)
+{
+    if (m->b != 0.f || m->c != 0.f)
+        return false;
+    float sx = fabsf(m->a), sy = fabsf(m->d);
+    if (fabsf(sx - sy) > 1e-4f * fmaxf(sx, sy))
+        return false;
+    svg_pt c = svg_xform_pt(m, cx, cy);
+    float rad = r * sx;
+    if (rad <= 0.f)
+        return false;
+    float d[3] = {c.x, c.y, rad};
+    float box[4] = {c.x - rad, c.y - rad, c.x + rad, c.y + rad};
+    prep_push_clip(p, svg_cmd_clip_disc, d, 3, box);
+    return true;
+}
+
 static void prep_text_walk(svg_prep* p, const svg_ctx* c, const svg_element* e, const svg_style* st, float cx, float cy);
 
 static void prep_stroke_run(svg_prep* p, const svg_ctx* c, const svg_style* st, uint32_t color, bool close)
@@ -3642,7 +3682,7 @@ static void prep_walk(svg_prep* p, svg_ctx* ctx, uint32_t idx, const svg_style* 
     c.uniform_scale = (c.cls <= 1) ? svg_xform_uniform_scale(&c.m) : 0.f;
     c.opacity = ctx->opacity * st.opacity;
 
-    bool clipped = false;
+    uint32_t clips = 0;
 
     // nested svg / symbol : clip the content to its box, map the viewBox onto the box
     if ((e->type == svg_el_svg || e->type == svg_el_symbol) && !ctx->via_use)
@@ -3660,12 +3700,8 @@ static void prep_walk(svg_prep* p, svg_ctx* ctx, uint32_t idx, const svg_style* 
         if (h <= 0.f)
             h = (vbh > 0.f) ? vbh : 100.f;
 
-        if (c.cls == 0)
-        {
-            float d[4] = {x, y, x + w, y + h};
-            prep_push_clip(p, svg_cmd_clip_rect, d, 4, d);
-            clipped = true;
-        }
+        if (prep_clip_rect_xform(p, &c.m, x, y, w, h, 0.f))
+            ++clips;
         else
             p->doc->flags |= svg_flag_clip_unsupported;
 
@@ -3705,11 +3741,10 @@ static void prep_walk(svg_prep* p, svg_ctx* ctx, uint32_t idx, const svg_style* 
         uint32_t shape = prep_clip_shape(doc, e);
         if (shape == SVG_INVALID)
             p->doc->flags |= svg_flag_clip_unsupported;
-        else if (c.cls != 0)
-            p->doc->flags |= svg_flag_clip_unsupported;
         else
         {
             const svg_element* s = &doc->elements[shape];
+            bool mapped = false;
             if (s->type == svg_el_rect)
             {
                 float crx = prep_param(doc, s, 4), cry = prep_param(doc, s, 5);
@@ -3719,20 +3754,7 @@ static void prep_walk(svg_prep* p, svg_ctx* ctx, uint32_t idx, const svg_style* 
                 float w = prep_param(doc, s, 2);
                 float h = prep_param(doc, s, 3);
                 if (w > 0.f && h > 0.f)
-                {
-                    if (rx > 0.f)
-                    {
-                        float d[5] = {x, y, x + w, y + h, rx};
-                        float box[4] = {x, y, x + w, y + h};
-                        prep_push_clip(p, svg_cmd_clip_rect_rounded, d, 5, box);
-                    }
-                    else
-                    {
-                        float d[4] = {x, y, x + w, y + h};
-                        prep_push_clip(p, svg_cmd_clip_rect, d, 4, d);
-                    }
-                    clipped = true;
-                }
+                    mapped = prep_clip_rect_xform(p, &c.m, x, y, w, h, rx);
             }
             else
             {
@@ -3740,13 +3762,12 @@ static void prep_walk(svg_prep* p, svg_ctx* ctx, uint32_t idx, const svg_style* 
                 float cy = prep_param(doc, s, 1);
                 float r = prep_param(doc, s, 2);
                 if (r > 0.f)
-                {
-                    float d[3] = {cx, cy, r};
-                    float box[4] = {cx - r, cy - r, cx + r, cy + r};
-                    prep_push_clip(p, svg_cmd_clip_disc, d, 3, box);
-                    clipped = true;
-                }
+                    mapped = prep_clip_disc_xform(p, &c.m, cx, cy, r);
             }
+            if (mapped)
+                ++clips;
+            else
+                p->doc->flags |= svg_flag_clip_unsupported;
         }
     }
 
@@ -3778,6 +3799,12 @@ static void prep_walk(svg_prep* p, svg_ctx* ctx, uint32_t idx, const svg_style* 
                                                                        : (vbw > 0.f ? vbw : 100.f);
                     float bh = (e->param_mask & (1u << 3) && prep_param(doc, e, 3) > 0.f) ? prep_param(doc, e, 3)
                                                                        : (vbh > 0.f ? vbh : 100.f);
+
+                    bool use_clip = false;
+                    if (prep_clip_rect_xform(p, &c.m, ux, uy, bw, bh, 0.f))
+                        use_clip = true;
+                    else
+                        p->doc->flags |= svg_flag_clip_unsupported;
 
                     if (vbw > 0.f && vbh > 0.f)
                     {
@@ -3813,14 +3840,11 @@ static void prep_walk(svg_prep* p, svg_ctx* ctx, uint32_t idx, const svg_style* 
                     c.cls = svg_xform_classify(&c.m);
                     c.uniform_scale = (c.cls <= 1) ? svg_xform_uniform_scale(&c.m) : 0.f;
 
-                    if (c.cls == 0)
-                    {
-                        float d[4] = {ux, uy, ux + bw, uy + bh};
-                        prep_push_clip(p, svg_cmd_clip_rect, d, 4, d);
-                        clipped = true;
-                    }
-                    else
-                        p->doc->flags |= svg_flag_clip_unsupported;
+                    c.via_use = true;
+                    c.use_stack[c.use_depth++] = ref;
+                    prep_walk(p, &c, ref, &st);
+                    if (use_clip)
+                        prep_push_clip(p, svg_cmd_clip_pop, NULL, 0, NULL);
                 }
                 else
                 {
@@ -3828,15 +3852,17 @@ static void prep_walk(svg_prep* p, svg_ctx* ctx, uint32_t idx, const svg_style* 
                     c.m = svg_xform_mul(&c.m, &tr);
                     c.cls = svg_xform_classify(&c.m);
                     c.uniform_scale = (c.cls <= 1) ? svg_xform_uniform_scale(&c.m) : 0.f;
+                    c.via_use = true;
+                    c.use_stack[c.use_depth++] = ref;
+                    prep_walk(p, &c, ref, &st);
                 }
-
-                c.via_use = true;
-                c.use_stack[c.use_depth++] = ref;
-                prep_walk(p, &c, ref, &st);
             }
         }
-        if (clipped)
+        while (clips > 0)
+        {
             prep_push_clip(p, svg_cmd_clip_pop, NULL, 0, NULL);
+            --clips;
+        }
         return;
     }
 
@@ -3939,8 +3965,11 @@ static void prep_walk(svg_prep* p, svg_ctx* ctx, uint32_t idx, const svg_style* 
     for (uint32_t child = e->first_child; child != SVG_INVALID; child = doc->elements[child].next_sibling)
         prep_walk(p, &c, child, &st);
 
-    if (clipped)
+    while (clips > 0)
+    {
         prep_push_clip(p, svg_cmd_clip_pop, NULL, 0, NULL);
+        --clips;
+    }
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
