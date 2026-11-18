@@ -84,3 +84,26 @@ target_link_libraries(headless
     "-framework Metal"
     "-framework Foundation"
 )
+
+# --- Svg test ---
+add_executable(svg
+    ./lib/onedraw.cpp
+    ./extra/svg.c
+    ./tests/svg_test.c
+    ./tests/sokol_app.mm
+    ./tests/compare.c
+)
+
+target_include_directories(svg PRIVATE ./third_party ./extra)
+
+if(TARGET build_lib)
+    add_dependencies(svg build_lib)
+endif()
+
+target_link_libraries(svg
+    "-framework Metal"
+    "-framework MetalKit"
+    "-framework AppKit"
+    "-framework Foundation"
+    "-framework QuartzCore"
+)

@@ -14,4 +14,8 @@ void test_bgra_to_rgba(uint8_t* pixels, uint32_t width, uint32_t height);
 //      [update_refs]  true : the matching reference is rewritten from the current capture
 void test_compare_reference(const uint8_t* pixels, uint32_t width, uint32_t height, bool compare, bool update_refs);
 
+// Same as test_compare_reference, with an explicit reference file name
+void test_compare_reference_named(const uint8_t* pixels, uint32_t width, uint32_t height, const char* name, bool compare,
+                                  bool update_refs);
+
 #endif

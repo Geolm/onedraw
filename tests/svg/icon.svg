@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <defs>
+    <clipPath id="panel">
+      <rect x="10" y="10" width="180" height="180" rx="24"/>
+    </clipPath>
+    <circle id="dot" r="6" fill="#ffffff"/>
+  </defs>
+  <rect x="10" y="10" width="180" height="180" rx="24" fill="#4a90d9"/>
+  <g clip-path="url(#panel)">
+    <rect x="10" y="10" width="180" height="92" fill="#5a9fe0"/>
+  </g>
+  <circle cx="100" cy="92" r="44" fill="#ffffff"/>
+  <circle cx="100" cy="92" r="58" fill="none" stroke="#ffffff" stroke-width="3" stroke-dasharray="8 6" stroke-linecap="round"/>
+  <path d="M 100 62 C 88 70 84 82 92 94 L 78 94 L 104 126 L 96 104 L 114 104 C 118 88 112 72 100 62 Z"
+        fill="#f5c542" stroke="#d9a520" stroke-width="2"/>
+  <use href="#dot" x="52" y="52"/>
+  <use href="#dot" x="148" y="52"/>
+  <use href="#dot" x="52" y="132"/>
+  <use href="#dot" x="148" y="132"/>
+  <line x1="30" y1="160" x2="170" y2="160" stroke="#ffffff" stroke-width="2"/>
+  <text x="100" y="182" font-size="16" fill="#ffffff" text-anchor="middle" font-family="monospace">ONEDRAW</text>
+</svg>

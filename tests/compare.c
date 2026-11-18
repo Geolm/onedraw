@@ -37,7 +37,14 @@ static const char* reference_name(uint32_t width, uint32_t height)
 void test_compare_reference(const uint8_t* pixels, uint32_t width, uint32_t height, bool compare, bool update_refs)
 {
     const char* name = reference_name(width, height);
+    test_compare_reference_named(pixels, width, height, name, compare, update_refs);
+}
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// Same as test_compare_reference, with an explicit reference file name
+void test_compare_reference_named(const uint8_t* pixels, uint32_t width, uint32_t height, const char* name, bool compare,
+                                  bool update_refs)
+{
     uint32_t ref_width = 0, ref_height = 0, ref_channels = 0;
     uint8_t* reference = stbi_load(name, (int*)&ref_width, (int*)&ref_height, (int*)&ref_channels, 4);
 
