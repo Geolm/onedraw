@@ -212,8 +212,9 @@ void od_resize(struct onedraw* r, uint32_t width, uint32_t height);
 // * Clip shapes have one push variant per space : od_push_cliprect()/_rounded and
 // od_push_clipdisc() take framebuffer pixels (like scissor rects in any graphics API),
 // od_canvas_cliprect()/_rounded and od_canvas_clipdisc() are mapped by the canvas transform so
-// the clip follows the canvas-scaled shapes. Text glyph sizes/advances are not scaled (screen pixels), only the text anchor
-// position is mapped.
+// the clip follows the canvas-scaled shapes.
+// * Text sizes and advances are in canvas units like every other coordinate : the face is picked
+// from the physical size (size * canvas scale), the anchor is mapped by the canvas transform.
 void od_set_canvas(struct onedraw* r, float x, float y, float width, float height);
 
 //-----------------------------------------------------------------------------------------------------------------------------
