@@ -78,14 +78,20 @@ buffer→texture blit of the GPU-decoded blocks, the text rendered but the refer
 (~2.8 % of pixels, max delta 202) while the decoded buffer was proven byte-identical to the
 baked BC4 image (GPU output compared against the committed baseline header).
 
-The root cause: a buffer→texture blit of a **compressed** format does not raw-copy the block
-grid — with `sourceBytesPerRow = 0` the source is read as a packed per-pixel-row raster of
-the destination format and re-encoded into blocks, which scrambled the row-major block
-layout (reading the texture back with `getBytes` showed the re-ordered blocks). Fix: upload
-the decoded buffer with `replaceRegion` at a `(width/4)*8`-byte pitch (one 4-px row per
-block row) — the exact semantics the direct BC4 upload always used.
+The root cause: a buffer→texture blit of a **compressed** format with `sourceBytesPerRow = 0`
+does not raw-copy the block grid — the zero pitch makes the blit re-interpret the source
+layout, which scrambled the row-major block layout (reading the texture back with `getBytes`
+showed the re-ordered blocks). Fix at the time: upload the decoded buffer with `replaceRegion`
+at a `(width/4)*8`-byte pitch (one 4-px row per block row) — the exact semantics the direct
+BC4 upload always used.
 
 A second, independent bug in the same step: `replaceRegion` reads the CPU pointer at call
 time, so it must run **after** `waitUntilCompleted` of the decode, not in the same command
 buffer before the commit (that uploads the zero-initialized buffer — the texture readback
 diffed again, in a different pattern).
+
+Follow-up (v3.7.1): the zero-pitch failure was re-verified (same signature: ~3 % of pixels
+differ, max delta 202), but a blit with the explicit `(width/4)*8` pitch uploads the block
+grid bit-identical. The upload is now a single gpu→gpu command buffer (decode compute + blit,
+ordered by the queue) with no CPU readback of the decoded data; the `waitUntilCompleted` is
+kept so the init sees a finished texture and can log a failed decode.

@@ -773,14 +773,18 @@ void od_build_font(struct onedraw* r)
     pComputeEncoder->setBytes(&args, sizeof(args), 2);
     pComputeEncoder->dispatchThreads(MTL::Size(64, 1, 1), MTL::Size(1, 1, 1));
     pComputeEncoder->endEncoding();
+
+    // gpu->gpu upload of the decoded blocks : the queue orders the blit after the decode, the cpu
+    // never reads the decoded data. the explicit (width/4)*8 pitch (one 4-px row per block row) is
+    // required : with a zero pitch the blit re-interprets the block grid and scrambles the atlas
+    MTL::BlitCommandEncoder* pBlitEncoder = pCommandBuffer->blitCommandEncoder();
+    pBlitEncoder->copyFromBuffer(blocks, 0, (width / 4) * 8, 0, MTL::Size(width, height, 1), r->font.texture, 0, 0, MTL::Origin(0, 0, 0));
+    pBlitEncoder->endEncoding();
+
     pCommandBuffer->commit();
     pCommandBuffer->waitUntilCompleted();
-
-    // replaceRegion reads the cpu pointer at call time, so it must run after the decode is done.
-    // a buffer->texture blit of a compressed format re-interprets the source layout (it scrambled the
-    // block grid), replaceRegion uploads it as-is : one 4-px row per (width/4)*8-byte pitch
-    r->font.texture->replaceRegion( MTL::Region(0, 0, 0, width, height, 1),
-        0, blocks->contents(), (width / 4) * 8);
+    if (pCommandBuffer->status() != MTL::CommandBufferStatusCompleted)
+        od_log(r, "error: the font atlas decode failed, the text will not render");
 
     SAFE_RELEASE(stream);
     SAFE_RELEASE(blocks);
