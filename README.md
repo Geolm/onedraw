@@ -16,8 +16,8 @@
 * **Shader-based alpha blending** – all blending operations are handled in the shader, no framebuffer read/write required.
 * **Anti-aliasing** – smooth edges using signed distance functions.
 * **Lightweight and minimal** – drop-in library with minimal dependencies.
-* **Text** – four built-in font families (Satoshi regular / bold / italic, JetBrains Mono) baked at nine sizes into one BC4 atlas; every call states its family and size, the closest baked size is picked and minified, strings are UTF-8, and width / ascent / line-height metrics are provided for layout.
-* **Wide shape support** – box, blurred box, rectangle, oriented box/rectangle, triangle, triangle ring, disc, circle, ellipse, ellipse ring, arc, sector, sector ring, Bézier curves (quadratic & cubic), textured quad, oriented textured quad.
+* **Text** – four built-in font families (Satoshi medium / black / italic, JetBrains Mono medium) baked at nine sizes into one BC4 atlas; every call states its family and size, the closest baked size is picked and minified, strings are UTF-8, and width / ascent / line-height metrics are provided for layout.
+* **Wide shape support** – box, blurred box, rectangle, oriented box/rectangle, triangle, triangle ring, filled polygon (odd-even, optional corner rounding), disc, circle, ellipse, ellipse ring, arc, sector, sector ring, Bézier curves (quadratic & cubic), textured quad, oriented textured quad.
 * **Dashed shapes** – dashed variants of line, ring, box, oriented box, ellipse ring and triangle ring, with configurable dash length, gap, phase and round/flat caps.
 * **Gradient fills** – radial gradient disc and two-color capsule.
 * **Shape operations** – shapes can be grouped (boolean add), [smooth minimum](https://iquilezles.org/articles/smin/) is supported for more organic shapes, outline can be drawn around entire group, and clip shapes (rect, rounded rect, disc) can be pushed/popped (up to 256 per frame).
