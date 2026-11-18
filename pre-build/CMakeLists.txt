@@ -61,7 +61,7 @@ set(prebuild_inputs
     ${CMAKE_SOURCE_DIR}/fonts/Satoshi-Medium.otf
     ${CMAKE_SOURCE_DIR}/fonts/Satoshi-Black.otf
     ${CMAKE_SOURCE_DIR}/fonts/Satoshi-MediumItalic.otf
-    ${CMAKE_SOURCE_DIR}/fonts/JetBrainsMono-Regular.ttf
+    ${CMAKE_SOURCE_DIR}/fonts/JetBrainsMono-Medium.ttf
     ${CMAKE_SOURCE_DIR}/third_party/stb_truetype.h
     ${CMAKE_SOURCE_DIR}/third_party/stb_rect_pack.h
 )
