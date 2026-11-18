@@ -139,7 +139,7 @@ static bool verify_inputs(void)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-void* read_file(const char* filename, size_t* file_size, struct linear_allocator* allocator)
+void* read_file(const char* filename, size_t* file_size, struct stack_allocator* allocator)
 {
     *file_size = 0;
 
@@ -170,7 +170,7 @@ void* read_file(const char* filename, size_t* file_size, struct linear_allocator
         return NULL;
     }
 
-    void* buffer = linear_alloc(allocator, *file_size);
+    void* buffer = stack_alloc(allocator, *file_size);
     if (buffer == NULL)
     {
         fprintf(stderr, "error: out of memory while reading '%s'\n", filename);
@@ -323,7 +323,7 @@ static bool find_atlas_size(const stbrp_rect* rects, int num_rects, uint32_t* ou
 #define NUM_FACES (OD_NUM_FONTS * OD_NUM_FONT_SIZES)
 
 // ---------------------------------------------------------------------------------------------------------------------------
-static bool load_fonts(stbtt_fontinfo* fonts, struct linear_allocator* allocator)
+static bool load_fonts(stbtt_fontinfo* fonts, struct stack_allocator* allocator)
 {
     bool ok = true;
 
@@ -392,7 +392,7 @@ static void gather_face_rects(stbtt_fontinfo* fonts, stbrp_rect* rects)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-bool build_fonts(struct linear_allocator* allocator)
+bool build_fonts(struct stack_allocator* allocator)
 {
     stbtt_fontinfo fonts[OD_NUM_FONTS];
 
@@ -406,13 +406,13 @@ bool build_fonts(struct linear_allocator* allocator)
 
     // one rect per baked code point per face (the allocator does not zero its memory, so the unused
     // slots of a MAX_GLYPHS stride would reach the packer uninitialized)
-    stbrp_rect* rects = (stbrp_rect*)linear_alloc(allocator, (size_t)NUM_FACES * NUM_CODEPOINTS * sizeof(stbrp_rect));
+    stbrp_rect* rects = (stbrp_rect*)stack_alloc(allocator, (size_t)NUM_FACES * NUM_CODEPOINTS * sizeof(stbrp_rect));
     if (rects == NULL)
         return false; // out of memory
 
     // the packer rewrites its input in place, and the sizing search packs the same rects over and over,
     // so it works on a copy that is allocated once and reused
-    stbrp_rect* scratch = (stbrp_rect*)linear_alloc(allocator, (size_t)NUM_FACES * NUM_CODEPOINTS * sizeof(stbrp_rect));
+    stbrp_rect* scratch = (stbrp_rect*)stack_alloc(allocator, (size_t)NUM_FACES * NUM_CODEPOINTS * sizeof(stbrp_rect));
     if (scratch == NULL)
         return false; // out of memory
 
@@ -424,13 +424,21 @@ bool build_fonts(struct linear_allocator* allocator)
     if (!find_atlas_size(rects, NUM_FACES * NUM_CODEPOINTS, &atlas_width, &atlas_height, scratch))
         return false; // find_atlas_size reported the error
 
+    // scratch is dead after the search and is the top block : popping it checks its canary and makes
+    // its range reusable for the atlas
+    if (stack_pop(allocator) == NULL)
+    {
+        fprintf(stderr, "error: the allocator reports a corrupted block (out-of-bounds write during the sizing search)\n");
+        return false;
+    }
+
     size_t bc4_image_size = (atlas_width / 4) * (atlas_height / 4) * 8;
 
     fprintf(stdout, "%ux%u (%zu bytes of bc4 data)\n", atlas_width, atlas_height, bc4_image_size);
 
     fprintf(stdout, "baking %ux%u atlas : ", atlas_width, atlas_height);
 
-    uint8_t* atlas_pixels = (uint8_t*)linear_alloc(allocator, (size_t)atlas_width * atlas_height);
+    uint8_t* atlas_pixels = (uint8_t*)stack_alloc(allocator, (size_t)atlas_width * atlas_height);
     if (atlas_pixels == NULL)
         return false; // out of memory
 
@@ -438,7 +446,7 @@ bool build_fonts(struct linear_allocator* allocator)
 
     // the packedchar storage of every face (~1.8 MB, too big for the stack) is a plain array,
     // not part of the serialized layout : the baker reads it to fill the font bank
-    stbtt_packedchar* bake_chars = (stbtt_packedchar*)linear_alloc(allocator, (size_t)NUM_FACES * MAX_GLYPHS * sizeof(stbtt_packedchar));
+    stbtt_packedchar* bake_chars = (stbtt_packedchar*)stack_alloc(allocator, (size_t)NUM_FACES * MAX_GLYPHS * sizeof(stbtt_packedchar));
     if (bake_chars == NULL)
         return false; // out of memory
 
@@ -483,7 +491,7 @@ bool build_fonts(struct linear_allocator* allocator)
 
     fprintf(stdout, "compressing atlas in BC4 : ");
 
-    uint8_t* compressed_atlas = (uint8_t*)linear_alloc(allocator, bc4_image_size);
+    uint8_t* compressed_atlas = (uint8_t*)stack_alloc(allocator, bc4_image_size);
     if (compressed_atlas == NULL)
         return false; // out of memory
 
@@ -495,7 +503,7 @@ bool build_fonts(struct linear_allocator* allocator)
 
     size_t packed_capacity = packed_bc4_maxsize(atlas_width, atlas_height);
 
-    uint8_t* packed_atlas = (uint8_t*)linear_alloc(allocator, packed_capacity);
+    uint8_t* packed_atlas = (uint8_t*)stack_alloc(allocator, packed_capacity);
     if (packed_atlas == NULL)
         return false; // out of memory
 
@@ -608,7 +616,7 @@ static uint64_t fnv1a64(const void* data, size_t size, uint64_t hash)
 // the metallib bytes depend on the version of the metal compiler of the machine that built them, so the
 // stamp only covers the shader sources and the compile flags : a matching stamp means the sources did
 // not change, and the existing header stays valid whatever the local toolchain
-static bool compute_shader_stamp(struct linear_allocator* allocator, const char* flags, uint64_t* out_stamp)
+static bool compute_shader_stamp(struct stack_allocator* allocator, const char* flags, uint64_t* out_stamp)
 {
     char path[256];
     uint64_t hash = 0xcbf29ce484222325ull; // the fnv-1a 64 offset basis
@@ -672,7 +680,7 @@ static uint64_t existing_shader_stamp(const char* filename)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-bool prepare_shaders(struct linear_allocator* allocator, const char* metallib, const char* flags, bool force)
+bool prepare_shaders(struct stack_allocator* allocator, const char* metallib, const char* flags, bool force)
 {
     uint64_t stamp = 0;
     if (!compute_shader_stamp(allocator, flags, &stamp))
@@ -717,7 +725,7 @@ bool copy_files(void)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-static void track_peak_memory(struct linear_allocator* allocator, size_t* peak)
+static void track_peak_memory(struct stack_allocator* allocator, size_t* peak)
 {
     if (allocator->peak > *peak)
         *peak = allocator->peak;
@@ -754,10 +762,10 @@ int main(int argc, char** argv)
     if (!verify_inputs())
         return 1;
 
-    struct linear_allocator allocator = {0};
+    struct stack_allocator allocator = {0};
     size_t peak_memory = 0;
 
-    if (!linear_init(&allocator, BUILDER_MEMORY))
+    if (!stack_init(&allocator, BUILDER_MEMORY))
     {
         fprintf(stderr, "error: could not reserve the builder memory\n");
         return 1;
@@ -766,17 +774,17 @@ int main(int argc, char** argv)
     bool success = build_fonts(&allocator);
 
     track_peak_memory(&allocator, &peak_memory);
-    linear_reset(&allocator);
+    stack_reset(&allocator);
 
     success = success && prepare_shaders(&allocator, metallib, *shader_flags, force);
 
     track_peak_memory(&allocator, &peak_memory);
-    linear_reset(&allocator);
+    stack_reset(&allocator);
 
     success = success && copy_files();
 
     fprintf(stdout, "\npeak memory usage %zukb\n\n", peak_memory >> 10);
-    linear_free(&allocator);
+    stack_free(&allocator);
 
     if (success)
         fprintf(stdout, "build succeeded\n");
