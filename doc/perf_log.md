@@ -79,3 +79,13 @@ gpu memory : 24260 kb (peak num commands : 2078)
 ### cache
 gpu time (last 3292 frames) : 0.26 ms (binning 0.21 ms, rasterization 0.05 ms)
 gpu memory : 28100 kb (peak num commands : 2078)
+
+## version 3.7.0
+
+### no cache
+gpu time (last 2368 frames) : 0.54 ms (binning 0.25 ms, rasterization 0.29 ms)
+gpu memory : 24260 kb (peak num commands : 2025)
+
+### cache
+gpu time (last 3008 frames) : 0.27 ms (binning 0.21 ms, rasterization 0.06 ms)
+gpu memory : 28100 kb (peak num commands : 2025)
