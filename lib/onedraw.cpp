@@ -1871,6 +1871,66 @@ void od_draw_triangle_ring(struct onedraw* r, const float* vertices, float round
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
+void od_draw_polygon(struct onedraw* r, const float* vertices, uint32_t num_vertices, float roundness, draw_color srgb_color)
+{
+    assert_msg(num_vertices <= OD_MAX_POLYGON_VERTICES, "od_draw_polygon: num_vertices is limited to OD_MAX_POLYGON_VERTICES");
+
+    if (num_vertices > OD_MAX_POLYGON_VERTICES)
+    {
+        od_log(r, "od_draw_polygon: %u vertices, more than OD_MAX_POLYGON_VERTICES, nothing drawn", num_vertices);
+        return;
+    }
+
+    // deduplicate in pixel space : keeps every gpu edge at half a pixel or longer, so sd_polygon never divides by a zero-length edge
+    vec2 v[OD_MAX_POLYGON_VERTICES];
+    uint32_t num = 0;
+    for (uint32_t i = 0; i < num_vertices; ++i)
+    {
+        vec2 p = canvas_xform_pos(r, vec2_set(vertices[2*i], vertices[2*i+1]));
+        if (num > 0 && vec2_similar(p, v[num-1], HALF_PIXEL))
+            continue;
+        v[num++] = p;
+    }
+
+    // closing the loop, the last vertex can duplicate the first
+    if (num > 0 && vec2_similar(v[num-1], v[0], HALF_PIXEL))
+        --num;
+
+    if (num == 3)
+    {
+        private_draw_triangle(r, v, canvas_xform_dist(r, roundness), 0.f, fill_solid, srgb_color);
+        return;
+    }
+
+    if (num < 3)
+    {
+        od_log(r, "od_draw_polygon: %u vertices remain after deduplication, fewer than 3, nothing drawn", num);
+        return;
+    }
+
+    roundness = canvas_xform_dist(r, roundness);
+
+    aabb bb = {v[0], v[0]};
+    for (uint32_t i = 1; i < num; ++i)
+    {
+        bb.min = vec2_min(bb.min, v[i]);
+        bb.max = vec2_max(bb.max, v[i]);
+    }
+    aabb_grow(&bb, vec2_splat(roundness + draw_cmd_aabb_bump(r)));
+
+    float* data = new_primitive(r, primitive_polygon, fill_solid, (uint8_t)num, srgb_color, 2 * num + 1, bb);
+    if (data == nullptr)
+        return;
+
+    for (uint32_t i = 0; i < num; ++i)
+    {
+        data[2*i] = v[i].x;
+        data[2*i+1] = v[i].y;
+    }
+    data[2*num] = roundness;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
 void private_draw_pie(struct onedraw* r, vec2 center, vec2 direction, float radius, float aperture, float thickness, enum primitive_fillmode fillmode, draw_color srgb_color)
 {
     if (aperture <= FLT_EPSILON)

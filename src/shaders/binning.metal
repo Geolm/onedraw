@@ -441,7 +441,8 @@ bool intersection_tile_command(aabb tile_aabb, draw_command cmd, sdf_operator op
         case primitive_aabox :
         case primitive_blurred_box :
         case primitive_quad:
-        case primitive_char : intersection = true; break;
+        case primitive_char :
+        case primitive_polygon : intersection = true; break;
         default : intersection = false; break;
     }
 

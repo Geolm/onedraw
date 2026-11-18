@@ -36,8 +36,10 @@
 #include <stdbool.h>
 
 #define ONEDRAW_MAJOR_VERSION   (3)
-#define ONEDRAW_MINOR_VERSION   (6)
-#define ONEDRAW_PATCH           (8)
+#define ONEDRAW_MINOR_VERSION   (7)
+#define ONEDRAW_PATCH           (0)
+
+#define OD_MAX_POLYGON_VERTICES (255)
 
 //----------------------------------------------------------------------------------------------------------------------------
 // Structures
@@ -434,6 +436,20 @@ void od_draw_triangle(struct onedraw* r, const float* vertices, float roundness,
 //      [roundness]             rounded corners radius
 //      [thickness]
 void od_draw_triangle_ring(struct onedraw* r, const float* vertices, float roundness, float thickness, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws a filled polygon: one closed loop of [num_vertices] x, y pairs (the last vertex connects to the first).
+// Any winding, concave and self-intersecting loops are fine; a point is inside when a ray from it crosses the loop an
+// odd number of times. Holes and multi-part shapes are the caller's arrangement (separate calls).
+//      [vertices]              pointer to 2*num_vertices floats, the vertices coordinates (xy)
+//      [num_vertices]          must be in [3, OD_MAX_POLYGON_VERTICES]; a bigger count asserts and logs, nothing is drawn
+//      [roundness]             shrinks the shape by that amount to round the corners, like od_draw_triangle
+//
+// Vertices closer than half a pixel to the previous kept one are dropped; a loop reduced to 3 vertices is drawn as a
+// triangle, fewer than 3 log and draw nothing.
+// The polygon is culled by its bounding box only and every pixel of the tiles it touches evaluates all its edges:
+// keep polygons small (few vertices, compact bounding box), split large ones.
+void od_draw_polygon(struct onedraw* r, const float* vertices, uint32_t num_vertices, float roundness, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a sector

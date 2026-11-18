@@ -136,6 +136,32 @@ static inline float sd_segment(float2 p, float2 a, float2 b )
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// signed distance to a closed polygon loop : https://iquilezles.org/articles/distfunctions2d/
+// ray-casting variant, the vertices are read from the draw data (2 floats each), any winding
+static inline float sd_polygon(constant float* data, int num, float2 p)
+{
+    float2 v0 = float2(data[0], data[1]);
+    float d = dot(p - v0, p - v0);
+    float s = 1.0;
+
+    for (int i = 0, j = num - 1; i < num; j = i, i++)
+    {
+        float2 vi = float2(data[2*i], data[2*i+1]);
+        float2 vj = float2(data[2*j], data[2*j+1]);
+        float2 e = vj - vi;
+        float2 w = p - vi;
+        float2 b = w - e * clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
+        d = min(d, dot(b, b));
+
+        bool3 c = bool3(p.y >= vi.y, p.y < vj.y, e.x * w.y > e.y * w.x);
+        if (all(c) || all(!c))
+            s = -s;
+    }
+
+    return s * sqrt(d);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // returns a signed distance to the clip shape, calibrated so the box-filter coverage of a
 // pixel whose center is at signed distance `d` from the edge equals `saturate(0.5 - d)`
 // (pixel-aligned edges stay crisp, edges get a 1px anti-aliased fringe)
@@ -416,6 +442,14 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                     cmd_color.a *= dist_alpha.y;
                     break;
                 }
+                case primitive_polygon:
+                {
+                    int num = (int) extra;
+                    distance = sd_polygon(data, num, in.pos.xy);
+                    distance -= data[2*num];
+                    break;
+                }
+
                 case primitive_quad:
                 {
                     float2 top_left = float2(data[0], data[1]);

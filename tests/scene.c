@@ -518,4 +518,25 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
 
         od_draw_text(r, (CANVAS_WIDTH - width) * .5f, CANVAS_HEIGHT - 158.f, glyph_set, od_font_regular, size, miya_black);
     }
+
+    // the filled polygon : a rounded five-point star (10 vertices, concave), in the free space below
+    // the sector_ring slot, between the second and third rows of feature shapes
+    {
+        const float cx = 1040.f;
+        const float cy = 750.f;
+        const float outer = 42.f;
+        const float inner = 19.f;
+
+        float star[20];
+        for (uint32_t i = 0; i < 10; ++i)
+        {
+            float a = -1.5707963f + i * 0.6283185f;
+            float r = (i & 1u) ? inner : outer;
+            star[2*i]   = cx + cosf(a) * r;
+            star[2*i+1] = cy + sinf(a) * r;
+        }
+
+        od_draw_polygon(r, star, 10, 6.f, miya_yellow);
+        od_draw_text(r, cx - 52.f, cy - 74.f, "polygon", od_font_regular, LABEL_SIZE, miya_brown);
+    }
 }
