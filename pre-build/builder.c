@@ -27,9 +27,9 @@
 
 
 #define LIB_FOLDER "lib/"
-#define FONT_FILENAME_REGULAR   "fonts/Satoshi-Regular.otf"
+#define FONT_FILENAME_REGULAR   "fonts/Satoshi-Medium.otf"
 #define FONT_FILENAME_BOLD      "fonts/Satoshi-Bold.otf"
-#define FONT_FILENAME_ITALIC    "fonts/Satoshi-Italic.otf"
+#define FONT_FILENAME_ITALIC    "fonts/Satoshi-MediumItalic.otf"
 #define FONT_FILENAME_MONO      "fonts/JetBrainsMono-Regular.ttf"
 #define ATLAS_MAX_SIZE  (2048)
 #define ATLAS_PADDING   (1)   // 1 px gutter, the packer stores it on the left and top of every glyph
