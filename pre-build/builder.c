@@ -28,7 +28,7 @@
 
 #define LIB_FOLDER "lib/"
 #define FONT_FILENAME_REGULAR   "fonts/Satoshi-Medium.otf"
-#define FONT_FILENAME_BOLD      "fonts/Satoshi-Bold.otf"
+#define FONT_FILENAME_BOLD      "fonts/Satoshi-Black.otf"
 #define FONT_FILENAME_ITALIC    "fonts/Satoshi-MediumItalic.otf"
 #define FONT_FILENAME_MONO      "fonts/JetBrainsMono-Regular.ttf"
 #define ATLAS_MAX_SIZE  (2048)

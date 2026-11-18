@@ -264,61 +264,61 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
 
     slot(0, &cx, &cy, &radius);
     od_draw_disc_gradient(r, cx, cy, radius, miya_dark_blue, miya_light_blue);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "disc_gradient", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "disc_gradient", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(1, &cx, &cy, &radius);
     od_draw_ring(r, cx, cy, radius, radius * .1f, miya_green);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "ring", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "ring", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(2, &cx, &cy, &radius);
     od_draw_box(r, cx - radius, cy - radius*.5f, cx + radius, cy + radius*.5f, radius * 0.05f, patch_color_alpha(miya_grey, 224));
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "box", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "box", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(3, &cx, &cy, &radius);
     od_draw_blurred_box(r, cx, cy, radius*.5f, radius, radius * 0.1f, miya_black);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "blurred_box", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "blurred_box", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(4, &cx, &cy, &radius);
     od_draw_oriented_rect(r, cx - cosf(angle) * radius, cy - sinf(angle) * radius, cx + cosf(angle) * radius, cy + sinf(angle) * radius,
                           radius * 0.4f, 0.f, radius * 0.1f, miya_pale_blue);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "oriented_rect", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "oriented_rect", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(5, &cx, &cy, &radius);
     od_draw_oriented_box(r, cx + cosf(angle) * radius, cy - sinf(angle) * radius, cx - cosf(angle) * radius, cy + sinf(angle) * radius,
                          radius * 0.5f, radius * 0.05f, patch_color_alpha(miya_red, 224));
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "oriented_box", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "oriented_box", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(6, &cx, &cy, &radius);
     od_draw_triangle(r, (float[]){cx, cy, cx - cosf(angle) * radius, cy + sinf(angle) * radius,
                      cx + cosf(angle) * radius, cy +sinf(angle) * radius}, radius * 0.1f, patch_color_alpha(miya_dark_green, 224));
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "triangle", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "triangle", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(7, &cx, &cy, &radius);
     od_draw_triangle_ring(r, (float[]){cx, cy, cx - cosf(angle) * radius, cy - sinf(angle) * radius,
                           cx + cosf(angle) * radius, cy - sinf(angle) * radius}, 0.f, radius * 0.1f, miya_dark_grey);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "triangle_ring", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "triangle_ring", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(8, &cx, &cy, &radius);
     od_draw_ellipse(r, cx + cosf(angle) * radius, cy - sinf(angle) * radius, cx - cosf(angle) * radius, cy + sinf(angle) * radius,
                     radius, patch_color_alpha(miya_yellow, 224));
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "ellipse", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "ellipse", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(9, &cx, &cy, &radius);
     od_draw_ellipse_ring(r, cx + cosf(angle) * radius, cy - sinf(angle) * radius, cx - cosf(angle) * radius, cy + sinf(angle) * radius,
                          radius, radius * 0.1f, miya_light_grey);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "ellipse_ring", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "ellipse_ring", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(10, &cx, &cy, &radius);
     od_draw_sector(r, cx, cy, radius, angle, 0.78539816f, miya_pink);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "sector", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "sector", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(11, &cx, &cy, &radius);
     od_draw_sector_ring(r, cx, cy, radius, -angle, 0.78539816f, radius * 0.1f, miya_dark_blue);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "sector_ring", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "sector_ring", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(12, &cx, &cy, &radius);
     od_draw_arc(r, cx, cy, cosf(angle), sinf(angle), 0.78539816f, radius, radius * 0.1f, miya_red);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "arc", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "arc", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(13, &cx, &cy, &radius);
     {
@@ -348,7 +348,7 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
 
         od_pop_clip(r);
     }
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "text", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "text", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(14, &cx, &cy, &radius);
     od_begin_group(r, true, radius * 0.25f, radius * 0.05f);
@@ -356,7 +356,7 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
     od_draw_disc(r, cx + cosf(angle) * radius * .5f, cy - sinf(angle) * radius * .5f, radius*0.25f, patch_color_alpha(miya_light_green, 224));
     od_draw_box(r, cx-radius*.7f, cy-radius*.7f, cx-radius*.3f, cy+radius*.7f, 0.f, patch_color_alpha(miya_yellow, 224));
     od_end_group(r, miya_brown);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "smoothmin", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "smoothmin", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(15, &cx, &cy, &radius);
     od_canvas_cliprect_rounded(r, cx - radius*.5f, cy - radius*.5f, cx + radius*.5f, cy + radius*.5f, radius*.25f);
@@ -366,14 +366,14 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
     od_draw_quad(r, cx, cy, cx+radius, cy+radius, (od_quad_uv){0.f, 0.f, 1.f, 1.f}, 3, 0xafffffff);
     od_pop_clip(r);
     {
-        const float label_height = od_text_line_height(r, od_font_bold, LABEL_SIZE);
-        od_draw_text(r, cx-radius, cy-radius*1.25f, "quad", od_font_bold, LABEL_SIZE, miya_brown);
-        od_draw_text(r, cx-radius, cy-radius*1.25f + label_height, "rounded clip", od_font_bold, LABEL_SIZE, miya_brown);
+        const float label_height = od_text_line_height(r, od_font_regular, LABEL_SIZE);
+        od_draw_text(r, cx-radius, cy-radius*1.25f, "quad", od_font_regular, LABEL_SIZE, miya_brown);
+        od_draw_text(r, cx-radius, cy-radius*1.25f + label_height, "rounded clip", od_font_regular, LABEL_SIZE, miya_brown);
     }
 
     slot(16, &cx, &cy, &radius);
     od_draw_oriented_quad(r, cx, cy, radius, radius*.5f, angle * 0.75f, (od_quad_uv){0.f, 0.f, 1.f, 0.5f}, 2, 0xafffffff);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "oriented_quad", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "oriented_quad", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(17, &cx, &cy, &radius);
     float quadratic_ctrl_pts[] = {cx, cy-radius*.8f, cx-radius, cy+radius*0.8f, cx, cy+radius};
@@ -381,8 +381,8 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
     snprintf(string, 256, "%u capsules", num_capsules);
     for(uint32_t i=0; i<3; i++)
         od_draw_disc(r, quadratic_ctrl_pts[i*2], quadratic_ctrl_pts[i*2+1], 10.f, miya_yellow);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "quadratic_bezier", od_font_bold, LABEL_SIZE, miya_brown);
-    od_draw_text(r, cx-radius, cy+radius*1.25f, string, od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "quadratic_bezier", od_font_regular, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy+radius*1.25f, string, od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(18, &cx, &cy, &radius);
     float cubic_ctrl_pts[] = {cx, cy-radius*.8f, cx-radius, cy+radius*0.8f, cx, cy+radius, cx+radius*.8f, cy};
@@ -390,8 +390,8 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
     snprintf(string, 256, "%u capsules", num_capsules);
     for(uint32_t i=0; i<4; i++)
         od_draw_disc(r, cubic_ctrl_pts[i*2], cubic_ctrl_pts[i*2+1], 10.f, miya_dark_green);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "cubic_bezier", od_font_bold, LABEL_SIZE, miya_brown);
-    od_draw_text(r, cx-radius, cy+radius*1.25f, string, od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "cubic_bezier", od_font_regular, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy+radius*1.25f, string, od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(19, &cx, &cy, &radius);
     od_begin_group(r, false, 0.f, 10.f);
@@ -400,7 +400,7 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
     od_draw_sector(r, cx, cy, radius, angle, 0.78539816f, miya_pink);
     od_draw_arc(r, cx, cy, cosf(angle), sinf(angle), 0.78539816f, radius, radius * 0.1f, miya_red);
     od_end_group(r, miya_yellow);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "outline", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "outline", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(20, &cx, &cy, &radius);
     od_canvas_clipdisc(r, cx, cy, radius);
@@ -417,12 +417,12 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
     od_pop_clip(r);
     od_draw_box(r, cx + radius * 0.75f, cy - radius * 0.95f, cx + radius * 0.95f, cy - radius * 0.75f, 0.f, miya_red);
     od_pop_clip(r);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "disc clip", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "disc clip", od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(21, &cx, &cy, &radius);
     od_draw_capsule_gradient(r, cx - cosf(angle) * radius, cy - sinf(angle) * radius, cx + cosf(angle) * radius, cy + sinf(angle) * radius,
                              radius * 0.1f, miya_pale_blue, miya_red);
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "capsule_gradient", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "capsule_gradient", od_font_regular, LABEL_SIZE, miya_brown);
 
     // a moving arrow, deterministic with the frame count : its position is a data float, so the hash
     // changes every frame and the tile cache must invalidate + redraw it (a stale tile would leave a
@@ -479,7 +479,7 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
                                                    miya_grey);
         snprintf(string, 256, "dashed : %s", (tiny_budget == UINT32_MAX) ? "ok" : "error");
     }
-    od_draw_text(r, cx-radius, cy-radius*1.25f, string, od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, string, od_font_regular, LABEL_SIZE, miya_brown);
 
     slot(23, &cx, &cy, &radius);
     {
@@ -506,7 +506,7 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
         od_draw_box(r, cx - radius * 1.0f, cy - radius * 0.7f, cx + radius * 1.0f, cy + radius * 1.3f, 0.f, miya_white);
         od_draw_disc(r, cx + cosf(angle) * radius * .3f, cy - sinf(angle) * radius * .3f, radius * .33f, miya_red);
     }
-    od_draw_text(r, cx-radius, cy-radius*1.25f, "occlusion", od_font_bold, LABEL_SIZE, miya_brown);
+    od_draw_text(r, cx-radius, cy-radius*1.25f, "occlusion", od_font_regular, LABEL_SIZE, miya_brown);
 
     // the extended glyph set (typography, math, arrows, shapes) rendered in the free bottom strip, so the
     // reference image covers every new glyph. The windowed test's stats overlay owns the two lines below
@@ -514,8 +514,8 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
     {
         static const char glyph_set[] = "‚ „ ‹ › † ‡ ‰ ™ − ′ ≤ ≥ ≠ ≈ ∞ √ ∑ ∏ ∆ ∂ ∫ π Ω ← → ↑ ↓ ↔ ↕ ✓ ● ○ ■ □ ▲";
         const float size = 40.f; // a baked size : 20 px at 1x and 40 px at 2x, both rendered at scale 1.0
-        const float width = od_text_width(r, glyph_set, od_font_bold, size);
+        const float width = od_text_width(r, glyph_set, od_font_regular, size);
 
-        od_draw_text(r, (CANVAS_WIDTH - width) * .5f, CANVAS_HEIGHT - 158.f, glyph_set, od_font_bold, size, miya_black);
+        od_draw_text(r, (CANVAS_WIDTH - width) * .5f, CANVAS_HEIGHT - 158.f, glyph_set, od_font_regular, size, miya_black);
     }
 }

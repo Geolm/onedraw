@@ -59,7 +59,7 @@ set(prebuild_inputs
     ${CMAKE_SOURCE_DIR}/src/shaders/common.h
     ${CMAKE_SOURCE_DIR}/third_party/bc_packed.h
     ${CMAKE_SOURCE_DIR}/fonts/Satoshi-Medium.otf
-    ${CMAKE_SOURCE_DIR}/fonts/Satoshi-Bold.otf
+    ${CMAKE_SOURCE_DIR}/fonts/Satoshi-Black.otf
     ${CMAKE_SOURCE_DIR}/fonts/Satoshi-MediumItalic.otf
     ${CMAKE_SOURCE_DIR}/fonts/JetBrainsMono-Regular.ttf
     ${CMAKE_SOURCE_DIR}/third_party/stb_truetype.h
