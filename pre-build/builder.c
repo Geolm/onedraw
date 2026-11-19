@@ -633,7 +633,7 @@ static bool compute_shader_stamp(struct stack_allocator* allocator, const char* 
 
         hash = fnv1a64(path, strlen(path), hash);
         hash = fnv1a64(data, file_size, hash);
-        linear_reset(allocator);
+        stack_reset(allocator);
     }
 
     size_t file_size = 0;
@@ -645,7 +645,7 @@ static bool compute_shader_stamp(struct stack_allocator* allocator, const char* 
 
     hash = fnv1a64(path, strlen(path), hash);
     hash = fnv1a64(data, file_size, hash);
-    linear_reset(allocator);
+    stack_reset(allocator);
 
     if (flags[0] != '\0')
         hash = fnv1a64(flags, strlen(flags), hash);
