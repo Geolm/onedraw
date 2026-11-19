@@ -80,7 +80,6 @@ _deps
 # project specific
 screenshot.png
 screenshot_headless.png
-screenshot_svg.png
 
 # doc diagram tooling
 .docgen/venv

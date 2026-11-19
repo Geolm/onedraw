@@ -37,7 +37,7 @@
 
 #define ONEDRAW_MAJOR_VERSION   (3)
 #define ONEDRAW_MINOR_VERSION   (7)
-#define ONEDRAW_PATCH           (3)
+#define ONEDRAW_PATCH           (4)
 
 #define OD_MAX_POLYGON_VERTICES (255)
 
