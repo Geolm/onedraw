@@ -16,7 +16,7 @@
 * **Shader-based alpha blending** – all blending operations are handled in the shader, no framebuffer read/write required.
 * **Anti-aliasing** – smooth edges using signed distance functions.
 * **Lightweight and minimal** – drop-in library with minimal dependencies.
-* **Text** – four built-in font families (Satoshi medium / black / italic, JetBrains Mono medium) baked at nine sizes into one BC4 atlas; every call states its family and size, the closest baked size is picked and minified, strings are UTF-8, and width / ascent / line-height metrics are provided for layout.
+* **Text** – four built-in font families (Satoshi medium / black / italic, JetBrains Mono medium) baked at nine sizes into one BC4 atlas; every call states its family and size, the closest baked size is picked and minified, strings are UTF-8, and width / ascent / line-height metrics are provided for layout. `od_draw_md_string()` draws one line with inline markdown styling (`*italic*`, `**bold**`, `~~strikethrough~~`, `` `monospace` ``, `\` escapes), the markup picking the family per run.
 * **Wide shape support** – box, blurred box, rectangle, oriented box/rectangle, triangle, triangle ring, filled polygon (odd-even, optional corner rounding), disc, circle, ellipse, ellipse ring, arc, sector, sector ring, Bézier curves (quadratic & cubic), textured quad, oriented textured quad.
 * **Dashed shapes** – dashed variants of line, ring, box, oriented box, ellipse ring and triangle ring, with configurable dash length, gap, phase and round/flat caps.
 * **Gradient fills** – radial gradient disc and two-color capsule.

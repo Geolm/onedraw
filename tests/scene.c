@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <math.h>
 
 #include "scene.h"
@@ -538,5 +539,37 @@ void scene_draw(struct onedraw* r, uint32_t frame_count)
 
         od_draw_polygon(r, star, 10, 6.f, miya_yellow);
         od_draw_text(r, cx - 52.f, cy - 74.f, "polygon", od_font_regular, LABEL_SIZE, miya_brown);
+    }
+
+    // the inline markdown feature : one line per syntax rule (styles, nesting with bold winning,
+    // nested same-style markers, literal fallbacks, unclosed openers styling to end of line). The
+    // last line sits on a box of its measured width : a correct od_md_string_width makes the drawn
+    // text reach the box's right edge exactly
+    {
+        static const char* md_lines[] =
+        {
+            "regular **bold** *italic* ~~strike~~ `mono`",
+            "**bold *italic* bold**",
+            "*italic **bold** italic*",
+            "~~struck **bold** `code`~~",
+            "*a *b* c*",
+            "\\*escaped\\* _not italic_ 2 * 3 *** `**not bold**`",
+            "**not bold ~~not struck `not mono",
+        };
+
+        const float size = 20.f;
+        const float line_height = od_text_line_height(r, od_font_regular, size);
+        float py = 700.f;
+        for (uint32_t i = 0; i < (uint32_t)(sizeof(md_lines) / sizeof(md_lines[0])); ++i)
+        {
+            od_draw_md_string(r, 1625.f, py, md_lines[i], strlen(md_lines[i]), size, miya_black);
+            py += line_height;
+        }
+
+        const char* width_check = "width **check** ~~line~~ `code`";
+        float width = od_md_string_width(r, width_check, strlen(width_check), size);
+
+        od_draw_box(r, 1625.f, py, 1625.f + width, py + line_height, 0.f, patch_color_alpha(miya_light_blue, 96));
+        od_draw_md_string(r, 1625.f, py, width_check, strlen(width_check), size, miya_black);
     }
 }

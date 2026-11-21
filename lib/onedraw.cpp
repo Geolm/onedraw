@@ -131,6 +131,12 @@ typedef struct cubic_bezier {vec2 c0, c1, c2, c3;} cubic_bezier;
 // the pre-build baker serializes struct font_bank into the default_font header, fail at compile time if the layout drifted
 static_assert(sizeof(font_bank) == default_font_size, "baked font layout mismatch");
 
+enum md_style
+{
+    md_italic = 0,
+    md_bold,
+    md_strike
+};
 
 struct gpu_timer
 {
@@ -433,6 +439,28 @@ static inline uint32_t hash_combine(uint32_t state, uint32_t value)
 {
     state ^= value + 0x9e3779b9u + (state << 6u) + (state >> 2u);
     return state;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+static bool md_is_ws(char c) {return c == ' ' || c == '\t';}
+
+//----------------------------------------------------------------------------------------------------------------------------
+static bool md_is_escaped(char c) {return c == '*' || c == '~' || c == '`' || c == '\\';}
+
+//----------------------------------------------------------------------------------------------------------------------------
+static int md_style_of(char c, uint32_t length)
+{
+    if (c == '*')
+    {
+        if (length == 1)
+            return md_italic;
+        if (length == 2)
+            return md_bold;
+    }
+    else if (c == '~' && length == 2)
+        return md_strike;
+
+    return -1;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2139,23 +2167,15 @@ static void draw_char(struct onedraw* r, float x, float y, uint32_t face, uint32
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-void od_draw_string_view(struct onedraw* r, float x, float y, const char* text, size_t size_in_byte, od_font font, float size, draw_color srgb_color)
+static float draw_glyph_range(struct onedraw* r, float px, float py, uint32_t face, float scale,
+                              const char* first, const char* last, draw_color srgb_color, bool measure_only)
 {
-    float scale = 1.f;
-    uint32_t face = select_face(r, font, size, &scale);
-
     const font_face* f = &r->font.desc->faces[face];
     const float space_advance = f->glyphs[0].advance_x * scale; // the space is the first code point
 
-    vec2 anchor = canvas_xform_pos(r, vec2_set(x, y));
-    float px = anchor.x;
-    float py = anchor.y;
-
-    const char* end = text + size_in_byte;
-
-    while (text < end)
+    while (first < last)
     {
-        uint32_t cp = decode_utf8(text, end, &text);
+        uint32_t cp = decode_utf8(first, last, &first);
         uint32_t glyph_index = codepoint_to_glyph(r->font.desc, cp);
 
         if (glyph_index < MAX_GLYPHS)
@@ -2163,7 +2183,7 @@ void od_draw_string_view(struct onedraw* r, float x, float y, const char* text, 
             const glyph& glyph = f->glyphs[glyph_index];
 
             // the space bakes to an empty box and renders no pixel : advance only, no command
-            if (glyph.x1 != glyph.x0 && glyph.y1 != glyph.y0)
+            if (!measure_only && glyph.x1 != glyph.x0 && glyph.y1 != glyph.y0)
                 draw_char(r, px, py, face, glyph_index, scale, srgb_color);
 
             px += glyph.advance_x * scale;
@@ -2171,12 +2191,175 @@ void od_draw_string_view(struct onedraw* r, float x, float y, const char* text, 
         else
             px += space_advance;
     }
+
+    return px;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_draw_string_view(struct onedraw* r, float x, float y, const char* text, size_t size_in_byte, od_font font, float size, draw_color srgb_color)
+{
+    float scale = 1.f;
+    uint32_t face = select_face(r, font, size, &scale);
+
+    vec2 anchor = canvas_xform_pos(r, vec2_set(x, y));
+    draw_glyph_range(r, anchor.x, anchor.y, face, scale, text, text + size_in_byte, srgb_color, false);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 void od_draw_text(struct onedraw* r, float x, float y, const char* text, od_font font, float size, draw_color srgb_color)
 {
     od_draw_string_view(r, x, y, text, strlen(text), font, size, srgb_color);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+// the pen is in canvas units, draw_glyph_range emits in device pixels
+static float md_draw_range(struct onedraw* r, float x, float y, uint32_t face, float scale, const char* first,
+                           const char* last, draw_color srgb_color, bool emit)
+{
+    vec2 anchor = canvas_xform_pos(r, vec2_set(x, y));
+
+    return (draw_glyph_range(r, anchor.x, anchor.y, face, scale, first, last, srgb_color, !emit) - r->canvas.x) / r->canvas.scale;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+static void md_draw_strike_box(struct onedraw* r, float x0, float x1, float y_center, float size, draw_color srgb_color)
+{
+    float thickness = float_max(1.f / r->canvas.scale, size / 14.f);
+
+    od_draw_box(r, x0, y_center - thickness * .5f, x1, y_center + thickness * .5f, 0.f, srgb_color);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+// a closable run closes the nearest still-open same-style opener (*a *b* c* keeps a b c all italic) ;
+// a run that can neither open nor close is drawn literally, an unclosed style carries through to the
+// end of the line ; coordinates in canvas units, returns the advance in canvas units
+static float md_walk(struct onedraw* r, float x, float y, const char* text, size_t size_in_byte, float size,
+                     draw_color srgb_color, bool emit)
+{
+    float scale = 1.f;
+    uint32_t regular_face = select_face(r, od_font_regular, size, &scale);
+    uint32_t size_index = regular_face % OD_NUM_FONT_SIZES;
+
+    const font_face* regular = &r->font.desc->faces[regular_face];
+    float canvas_scale = scale / r->canvas.scale;
+    float baseline = y + regular->ascent * canvas_scale;
+    // the x glyph of the regular face ('x' - 0x20 is its direct ascii offset) : the height the strike line centers on
+    float x_height = -regular->glyphs[(uint32_t)('x' - 0x20)].bearing_y * canvas_scale;
+
+    uint32_t bold_depth = 0;
+    uint32_t italic_depth = 0;
+    uint32_t strike_depth = 0;
+    float pen_x = x;
+    float strike_x = x;
+
+    const char* end = text + size_in_byte;
+    const char* p = text;
+    while (p < end)
+    {
+        char c = *p;
+
+        uint32_t face = (bold_depth ? od_font_bold : italic_depth ? od_font_italic : od_font_regular) * OD_NUM_FONT_SIZES + size_index;
+        float run_y = baseline - r->font.desc->faces[face].ascent * canvas_scale;
+
+        if (c == '`')
+        {
+            const char* close = p + 1;
+            while (close < end && *close != '`')
+                ++close;
+
+            if (close < end)
+            {
+                uint32_t mono_face = od_font_mono * OD_NUM_FONT_SIZES + size_index;
+                pen_x = md_draw_range(r, pen_x, baseline - r->font.desc->faces[mono_face].ascent * canvas_scale, mono_face, scale,
+                                      p + 1, close, srgb_color, emit);
+                p = close + 1;
+            }
+            else
+            {
+                pen_x = md_draw_range(r, pen_x, run_y, face, scale, p, p + 1, srgb_color, emit);
+                ++p;
+            }
+        }
+        else if (c == '\\')
+        {
+            if (p + 1 < end && md_is_escaped(p[1]))
+            {
+                pen_x = md_draw_range(r, pen_x, run_y, face, scale, p + 1, p + 2, srgb_color, emit);
+                p += 2;
+            }
+            else
+            {
+                pen_x = md_draw_range(r, pen_x, run_y, face, scale, p, p + 1, srgb_color, emit);
+                ++p;
+            }
+        }
+        else if (c == '*' || c == '~')
+        {
+            const char* run_end = p + 1;
+            while (run_end < end && *run_end == c)
+                ++run_end;
+
+            int style = md_style_of(c, (uint32_t)(run_end - p));
+            uint32_t depth = (style == md_bold) ? bold_depth : (style == md_italic) ? italic_depth : strike_depth;
+            bool can_open = (run_end < end) && !md_is_ws(*run_end);
+            bool can_close = (p > text) && !md_is_ws(p[-1]);
+
+            if (style >= 0 && can_close && depth > 0)
+            {
+                if (style == md_strike)
+                {
+                    // emitted after the range's glyphs so the line blends over them
+                    --strike_depth;
+                    if (strike_depth == 0 && emit && pen_x > strike_x)
+                        md_draw_strike_box(r, strike_x, pen_x, baseline - x_height * .5f, size, srgb_color);
+                }
+                else if (style == md_bold)
+                    --bold_depth;
+                else
+                    --italic_depth;
+                p = run_end;
+            }
+            else if (style >= 0 && can_open)
+            {
+                if (style == md_strike)
+                {
+                    if (strike_depth == 0)
+                        strike_x = pen_x;
+                    ++strike_depth;
+                }
+                else if (style == md_bold)
+                    ++bold_depth;
+                else
+                    ++italic_depth;
+                p = run_end;
+            }
+            else
+            {
+                pen_x = md_draw_range(r, pen_x, run_y, face, scale, p, run_end, srgb_color, emit);
+                p = run_end;
+            }
+        }
+        else
+        {
+            const char* range_end = p + 1;
+            while (range_end < end && *range_end != '`' && *range_end != '\\' && *range_end != '*' && *range_end != '~')
+                ++range_end;
+
+            pen_x = md_draw_range(r, pen_x, run_y, face, scale, p, range_end, srgb_color, emit);
+            p = range_end;
+        }
+    }
+
+    if (strike_depth > 0 && emit && pen_x > strike_x)
+        md_draw_strike_box(r, strike_x, pen_x, baseline - x_height * .5f, size, srgb_color);
+
+    return pen_x - x;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+void od_draw_md_string(struct onedraw* r, float x, float y, const char* text, size_t size_in_byte, float size, draw_color srgb_color)
+{
+    md_walk(r, x, y, text, size_in_byte, size, srgb_color, true);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -2384,30 +2567,19 @@ float od_string_view_width(struct onedraw* r, const char* text, size_t size_in_b
     float scale = 1.f;
     uint32_t face = select_face(r, font, size, &scale);
 
-    const font_face* f = &r->font.desc->faces[face];
-    const float space_advance = f->glyphs[0].advance_x * scale;
-
-    const char* end = text + size_in_byte;
-    float width = 0.f;
-
-    while (text < end)
-    {
-        uint32_t cp = decode_utf8(text, end, &text);
-        uint32_t glyph_index = codepoint_to_glyph(r->font.desc, cp);
-
-        if (glyph_index < MAX_GLYPHS)
-            width += f->glyphs[glyph_index].advance_x * scale;
-        else
-            width += space_advance;
-    }
-
-    return width / r->canvas.scale;
+    return draw_glyph_range(r, 0.f, 0.f, face, scale, text, text + size_in_byte, 0, true) / r->canvas.scale;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
 float od_text_width(struct onedraw* r, const char* text, od_font font, float size)
 {
     return od_string_view_width(r, text, strlen(text), font, size);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------
+float od_md_string_width(struct onedraw* r, const char* text, size_t size_in_byte, float size)
+{
+    return md_walk(r, 0.f, 0.f, text, size_in_byte, size, 0, false);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------

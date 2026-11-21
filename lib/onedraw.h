@@ -36,8 +36,8 @@
 #include <stdbool.h>
 
 #define ONEDRAW_MAJOR_VERSION   (3)
-#define ONEDRAW_MINOR_VERSION   (7)
-#define ONEDRAW_PATCH           (5)
+#define ONEDRAW_MINOR_VERSION   (8)
+#define ONEDRAW_PATCH           (0)
 
 #define OD_MAX_POLYGON_VERTICES (255)
 
@@ -355,6 +355,13 @@ float od_text_width(struct onedraw* r, const char* text, od_font font, float siz
 float od_string_view_width(struct onedraw* r, const char* text, size_t size_in_byte, od_font font, float size);
 
 //-----------------------------------------------------------------------------------------------------------------------------
+// Returns the width of the string drawn by od_draw_md_string, markup excluded, in canvas units.
+//      [text]          UTF-8 bytes
+//      [size_in_byte]  length of [text] in bytes
+//      [size]          font size in canvas units (see od_draw_text)
+float od_md_string_width(struct onedraw* r, const char* text, size_t size_in_byte, float size);
+
+//-----------------------------------------------------------------------------------------------------------------------------
 // Returns the distance from the top of the line to the baseline of [font] at [size], in canvas units.
 // Use it to align baselines when mixing fonts/sizes on one line.
 float od_text_ascent(struct onedraw* r, od_font font, float size);
@@ -515,6 +522,24 @@ void od_draw_text(struct onedraw* r, float x, float y, const char* text, od_font
 //      [font]          one of the built-in families, see od_font
 //      [size]          font size in canvas units (see od_draw_text)
 void od_draw_string_view(struct onedraw* r, float x, float y, const char* text, size_t size_in_byte, od_font font, float size, draw_color srgb_color);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Draws the UTF-8 byte string [text] of [size_in_byte] bytes as a single line with inline markdown styling ; the
+// string is not required to be null-terminated. The markup picks the family per run, so there is no [font]
+// parameter : unmarked text is drawn with od_font_regular.
+// Supported markup :
+//      *x*       italic          **x**      bold
+//      ~~x~~     strikethrough   `x`        monospace, content is literal up to the next backtick
+//      \* \~ \` \\               the literal character ; a \ before any other character is drawn as is
+// Runs of other lengths are literal. A run opens a style only if the next character isn't whitespace or the end of
+// the string, and closes it only if the previous character isn't whitespace or the start of the string, so "2 * 3"
+// and "a ~~ b" stay as they are ; an unclosed opener styles the rest of the line ; bold wins over italic ; nothing
+// is parsed inside a code span. Baselines are aligned on od_font_regular.
+//      [x, y]          top-left coordinates of the line, in canvas units (see od_set_canvas)
+//      [text]          UTF-8 bytes
+//      [size_in_byte]  length of [text] in bytes
+//      [size]          font size in canvas units (see od_draw_text)
+void od_draw_md_string(struct onedraw* r, float x, float y, const char* text, size_t size_in_byte, float size, draw_color srgb_color);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Draws a textured quad
