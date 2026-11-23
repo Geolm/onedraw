@@ -22,9 +22,6 @@
 // colors are packed 0xAABBGGRR, the same format lean_ui passes to the renderer callbacks
 #define BG_COLOR (0xff332924u)
 
-static const char* level_names[] = { "Low", "Med", "High" };
-#define NUM_LEVELS COUNOF(level_names)
-
 //----------------------------------------------------------------------------------------------------------------------------
 // app state
 
@@ -112,36 +109,52 @@ static void custom_log(const char* string)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
-static void draw_window(void)
+static void draw_window(float dt)
 {
-    ui_begin_window(ui, "Widgets", 24.f, 24.f, 340.f, 380.f, window_resizable);
+    ui_begin_window(ui, "Widgets", 24.f, 24.f, 340.f, 500.f, window_resizable);
 
-    ui_text(ui, align_left, "lean_ui widgets, drawn by onedraw");
+    ui_text(ui, align_left, "On the left");
+    ui_text(ui, align_right, "On the right");
     ui_newline(ui);
-    ui_text(ui, align_left, "drag the title bar to move the window");
+
+    od_stats stats;
+    od_get_stats(renderer, &stats);
+
+    ui_value(ui, "gpu time", "%2.2f ms", stats.gpu_time_ms);
+    ui_value(ui, "delta time", "%2.2f ms", dt * 1000.f);
+    ui_text(ui, align_center, "In the middle");
     ui_newline(ui);
+    static bool test_bool, en_dessous;
+    ui_toggle(ui, "This is a toggle", &test_bool);
+    ui_toggle(ui, "and another one", &en_dessous);
 
     ui_separator(ui);
-
-    ui_value(ui, "Level", "%s", level_names[level]);
-    ui_segmented(ui, level_names, NUM_LEVELS, &level);
-
-    ui_slider(ui, "Value", 0.f, 100.f, 1.f, &value, "%.0f");
-
-    ui_knob(ui, "Gain", -10.f, 10.f, 0.f, &gain);
-    ui_knob(ui, "Bias", -10.f, 10.f, 0.f, &bias);
+    ui_text(ui, align_center, "Choose your destiny");
     ui_newline(ui);
+    const char* list[] = {"Novice", "Warrior", "Master", "Champion"};
+    static uint32_t selected = 2;
 
-    ui_toggle(ui, "Enabled", &enabled);
-    ui_toggle(ui, "Verbose", &verbose);
-
+    ui_segmented(ui, list, 4, &selected);
+    ui_text(ui, align_left, "Your choice");
+    ui_text(ui, align_center,  list[selected]);
+    ui_newline(ui);
     ui_separator(ui);
+    static float quantity = 5.f;
+    ui_slider(ui, "Distance", 0.f, 100.f, 1.f, &quantity, "%3.2fkm");
+    
+    ui_separator(ui);
+    ui_button(ui, "Left Button", align_left);
+    ui_button(ui, "Center Button", align_center);
+    ui_button(ui, "Right Button", align_right);
 
-    if (ui_button(ui, "Click me", align_center))
-        clicks++;
     ui_newline(ui);
 
-    ui_value(ui, "Clicks", "%u", clicks);
+    static float drive = 2.f, pan = 0.f, volume = .7f;
+    ui_knob(ui, "drive", 1.f, 10.f, 2.f, &drive);
+    ui_knob(ui, "pan", -1.f, 1.f, 0.f, &pan);
+    ui_knob(ui, "volume", 0.f, 1.f, .7f, &volume);
+
+    ui_newline(ui);
 
     ui_end_window(ui);
 }
@@ -187,7 +200,7 @@ static void frame(void)
 
     ui_begin_frame(ui, dt);
 
-    draw_window();
+    draw_window(dt);
 
     ui_end_frame(ui);
 
