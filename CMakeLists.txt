@@ -84,3 +84,6 @@ target_link_libraries(headless
     "-framework Metal"
     "-framework Foundation"
 )
+
+# --- Examples ---
+add_subdirectory(examples)
