@@ -29,13 +29,14 @@ enum ui_window_option
     window_resizable = 1<<1
 };
 
-typedef struct 
+typedef struct
 {
     void (*draw_box)(float x, float y, float width, float height, float radius, uint32_t srgb_color, void* user);
-    void (*draw_text)(float x, float y, const char* text, uint32_t srgb_color, void* user); // draw a text top-left aligned with x,y
+    // [text] is a view of [length] bytes, not guaranteed to be null-terminated
+    void (*draw_text)(float x, float y, const char* text, size_t length, uint32_t srgb_color, void* user); // draw the view top-left aligned with x,y
     void (*draw_line)(float x0, float y0, float x1, float y1, float width, uint32_t srgb_color, void* user);
     void (*set_clip_rect)(uint16_t min_x, uint16_t min_y, uint16_t max_x, uint16_t max_y, void* user);
-    float (*text_width)(const char* text, void* user);
+    float (*text_width)(const char* text, size_t length, void* user);   // width of the [length] bytes view of [text]
     void* user;
 } ui_renderer_fnc_t;
 
@@ -78,6 +79,11 @@ void ui_update_mouse_pos(ui_context* ctx, float x, float y);
 void ui_update_mouse_button(ui_context* ctx, enum ui_button_state button);
 
 //-----------------------------------------------------------------------------------------------------------------------------
+// Updates the mouse wheel. [delta] is in wheel notches, positive means scroll up (like GLFW's yoffset).
+// Calls add up until ui_end_frame, where the window under the cursor consumes them.
+void ui_update_mouse_wheel(ui_context* ctx, float delta);
+
+//-----------------------------------------------------------------------------------------------------------------------------
 // [delta_time]    elapsed time in seconds since the previous frame
 void ui_begin_frame(ui_context* ctx, float delta_time);
 
@@ -92,6 +98,14 @@ void ui_begin_window(ui_context* ctx, const char* name, float x, float y, float 
 // Displays text according to the alignment
 //      [string]    can contains format expression (i.e %f) and additionnal parameters
 void ui_text(ui_context* ctx, enum ui_text_alignment alignment, const char* string, ...);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Displays wrapped text, always left-aligned, no formatting
+//      [text]      UTF-8 string view of [length] bytes, not required to be null-terminated, never modified
+//
+// The [length] bytes are wrapped on spaces to the window's content width and re-wrapped every frame.
+// '\n' forces a line break. A word wider than the window overflows and is clipped by the window's clip rect.
+void ui_paragraph(ui_context* ctx, const char* text, size_t length);
 
 //-----------------------------------------------------------------------------------------------------------------------------
 // Moves the cursor to the next line, acts like a carriage return (CR)
@@ -151,7 +165,28 @@ void ui_knob(ui_context* ctx, const char* label, float min_value, float max_valu
 const ui_rect* ui_get_layout(const ui_context* ctx);
 
 //-----------------------------------------------------------------------------------------------------------------------------
+// Returns the rect of the remaining content area of the current window : from the top of the
+// current row, at the full content width, down to the bottom edge of the window's content.
+// Call it at a row boundary (right after ui_begin_window() or ui_newline()). Useful for custom
+// rendering, e.g. embedding a panel from another layout engine
+ui_rect ui_get_remaining(const ui_context* ctx);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Moves the layout cursor down by [dy] pixels. Call it after rendering custom content of that
+// height at the cursor position, so that the next widget is placed below it
+void ui_advance(ui_context* ctx, float dy);
+
+//-----------------------------------------------------------------------------------------------------------------------------
+// Returns the height in pixels of a row
+float ui_get_row_height(const ui_context* ctx);
+
+//-----------------------------------------------------------------------------------------------------------------------------
 // Ends the current window. Must match ui_begin_window()
+//
+// Content taller than the window's visible area scrolls : feed ui_update_mouse_wheel() to scroll,
+// or drag the scrollbar in the right gutter (it appears only when the content overflows). To keep
+// a window from scrolling, size it to fit its content. The last row counts towards the content
+// height only if it ends with ui_newline(), like knobs already require.
 void ui_end_window(ui_context* ctx);
 
 //-----------------------------------------------------------------------------------------------------------------------------

@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 #include <time.h>
 
 #define SOKOL_METAL
@@ -62,11 +63,11 @@ static void ui_draw_box(float x, float y, float width, float height, float radiu
 // lean_ui starts every text line at the top of a row that is 1.5 * font_height tall ; the baked
 // font's line box (ascent + descent + line gap, 18.9px for the 14px Satoshi) is taller than
 // font_height, so center the line box in the row
-static void ui_draw_text(float x, float y, const char* text, uint32_t srgb_color, void* user)
+static void ui_draw_text(float x, float y, const char* text, size_t length, uint32_t srgb_color, void* user)
 {
     struct ui_backend* b = (struct ui_backend*)user;
     float line_height = od_text_line_height(b->r, od_font_regular, b->font_size);
-    od_draw_text(b->r, x, y + (b->font_size * 1.5f - line_height) * .5f, text, od_font_regular, b->font_size, (draw_color)srgb_color);
+    od_draw_string_view(b->r, x, y + (b->font_size * 1.5f - line_height) * .5f, text, length, od_font_regular, b->font_size, (draw_color)srgb_color);
 }
 
 static void ui_draw_line(float x0, float y0, float x1, float y1, float width, uint32_t srgb_color, void* user)
@@ -86,10 +87,10 @@ static void ui_set_clip_rect(uint16_t min_x, uint16_t min_y, uint16_t max_x, uin
         od_canvas_cliprect(b->r, (float)min_x, (float)min_y, (float)max_x, (float)max_y);
 }
 
-static float ui_text_width(const char* text, void* user)
+static float ui_text_width(const char* text, size_t length, void* user)
 {
     struct ui_backend* b = (struct ui_backend*)user;
-    return od_text_width(b->r, text, od_font_regular, b->font_size);
+    return od_string_view_width(b->r, text, length, od_font_regular, b->font_size);
 }
 
 //----------------------------------------------------------------------------------------------------------------------------
@@ -155,6 +156,40 @@ static void draw_window(float dt)
     ui_knob(ui, "volume", 0.f, 1.f, .7f, &volume);
 
     ui_newline(ui);
+    ui_separator(ui);
+
+    static const char paragraph[] = "This paragraph is laid out by ui_paragraph, which wraps the text on spaces to the window's content width "
+                                    "and re-flows it every frame.\n"
+                                    "It also honors explicit line breaks, like this one. The thin bar in the right gutter is the scrollbar : "
+                                    "it appears only because this content is taller than the window, and its height and position track "
+                                    "the ratio of visible to total content. "
+                                    "Scroll the wheel while the cursor is over the window, or grab the thumb and drag it, to move through the text. "
+                                    "The bar itself is interactive too : it grows wider and more opaque while hovered, and the scroll position "
+                                    "eases towards its target so the motion feels light rather than stepwise. "
+                                    "Widgets that scroll under the title bar stop catching clicks, so scrolled-out content never stays interactive. "
+                                    "Resize the window and the paragraph re-flows to the new width, while words longer than a line overflow "
+                                    "and get clipped rather than broken mid-word.";
+    ui_paragraph(ui, paragraph, strlen(paragraph));
+
+    ui_end_window(ui);
+}
+
+static void draw_plain_window(void)
+{
+    ui_begin_window(ui, "No scrollbar", 400.f, 24.f, 300.f, 260.f, 0);
+
+    ui_text(ui, align_left, "This content fits, so no scrollbar");
+    ui_newline(ui);
+
+    static bool flag = true;
+    ui_toggle(ui, "a toggle", &flag);
+
+    static float amount = 3.f;
+    ui_slider(ui, "Amount", 0.f, 10.f, .5f, &amount, "%3.1f");
+
+    static float level = .5f;
+    ui_knob(ui, "level", 0.f, 1.f, .5f, &level);
+    ui_button(ui, "Okay", align_right);
 
     ui_end_window(ui);
 }
@@ -201,6 +236,7 @@ static void frame(void)
     ui_begin_frame(ui, dt);
 
     draw_window(dt);
+    draw_plain_window();
 
     ui_end_frame(ui);
 
@@ -228,6 +264,10 @@ static void event(const sapp_event* e)
 
     case SAPP_EVENTTYPE_MOUSE_UP:
         button_state = button_released;
+        break;
+
+    case SAPP_EVENTTYPE_MOUSE_SCROLL:
+        ui_update_mouse_wheel(ui, e->scroll_y);
         break;
 
     case SAPP_EVENTTYPE_KEY_DOWN:

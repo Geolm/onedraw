@@ -23,6 +23,10 @@ typedef struct
     ui_vec2 pos;
     float width, height;
     float min_width, min_height;
+    float scroll, scroll_target;
+    float content_height;
+    float scroll_hover;
+    bool scrollbar_visible;
     uint32_t options;
     bool closed;
 } ui_window;
@@ -41,6 +45,8 @@ typedef struct
     uint32_t value_bg;
     uint32_t value_text;
     uint32_t separator;
+    uint32_t scrollbar_idle;
+    uint32_t scrollbar_hover;
 } ui_colors;
 
 typedef struct
@@ -66,6 +72,8 @@ struct ui_context
     bool mouse_down;
     bool mouse_doubleclick;
     float doubleclick_timer;
+    float mouse_wheel;
+    float delta_time;
     ui_window windows[MAX_WINDOWS];
     uint32_t num_windows;
     ui_window* current_window;
@@ -75,6 +83,7 @@ struct ui_context
     ui_hover hover;
     ui_vec2 dragging_offset;
     ui_rect layout;
+    ui_rect content_rect;
     float font_height;
     float row_height;
     float padding;
@@ -90,10 +99,6 @@ struct ui_context
 
 static inline ui_vec2 ui_vec2_sub(ui_vec2 a, ui_vec2 b) {return (ui_vec2){a.x - b.x, a.y - b.y};}
 static inline ui_vec2 ui_vec2_add(ui_vec2 a, ui_vec2 b) {return (ui_vec2){a.x + b.x, a.y + b.y};}
-static inline bool in_rect(const ui_rect *rect, ui_vec2 pos) 
-{
-    return ((pos.x>=rect->x) && (pos.x<=rect->x+rect->width) && (pos.y>=rect->y) && (pos.y<=rect->y+rect->height));
-}
 static inline void expand_rect(ui_rect* rect, float amount) {rect->x-=amount; rect->y-=amount; rect->width+=amount*2.f; rect->height+=amount*2.f;}
 static inline float lerp_float(float a, float b, float t) {return fmaf(b - a, t, a);}
 static inline float clamp_float(float min_value, float max_value, float f) {return fminf(max_value, fmaxf(min_value, f));}
@@ -101,6 +106,19 @@ static inline float ease_in_quad(float x) {return x * x;}
 static inline float ease_in_cubic(float x) {return x * x * x;}
 static inline float ease_impulse(float x) {return ease_in_cubic(sinf(x * 3.14159265f));}
 static inline float ease_in_expo(float x){return (x == 0.f) ? 0.f : powf(2.f, 10.f * x - 10.f);}
+
+//-----------------------------------------------------------------------------------------------------------------------------
+static inline bool in_rect(const ui_rect *rect, ui_vec2 pos)
+{
+    return ((pos.x>=rect->x) && (pos.x<=rect->x+rect->width) && (pos.y>=rect->y) && (pos.y<=rect->y+rect->height));
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
+static inline bool ui_hovered(const ui_context* ctx, const ui_rect* r)
+{
+    // widgets scrolled under the title bar or below the window must not catch clicks
+    return in_rect(r, ctx->mouse_pos) && in_rect(&ctx->content_rect, ctx->mouse_pos);
+}
 
 //-----------------------------------------------------------------------------------------------------------------------------
 static inline float ease_out_back(float x)
@@ -137,18 +155,28 @@ static inline uint32_t lerp_color(uint32_t a, uint32_t b, float t)
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
+static inline void draw_align_string_view(ui_context* ctx, const ui_rect* rect, const char* text, size_t length,
+                                          uint32_t srgb_color, enum ui_text_alignment alignment)
+{
+    float x = rect->x;
+    if (alignment != align_left)
+    {
+        float w = ctx->renderer.text_width(text, length, ctx->renderer.user);
+        x += (alignment == align_right) ? rect->width - w : (rect->width - w) * .5f;
+    }
+    ctx->renderer.draw_text(x, rect->y, text, length, srgb_color, ctx->renderer.user);
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
 static inline void draw_align_text(ui_context* ctx, const ui_rect* rect, const char* text, uint32_t srgb_color, enum ui_text_alignment alignment)
 {
-    if (alignment == align_left)
-        ctx->renderer.draw_text(rect->x, rect->y, text, srgb_color, ctx->renderer.user);
-    else
-    {
-        float text_width = ctx->renderer.text_width(text, ctx->renderer.user);
-        if (alignment == align_right)
-            ctx->renderer.draw_text(rect->x + rect->width - text_width, rect->y, text, srgb_color, ctx->renderer.user);
-        else
-            ctx->renderer.draw_text(rect->x + rect->width*.5f - text_width*.5f, rect->y, text, srgb_color, ctx->renderer.user);
-    }
+    draw_align_string_view(ctx, rect, text, strlen(text), srgb_color, alignment);
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
+static inline float text_width(ui_context* ctx, const char* text) 
+{
+    return ctx->renderer.text_width(text, strlen(text), ctx->renderer.user);
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
@@ -197,7 +225,9 @@ ui_context* ui_init(const ui_def* def)
             .accent = 0xFFE68B3E,
             .value_bg = 0xFFEDE6DE,
             .value_text = 0xFF1E1E1E,
-            .separator = 0x40553E2C
+            .separator = 0x40553E2C,
+            .scrollbar_idle = 0x80553E2C,
+            .scrollbar_hover = 0xA0553E2C
         }
     };
     ctx->row_height = ctx->font_height * 1.5f;
@@ -229,9 +259,16 @@ void ui_update_mouse_button(ui_context* ctx, enum ui_button_state button)
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
+void ui_update_mouse_wheel(ui_context* ctx, float delta)
+{
+    ctx->mouse_wheel += delta;
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
 void ui_begin_frame(ui_context* ctx, float delta_time)
 {
     ctx->current_window = NULL;
+    ctx->delta_time = delta_time;
 
     // a window/widget grab is only valid while the button is held down
     if (!ctx->mouse_down)
@@ -267,8 +304,8 @@ void ui_begin_window(ui_context* ctx, const char* name, float x, float y, float 
             .name = name,
             .id = id,
             .pos = {.x = x, .y = y},
-            .min_width = ctx->renderer.text_width(name, ctx->renderer.user) + ctx->padding * 2.f,
-            .min_height = ctx->row_height * 2.f,
+            .min_width = text_width(ctx, name) + ctx->padding * 2.f,
+            .min_height = ctx->row_height * 3.f,
             .width = width,
             .height = height,
             .options = options,
@@ -311,18 +348,68 @@ void ui_begin_window(ui_context* ctx, const char* name, float x, float y, float 
     // title bg
     ctx->renderer.draw_box(title_rect.x, title_rect.y, title_rect.width, title_rect.height, ctx->corner, ctx->colors.title_bg, ctx->renderer.user);
 
+    // vertical scrolling : content_height comes from the previous frame
+    float top = title_rect.y + title_rect.height + ctx->padding;
+    float visible_h = w->pos.y + w->height - ctx->padding - top;
+    float max_scroll = fmaxf(0.f, w->content_height - visible_h);
+    w->scrollbar_visible = (max_scroll > 0.f);
+
+    // the layout leaves the scrollbar's max width (1.5 * padding) free at the right edge so content never ends up
+    // under the bar, but only when the bar actually shows
     ctx->layout = (ui_rect)
     {
         .x = w->pos.x + ctx->padding,
-        .y = title_rect.y + title_rect.height + ctx->padding,
-        .width = w->width - ctx->padding*2.f,
+        .y = top,
+        .width = w->width - (w->scrollbar_visible ? ctx->padding*3.5f : ctx->padding*2.f),
         .height = ctx->row_height
     };
+    ctx->content_rect = (ui_rect){ctx->layout.x, top, ctx->layout.width, visible_h};
 
-    // background
-    ctx->renderer.draw_box(ctx->layout.x, ctx->layout.y, ctx->layout.width, 
+    ui_rect win = {w->pos.x, w->pos.y, w->width, w->height};
+    if (in_rect(&win, ctx->mouse_pos))
+        w->scroll_target -= ctx->mouse_wheel * ctx->row_height * 2.f;
+
+    // scrollbar in the window's right edge : the hit rect matches the visible bar, which eases between an idle
+    // width (1 * padding) and a hover width (1.5 * padding), and grows as soon as the cursor enters the full-height
+    // strip of its widest size
+    ui_rect thumb = {0};
+    float bar_w = 0.f;
+    if (max_scroll > 0.f)
+    {
+        float thumb_h = fmaxf(visible_h * visible_h / w->content_height, ctx->row_height * .5f);
+        float bar_right = w->pos.x + w->width - ctx->padding;
+        bar_w = lerp_float(ctx->padding, ctx->padding * 1.5f, w->scroll_hover);
+        thumb = (ui_rect){bar_right - bar_w, top + (w->scroll / max_scroll) * (visible_h - thumb_h), bar_w, thumb_h};
+        ui_rect hover_rect = {bar_right - ctx->padding * 1.5f, top, ctx->padding * 1.5f, visible_h};
+        bool hovered = in_rect(&hover_rect, ctx->mouse_pos);
+        if (ctx->mouse_button == button_pressed && in_rect(&thumb, ctx->mouse_pos) && ctx->dragging_object == NULL && ctx->resizing_window != w)
+        {
+            ctx->dragging_object = &w->scroll;
+            ctx->dragging_offset.y = ctx->mouse_pos.y - thumb.y;
+        }
+
+        if (ctx->mouse_down && ctx->dragging_object == &w->scroll)
+            w->scroll = w->scroll_target = clamp_float(0.f, max_scroll, (ctx->mouse_pos.y - ctx->dragging_offset.y - top) / (visible_h - thumb_h) * max_scroll);
+
+        // hover fade in and out, framerate independent
+        float hover_goal = (hovered || ctx->dragging_object == &w->scroll) ? 1.f : 0.f;
+        w->scroll_hover = lerp_float(w->scroll_hover, hover_goal, 1.f - expf(-15.f * ctx->delta_time));
+    }
+
+    w->scroll_target = clamp_float(0.f, max_scroll, w->scroll_target);
+    w->scroll = lerp_float(w->scroll, w->scroll_target, 1.f - expf(-20.f * ctx->delta_time));
+
+    // background, full inner width : the scrollbar's reserved strip stays part of the window background
+    ctx->renderer.draw_box(ctx->layout.x, ctx->layout.y, w->width - ctx->padding*2.f,
                            w->height - title_rect.height - ctx->padding*3.f, 0, ctx->colors.window_bg, ctx->renderer.user);
-    
+
+    // scrollbar bar, anchored to the window's right edge so it grows towards the left
+    if (max_scroll > 0.f)
+    {
+        uint32_t bar_c = lerp_color(ctx->colors.scrollbar_idle, ctx->colors.scrollbar_hover, w->scroll_hover);
+        ctx->renderer.draw_box(thumb.x, thumb.y, thumb.width, thumb.height, bar_w * .5f, bar_c, ctx->renderer.user);
+    }
+
     ctx->layout.x += ctx->padding;
     ctx->layout.width -= 2.f * ctx->padding;
 
@@ -333,12 +420,14 @@ void ui_begin_window(ui_context* ctx, const char* name, float x, float y, float 
     if (w->options&window_resizable)
         ctx->renderer.draw_box(handle_rect.x, handle_rect.y, handle_rect.width, handle_rect.height, 0.f, ctx->colors.separator, ctx->renderer.user);
 
-    // clip rect
+    // clip rect, set from the unshifted layout : the clip stays put while the content scrolls in it
     uint16_t clip_minx = (uint16_t) fmaxf(ctx->layout.x, 0.f);
     uint16_t clip_miny = (uint16_t) fmaxf(ctx->layout.y, 0.f);
     uint16_t clip_maxx = (uint16_t) (ctx->layout.x + ctx->layout.width + .5f);
     uint16_t clip_maxy = (uint16_t) (w->pos.y + w->height - ctx->padding + .5f);
     ctx->renderer.set_clip_rect(clip_minx, clip_miny, clip_maxx, clip_maxy, ctx->renderer.user);
+
+    ctx->layout.y -= w->scroll;
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
@@ -355,12 +444,39 @@ void ui_text(ui_context* ctx, enum ui_text_alignment alignment, const char* stri
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
+void ui_paragraph(ui_context* ctx, const char* text, size_t length)
+{
+    assert(ctx->current_window != NULL);
+
+    const char* end = text + length;
+    while (text < end)
+    {
+        size_t fit = 0;                                  // length of the longest line that fits
+        for (size_t i = 0; ; ++i)
+            if (text + i == end || text[i] == ' ' || text[i] == '\n')
+            {
+                if (fit > 0 && ctx->renderer.text_width(text, i, ctx->renderer.user) > ctx->layout.width)
+                    break;                               // keep the previous break point
+                fit = i;
+                if (text + i == end || text[i] == '\n')
+                    break;                               // end of text or hard break
+            }
+
+        draw_align_string_view(ctx, &ctx->layout, text, fit, ctx->colors.text, align_left);
+        ui_newline(ctx);
+        text += fit;
+        if (text < end) ++text;                          // skip the space or '\n' we broke on
+    }
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
 void ui_newline(ui_context* ctx)
 {
     assert(ctx->current_window != NULL);
-    ctx->layout.x = ctx->current_window->pos.x + ctx->padding * 2.f;
+    ui_window* w = ctx->current_window;
+    ctx->layout.x = w->pos.x + ctx->padding * 2.f;
     ctx->layout.y += ctx->layout.height;
-    ctx->layout.width = ctx->current_window->width - ctx->padding * 4.f;
+    ctx->layout.width = w->width - (w->scrollbar_visible ? ctx->padding * 5.5f : ctx->padding * 4.f);
     ctx->layout.height = ctx->row_height;
 }
 
@@ -386,7 +502,7 @@ void ui_value(ui_context* ctx, const char* label, const char* fmt, ...)
 
     ui_rect value_rect = {ctx->layout.x + ctx->layout.width*.5f, ctx->layout.y, ctx->layout.width*.5f, ctx->layout.height};
 
-    ctx->renderer.draw_text(ctx->layout.x, ctx->layout.y, label, ctx->colors.text, ctx->renderer.user);
+    draw_align_text(ctx, &ctx->layout, label, ctx->colors.text, align_left);
     ctx->renderer.draw_box(value_rect.x, value_rect.y, value_rect.width, value_rect.height, 0, ctx->colors.value_bg, ctx->renderer.user);
     ctx->renderer.draw_box(value_rect.x-0.5f, value_rect.y+ctx->padding, 1.f, value_rect.height-ctx->padding*2, 0, ctx->colors.separator, ctx->renderer.user);
 
@@ -407,7 +523,7 @@ void ui_toggle(ui_context* ctx, const char* label, bool* value)
         .height = ctx->font_height
     };
 
-    if (in_rect(&track_rect, ctx->mouse_pos) && ctx->mouse_button == button_pressed)
+    if (ui_hovered(ctx, &track_rect) && ctx->mouse_button == button_pressed)
     {
         *value = !(*value);
 
@@ -445,7 +561,7 @@ void ui_toggle(ui_context* ctx, const char* label, bool* value)
     ctx->renderer.draw_box(track_rect.x, track_rect.y, track_rect.width, track_rect.height,
                            track_rect.height*.5f, track_color, ctx->renderer.user);
 
-    if (in_rect(&track_rect, ctx->mouse_pos))
+    if (ui_hovered(ctx, &track_rect))
         expand_rect(&thumb_rect, 1.f);
     
     ctx->renderer.draw_box(thumb_rect.x, thumb_rect.y, thumb_rect.width, thumb_rect.height,
@@ -482,7 +598,7 @@ void ui_segmented(ui_context* ctx, const char** entries, uint32_t num_entries, u
     for(uint32_t i=0; i<num_entries; ++i)
     {
         ui_rect button_rect = seg_rect; button_rect.y += ctx->padding;
-        if (in_rect(&button_rect, ctx->mouse_pos))
+        if (ui_hovered(ctx, &button_rect))
         {
             if (ctx->mouse_button == button_pressed)
             {
@@ -553,8 +669,8 @@ void ui_slider(ui_context* ctx, const char* label, float min_value, float max_va
         .height = thumb_size
     };
 
-    const bool track_hovered = in_rect(&track_rect, ctx->mouse_pos);
-    const bool thumb_hovered = in_rect(&thumb_rect, ctx->mouse_pos);
+    const bool track_hovered = ui_hovered(ctx, &track_rect);
+    const bool thumb_hovered = ui_hovered(ctx, &thumb_rect);
 
     // track change color on mouse-over
     uint32_t track_color = (track_hovered || (ctx->dragging_object == value)) ? ctx->colors.widget_hover : ctx->colors.widget_bg;
@@ -612,9 +728,9 @@ void ui_slider(ui_context* ctx, const char* label, float min_value, float max_va
 bool ui_button(ui_context* ctx, const char* label, enum ui_text_alignment alignment)
 {
     bool clicked = false;
-    float text_width = ctx->renderer.text_width(label, ctx->renderer.user);
+    float label_width = text_width(ctx, label);
 
-    ui_rect button_rect = {.y = ctx->layout.y, .height = ctx->font_height + ctx->padding, .width = text_width + 2.f * ctx->padding};
+    ui_rect button_rect = {.y = ctx->layout.y, .height = ctx->font_height + ctx->padding, .width = label_width + 2.f * ctx->padding};
 
     switch(alignment)
     {
@@ -630,7 +746,7 @@ bool ui_button(ui_context* ctx, const char* label, enum ui_text_alignment alignm
         button_color = lerp_color(ctx->colors.accent, ctx->colors.window_bg, ease_in_expo(ctx->animation.t));
         expand_rect(&button_rect, -ease_impulse(ctx->animation.t) * 2.f);
     }
-    else if (in_rect(&button_rect, ctx->mouse_pos))
+    else if (ui_hovered(ctx, &button_rect))
     {
         if (ctx->mouse_button == button_pressed)
         {
@@ -660,7 +776,7 @@ bool ui_button(ui_context* ctx, const char* label, enum ui_text_alignment alignm
     ctx->renderer.draw_box(button_rect.x, button_rect.y, button_rect.width, button_rect.height, 
                            ctx->corner, button_color, ctx->renderer.user);
 
-    ctx->renderer.draw_text(text_pos.x, text_pos.y, label, ctx->colors.text, ctx->renderer.user);
+    ctx->renderer.draw_text(text_pos.x, text_pos.y, label, strlen(label), ctx->colors.text, ctx->renderer.user);
 
     return clicked;
 }
@@ -671,14 +787,14 @@ void ui_knob(ui_context* ctx, const char* label, float min_value, float max_valu
     // knob needs more space
     ctx->layout.height = ctx->row_height * 2.f;
 
-    float text_width = ctx->renderer.text_width(label, ctx->renderer.user);
+    float label_width = text_width(ctx, label);
     float width = ctx->layout.height * 2.f;
     float cx = ctx->layout.x + width * .5f;
     float cy = ctx->layout.y + ctx->layout.height * .25f + ctx->padding;
     float radius = ctx->layout.height * .25f;
 
     ui_rect knob_rect = {.x = cx - radius, .y = cy - radius, .width = radius * 2.f, .height = radius * 2.f};
-    bool hovered = in_rect(&knob_rect, ctx->mouse_pos);
+    bool hovered = ui_hovered(ctx, &knob_rect);
 
     if (hovered && ctx->mouse_button == button_pressed)
     {
@@ -750,7 +866,7 @@ void ui_knob(ui_context* ctx, const char* label, float min_value, float max_valu
     float line_width = ctx->padding / 8.f;
 
     ctx->renderer.draw_line(cx, cy, cx + mx * mark_radius, cy + my * mark_radius, line_width, ctx->colors.accent, ctx->renderer.user);
-    ctx->renderer.draw_text(cx - text_width * .5f, cy + ctx->font_height, label, ctx->colors.text, ctx->renderer.user);
+    ctx->renderer.draw_text(cx - label_width * .5f, cy + ctx->font_height, label, strlen(label), ctx->colors.text, ctx->renderer.user);
 
     ctx->layout.x += width;
     ctx->layout.width -= width;
@@ -763,10 +879,38 @@ const ui_rect* ui_get_layout(const ui_context* ctx)
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------
+ui_rect ui_get_remaining(const ui_context* ctx)
+{
+    assert(ctx->current_window != NULL);
+    const ui_window* w = ctx->current_window;
+
+    return (ui_rect)
+    {
+        .x = w->pos.x + ctx->padding * 2.f,
+        .y = ctx->layout.y,
+        .width = w->width - (w->scrollbar_visible ? ctx->padding * 5.5f : ctx->padding * 4.f),
+        .height = w->pos.y + w->height - ctx->padding - ctx->layout.y
+    };
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
+void ui_advance(ui_context* ctx, float dy)
+{
+    assert(ctx->current_window != NULL);
+    ctx->layout.y += dy;
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
+float ui_get_row_height(const ui_context* ctx)
+{
+    return ctx->row_height;
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
 void ui_end_window(ui_context* ctx)
 {
     assert(ctx->current_window != NULL);
-    ctx->current_window->min_height = ctx->layout.y - ctx->current_window->pos.y + ctx->row_height * 2.f;
+    ctx->current_window->content_height = ctx->layout.y + ctx->current_window->scroll - ctx->content_rect.y;
     ctx->current_window = NULL;
     ctx->renderer.set_clip_rect(0, 0, UINT16_MAX, UINT16_MAX, ctx->renderer.user);
 }
@@ -789,5 +933,6 @@ void ui_end_frame(ui_context* ctx)
     }
 
     ctx->mouse_button = button_idle;
+    ctx->mouse_wheel = 0.f;
 }
 
