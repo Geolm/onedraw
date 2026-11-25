@@ -366,7 +366,9 @@ static void gather_face_rects(stbtt_fontinfo* fonts, stbrp_rect* rects)
     stbtt_pack_range range;
 
     memset(&pack_context, 0, sizeof(pack_context));
-    stbtt_PackBegin(&pack_context, NULL, 1, 1, 0, ATLAS_PADDING, NULL);
+    // the size is a dummy : only the padding and oversampling of the context are read by the gather,
+    // but it must stay above the padding or stb_rect_pack divides by (width - padding) == 0
+    stbtt_PackBegin(&pack_context, NULL, 16, 16, 0, ATLAS_PADDING, NULL);
 
     for (int f = 0; f < OD_NUM_FONTS; ++f)
     {
@@ -426,7 +428,7 @@ bool build_fonts(struct stack_allocator* allocator)
 
     // scratch is dead after the search and is the top block : popping it checks its canary and makes
     // its range reusable for the atlas
-    if (stack_pop(allocator) == NULL)
+    if (stack_pop(allocator, scratch) == NULL)
     {
         fprintf(stderr, "error: the allocator reports a corrupted block (out-of-bounds write during the sizing search)\n");
         return false;
