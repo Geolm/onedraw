@@ -386,8 +386,16 @@ fragment half4 tile_fs(vs_out in [[stage_in]],
                         if (all(t >= 0.f && t <= 1.f))
                         {
                             float2 uv = mix(g.uv_topleft, g.uv_bottomright, t);
-                            half texel = 1.h - input.font.sample(s_linear, uv).r;
-                            distance = texel * input.aa_width;
+                            half coverage = input.font.sample(s_linear, uv).r;
+
+                            // the coverage is blended in linear light (both backbuffer modes), where a 50%
+                            // edge pixel of dark text on a light background displays about 73% grey
+                            // (washed out) : reshape it with a gamma < 1 to push the edges toward opaque.
+                            // the curve runs from gamma 1/1.6 (black text) to 1.0 (white text, already
+                            // bolded by linear blending)
+                            half text_gamma = mix(half(1.0h / 1.6h), 1.0h, dot(cmd_color.rgb, half3(0.2126h, 0.7152h, 0.0722h)));
+                            coverage = pow(coverage, text_gamma);   // text_gamma < 1 thickens the edges
+                            distance = (1.h - coverage) * input.aa_width;
                         }
                     }
                     break;
