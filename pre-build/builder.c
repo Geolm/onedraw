@@ -428,7 +428,7 @@ bool build_fonts(struct stack_allocator* allocator)
 
     // scratch is dead after the search and is the top block : popping it checks its canary and makes
     // its range reusable for the atlas
-    if (stack_pop(allocator) == NULL)
+    if (stack_pop(allocator, scratch) == NULL)
     {
         fprintf(stderr, "error: the allocator reports a corrupted block (out-of-bounds write during the sizing search)\n");
         return false;
