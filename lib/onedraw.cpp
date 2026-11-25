@@ -2153,8 +2153,11 @@ static void draw_char(struct onedraw* r, float x, float y, uint32_t face, uint32
     const font_face* f = &r->font.desc->faces[face];
     const glyph& glyph = f->glyphs[glyph_index];
 
-    x += glyph.bearing_x * scale;
-    y += (glyph.bearing_y + f->ascent) * scale;
+    // snap the glyph top-left to the device pixel grid : at scale == 1 the pixel centers then land
+    // on the atlas texel centers, so the bilinear filter copies the baked coverage instead of
+    // blending two texels. the pen stays fractional in the caller, the rounding does not accumulate
+    x = floorf(x + glyph.bearing_x * scale + .5f);
+    y = floorf(y + (glyph.bearing_y + f->ascent) * scale + .5f);
     float glyph_width = float(glyph.x1 - glyph.x0) * scale;
     float glyph_height = float(glyph.y1 - glyph.y0) * scale;
 
