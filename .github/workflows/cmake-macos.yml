@@ -13,6 +13,9 @@ jobs:
     runs-on: macos-latest
 
     steps:
+      - name: Install Metal Toolchain
+        run: xcodebuild -downloadComponent MetalToolchain
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
