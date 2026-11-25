@@ -25,8 +25,11 @@ enum ui_text_alignment
 
 enum ui_window_option
 {
-    window_pinned = 1<<0,
-    window_resizable = 1<<1
+    window_pinned = 1<<0,          // the window cannot be moved by dragging its title bar
+    window_resizable = 1<<1,       // the window can be resized from its bottom-right corner
+    window_no_titlebar = 1<<2,     // no title bar : the content starts at the top and the window has no drag handle
+    window_no_border = 1<<3,       // no border ring : the window is a single rounded card
+    window_no_chrome = window_no_titlebar | window_no_border
 };
 
 typedef struct
@@ -92,6 +95,8 @@ void ui_begin_frame(ui_context* ctx, float delta_time);
 //      [name]                  unique name, hashed under the hood
 //      [x, y, width, height]   initial position and size in pixels can be changed by the user
 //      [options]               combination of options from enum ui_window_option
+//
+// A window created with window_no_titlebar has no drag handle and cannot be moved.
 void ui_begin_window(ui_context* ctx, const char* name, float x, float y, float width, float height, uint32_t options);
 
 //-----------------------------------------------------------------------------------------------------------------------------

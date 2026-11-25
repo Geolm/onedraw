@@ -45,6 +45,7 @@ typedef struct
     uint32_t value_bg;
     uint32_t value_text;
     uint32_t separator;
+    uint32_t resize_handle;
     uint32_t scrollbar_idle;
     uint32_t scrollbar_hover;
 } ui_colors;
@@ -226,6 +227,7 @@ ui_context* ui_init(const ui_def* def)
             .value_bg = 0xFFEDE6DE,
             .value_text = 0xFF1E1E1E,
             .separator = 0x40553E2C,
+            .resize_handle = 0xFF553E2C,
             .scrollbar_idle = 0x80553E2C,
             .scrollbar_hover = 0xA0553E2C
         }
@@ -305,7 +307,7 @@ void ui_begin_window(ui_context* ctx, const char* name, float x, float y, float 
             .id = id,
             .pos = {.x = x, .y = y},
             .min_width = text_width(ctx, name) + ctx->padding * 2.f,
-            .min_height = ctx->row_height * 3.f,
+            .min_height = (options & window_no_titlebar) ? ctx->row_height * 2.f : ctx->row_height * 3.f,
             .width = width,
             .height = height,
             .options = options,
@@ -329,10 +331,15 @@ void ui_begin_window(ui_context* ctx, const char* name, float x, float y, float 
         w->height = fmaxf(ctx->mouse_pos.y + ctx->dragging_offset.y - w->pos.y, w->min_height);
     }
 
-    ui_rect title_rect = {w->pos.x+ctx->padding, w->pos.y+ctx->padding, w->width-ctx->padding*2.f, ctx->row_height};
+    bool titlebar = !(w->options & window_no_titlebar);
+    bool border = !(w->options & window_no_border);
+    float inset = border ? ctx->padding : 0.f;
+    float title_height = ctx->font_height + ctx->padding;
 
-    // move the window if click on the title bar
-    if (ctx->mouse_button == button_pressed && in_rect(&title_rect, ctx->mouse_pos) &&
+    ui_rect title_rect = {w->pos.x + inset, w->pos.y + inset, w->width - inset * 2.f, title_height};
+
+    // move the window if click on the title bar : a window without a title bar has no drag handle
+    if (titlebar && ctx->mouse_button == button_pressed && in_rect(&title_rect, ctx->mouse_pos) &&
         !(w->options&window_pinned) && ctx->resizing_window != w && ctx->dragging_object == NULL)
     {
         ctx->dragging_object = w;
@@ -342,14 +349,18 @@ void ui_begin_window(ui_context* ctx, const char* name, float x, float y, float 
     if (ctx->mouse_down && ctx->dragging_object == w)
         w->pos = ui_vec2_sub(ctx->mouse_pos, ctx->dragging_offset);
 
-    // border
-    ctx->renderer.draw_box(w->pos.x, w->pos.y, w->width, w->height, ctx->corner, ctx->colors.window_border, ctx->renderer.user);
+    // border frame, or the plain card a borderless window is made of
+    if (border)
+        ctx->renderer.draw_box(w->pos.x, w->pos.y, w->width, w->height, ctx->corner, ctx->colors.window_border, ctx->renderer.user);
+    else
+        ctx->renderer.draw_box(w->pos.x, w->pos.y, w->width, w->height, ctx->corner, ctx->colors.window_bg, ctx->renderer.user);
 
     // title bg
-    ctx->renderer.draw_box(title_rect.x, title_rect.y, title_rect.width, title_rect.height, ctx->corner, ctx->colors.title_bg, ctx->renderer.user);
+    if (titlebar)
+        ctx->renderer.draw_box(title_rect.x, title_rect.y, title_rect.width, title_rect.height, ctx->corner, ctx->colors.title_bg, ctx->renderer.user);
 
     // vertical scrolling : content_height comes from the previous frame
-    float top = title_rect.y + title_rect.height + ctx->padding;
+    float top = w->pos.y + inset + (titlebar ? title_height + ctx->padding : ctx->padding * 2.f);
     float visible_h = w->pos.y + w->height - ctx->padding - top;
     float max_scroll = fmaxf(0.f, w->content_height - visible_h);
     w->scrollbar_visible = (max_scroll > 0.f);
@@ -399,9 +410,11 @@ void ui_begin_window(ui_context* ctx, const char* name, float x, float y, float 
     w->scroll_target = clamp_float(0.f, max_scroll, w->scroll_target);
     w->scroll = lerp_float(w->scroll, w->scroll_target, 1.f - expf(-20.f * ctx->delta_time));
 
-    // background, full inner width : the scrollbar's reserved strip stays part of the window background
-    ctx->renderer.draw_box(ctx->layout.x, ctx->layout.y, w->width - ctx->padding*2.f,
-                           w->height - title_rect.height - ctx->padding*3.f, 0, ctx->colors.window_bg, ctx->renderer.user);
+    // background, full inner width : the scrollbar's reserved strip stays part of the window background,
+    // a borderless window already drew its background as the card
+    if (border)
+        ctx->renderer.draw_box(ctx->layout.x, ctx->layout.y, w->width - ctx->padding*2.f,
+                               w->pos.y + w->height - ctx->padding - ctx->layout.y, 0, ctx->colors.window_bg, ctx->renderer.user);
 
     // scrollbar bar, anchored to the window's right edge so it grows towards the left
     if (max_scroll > 0.f)
@@ -413,12 +426,28 @@ void ui_begin_window(ui_context* ctx, const char* name, float x, float y, float 
     ctx->layout.x += ctx->padding;
     ctx->layout.width -= 2.f * ctx->padding;
 
-    // title
-    draw_align_text(ctx, &title_rect, w->name, ctx->colors.title_text, align_center);
+    // title, vertically centered in the strip : draw_text is fed the top of a row_height-tall
+    // row (like every other row of text), so center that row in the strip
+    if (titlebar)
+    {
+        ui_rect text_rect = title_rect;
+        text_rect.y += (text_rect.height - ctx->row_height) * .5f;
+        draw_align_text(ctx, &text_rect, w->name, ctx->colors.title_text, align_center);
+    }
 
-    // draw resize handle
+    // resize handle : five dots along the ring's corner curve, full sweep from edge to edge
     if (w->options&window_resizable)
-        ctx->renderer.draw_box(handle_rect.x, handle_rect.y, handle_rect.width, handle_rect.height, 0.f, ctx->colors.separator, ctx->renderer.user);
+    {
+        float r = ctx->corner * .1f;
+        float rho = ctx->corner - ctx->padding * .5f;   // ring band centerline radius
+        for (int i = 0; i < 5; ++i)
+        {
+            float a = 22.5f * i * 3.14159265f / 180.f;
+            float x = handle_rect.x + rho * cosf(a) - r;
+            float y = handle_rect.y + rho * sinf(a) - r;
+            ctx->renderer.draw_box(x, y, r * 2.f, r * 2.f, r, ctx->colors.resize_handle, ctx->renderer.user);
+        }
+    }
 
     // clip rect, set from the unshifted layout : the clip stays put while the content scrolls in it
     uint16_t clip_minx = (uint16_t) fmaxf(ctx->layout.x, 0.f);

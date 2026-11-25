@@ -4,6 +4,7 @@
 // widgets, onedraw provides the pixels through the renderer callbacks.
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -11,6 +12,9 @@
 
 #define SOKOL_METAL
 #include "sokol_app.h"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 #include "../lib/onedraw.h"
 #include "lean_ui.h"
@@ -50,6 +54,8 @@ float mouse_y = 0.f;
 enum ui_button_state button_state = button_idle;
 
 double last_time = 0.0;
+
+static bool do_screenshot = false;
 
 //----------------------------------------------------------------------------------------------------------------------------
 // lean_ui renderer callbacks -> onedraw, colors are passed through unchanged
@@ -194,6 +200,37 @@ static void draw_plain_window(void)
     ui_end_window(ui);
 }
 
+static void draw_borderless_window(void)
+{
+    ui_begin_window(ui, "Borderless", 724.f, 24.f, 300.f, 260.f, window_no_border);
+
+    ui_text(ui, align_left, "No border ring : the window is");
+    ui_newline(ui);
+    ui_text(ui, align_left, "one rounded card, the title bar");
+    ui_newline(ui);
+    ui_text(ui, align_left, "spans the full width");
+    ui_newline(ui);
+
+    static bool flag = false;
+    ui_toggle(ui, "a toggle", &flag);
+
+    ui_end_window(ui);
+}
+
+static void draw_panel_window(void)
+{
+    ui_begin_window(ui, "Panel", 724.f, 308.f, 300.f, 150.f, window_no_chrome);
+
+    ui_text(ui, align_left, "No chrome at all : a plain panel");
+    ui_newline(ui);
+    ui_text(ui, align_left, "that cannot be moved by dragging");
+    ui_newline(ui);
+    ui_button(ui, "Okay", align_right);
+    ui_newline(ui);
+
+    ui_end_window(ui);
+}
+
 //----------------------------------------------------------------------------------------------------------------------------
 // sokol_app callbacks
 
@@ -203,8 +240,9 @@ static void frame(void)
         return;
 
     // fully obscured window : macOS provides no drawable, skip the frame until visible
+    // (screenshot mode renders into the offscreen target and needs no drawable)
     sapp_swapchain sc = sapp_acquire_swapchain();
-    if (sc.invalid)
+    if (sc.invalid && !do_screenshot)
         return;
 
     float dt = frame_delta_time();
@@ -237,10 +275,34 @@ static void frame(void)
 
     draw_window(dt);
     draw_plain_window();
+    draw_borderless_window();
+    draw_panel_window();
 
     ui_end_frame(ui);
 
-    od_end_frame(renderer, (void*)sc.metal.current_drawable);
+    static uint32_t num_frames = 0;
+    ++num_frames;
+
+    // --screenshot : capture the third frame to example_screenshot.png and quit
+    uint8_t* pixels = (do_screenshot && (num_frames == 3)) ? malloc((size_t)sapp_width() * sapp_height() * 4) : NULL;
+    if (pixels != NULL)
+        od_take_screenshot(renderer, pixels);
+
+    od_end_frame(renderer, do_screenshot ? NULL : (void*)sc.metal.current_drawable);
+
+    if (pixels != NULL)
+    {
+        // the gpu pixels are BGRA, the png wants RGBA
+        for (uint32_t i = 0; i < (uint32_t)sapp_width() * sapp_height(); ++i)
+        {
+            uint8_t r = pixels[4*i];
+            pixels[4*i] = pixels[4*i + 3];
+            pixels[4*i + 3] = r;
+        }
+        stbi_write_png("example_screenshot.png", sapp_width(), sapp_height(), 4, pixels, sapp_width() * sizeof(uint32_t));
+        free(pixels);
+        sapp_quit();
+    }
 }
 
 static void event(const sapp_event* e)
@@ -297,7 +359,9 @@ static void init(void)
         .viewport_width = (uint32_t)sapp_width(),
         .viewport_height = (uint32_t)sapp_height(),
         .log_func = custom_log,
-        .srgb_backbuffer = false
+        .srgb_backbuffer = false,
+        .allow_screenshot = do_screenshot,
+        .allow_offscreen = do_screenshot
     });
 
     if (renderer == NULL)
@@ -337,8 +401,9 @@ static void cleanup(void)
 
 sapp_desc sokol_main(int argc, char* argv[])
 {
-    (void)argc;
-    (void)argv;
+    for (int i = 1; i < argc; ++i)
+        if (strcmp(argv[i], "--screenshot") == 0)
+            do_screenshot = true;
 
     return (sapp_desc)
     {
