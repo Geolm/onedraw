@@ -3,6 +3,7 @@
 add_executable(lean_ui_example
     ../lib/onedraw.cpp
     ../third_party/lean_ui.c
+    ../third_party/mjpegw.c
     ./lean_ui.c
     ../tests/sokol_app.mm
 )

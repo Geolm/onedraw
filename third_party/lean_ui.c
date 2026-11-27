@@ -6,6 +6,7 @@
 #include <math.h>
 
 #define MAX_WINDOWS (16)
+#define MAX_PROGRESS (16)
 #define STRING_BUFFER_SIZE (2048)
 #define ANIMATION_DURATION (.2f)
 #define HOVER_DURATION (.1f)
@@ -65,6 +66,12 @@ typedef struct
     float t;
 } ui_hover;
 
+typedef struct
+{
+    uint32_t id;
+    float animated;
+} ui_progress_state;
+
 
 struct ui_context
 {
@@ -82,6 +89,9 @@ struct ui_context
     void* dragging_object;
     ui_animation animation;
     ui_hover hover;
+    ui_hover thumb_hover;
+    ui_progress_state progress_states[MAX_PROGRESS];
+    uint32_t num_progress_states;
     ui_vec2 dragging_offset;
     ui_rect layout;
     ui_rect content_rect;
@@ -190,6 +200,56 @@ static inline void draw_disc(ui_context* ctx, float x, float y, float radius, ui
 // UI functions
 //-----------------------------------------------------------------------------------------------------------------------------
 
+// one row per role, in ui_colors field order : {lightness in light mode, lightness in dark mode, chroma at tint 1}
+static const float palette_recipe[][3] =
+{
+    {.86f, .36f, .031f},  // window_border
+    {.96f, .27f, .012f},  // window_bg
+    {.90f, .32f, .030f},  // title_bg
+    {.33f, .93f, .030f},  // title_text
+    {.93f, .33f, .021f},  // widget_bg
+    {.89f, .37f, .029f},  // widget_hover
+    {.85f, .42f, .038f},  // widget_active
+    {.41f, .88f, .037f},  // text
+    {.70f, .56f, 0.f  },  // accent (chroma computed separately)
+    {.92f, .24f, .018f},  // value_bg
+    {.26f, .96f, .018f}   // value_text
+};
+_Static_assert(sizeof(ui_colors) == 15*sizeof(uint32_t), "palette_recipe indexes ui_colors as an array of uint32_t");
+
+//-----------------------------------------------------------------------------------------------------------------------------
+static uint32_t oklch_to_srgb(float L, float C, float hue_deg)
+{
+    float h = hue_deg * (3.14159265f/180.f), a = C*cosf(h), b = C*sinf(h);
+    float l = L + .3963377774f*a + .2158037573f*b; l = l*l*l;
+    float m = L - .1055613458f*a - .0638541728f*b; m = m*m*m;
+    float s = L - .0894841775f*a - 1.2914855480f*b; s = s*s*s;
+    float rgb[3] = { 4.0767416621f*l - 3.3077115913f*m + .2309699292f*s,
+                    -1.2684380046f*l + 2.6097574011f*m - .3413193965f*s,
+                    -.0041960863f*l - .7034186147f*m + 1.7076147010f*s};
+    uint32_t out = 0xFF000000;
+    for (int i = 0; i < 3; ++i)
+    {
+        float x = fminf(fmaxf(rgb[i], 0.f), 1.f);   // clamp out-of-gamut colors
+        x = (x <= .0031308f) ? 12.92f*x : 1.055f*powf(x, 1.f/2.4f) - .055f;
+        out |= (uint32_t)(x*255.f + .5f) << (i*8);  // R in the low byte
+    }
+    return out;
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
+void ui_set_palette(ui_context* ctx, float hue, float accent_hue, float tint, bool dark)
+{
+    uint32_t* c = (uint32_t*)&ctx->colors;  // ui_colors holds only uint32_t, in recipe order
+    for (size_t i = 0; i < sizeof(palette_recipe)/sizeof(palette_recipe[0]); ++i)
+        c[i] = oklch_to_srgb(palette_recipe[i][dark], palette_recipe[i][2]*tint, hue);
+    ctx->colors.accent = oklch_to_srgb(palette_recipe[8][dark], .05f + .056f*tint, accent_hue);
+    ctx->colors.separator = (ctx->colors.text & 0x00FFFFFF) | 0x40000000;
+    ctx->colors.resize_handle = ctx->colors.text;
+    ctx->colors.scrollbar_idle = (ctx->colors.text & 0x00FFFFFF) | 0x80000000;
+    ctx->colors.scrollbar_hover = (ctx->colors.text & 0x00FFFFFF) | 0xA0000000;
+}
+
 //-----------------------------------------------------------------------------------------------------------------------------
 size_t ui_min_memory_size(void)
 {
@@ -212,26 +272,9 @@ ui_context* ui_init(const ui_def* def)
         .font_height = def->font_height,
         .renderer = def->renderer_callbacks,
         .padding = fmaxf(def->font_height/4.f, 2.f),
-        .corner = fmaxf(def->font_height/2.f, 2.f),
-        .colors = 
-        {
-            .window_bg = 0xFFF7F0E9,
-            .window_border = 0xFFE3CDB8,
-            .title_bg = 0xFFE5C4A8,
-            .title_text = 0xFF402A1B,
-            .widget_bg = 0xFFF4E6D8,
-            .widget_hover = 0xFFEEDBC3,
-            .widget_active = 0xFFE7CCB0,
-            .text = 0xFF553E2C,
-            .accent = 0xFFE68B3E,
-            .value_bg = 0xFFEDE6DE,
-            .value_text = 0xFF1E1E1E,
-            .separator = 0x40553E2C,
-            .resize_handle = 0xFF553E2C,
-            .scrollbar_idle = 0x80553E2C,
-            .scrollbar_hover = 0xA0553E2C
-        }
+        .corner = fmaxf(def->font_height/2.f, 2.f)
     };
+    ui_set_palette(ctx, 250.f, 250.f, .7f, false);
     ctx->row_height = ctx->font_height * 1.5f;
     return ctx;
 }
@@ -684,13 +727,13 @@ void ui_slider(ui_context* ctx, const char* label, float min_value, float max_va
         .height = ctx->padding
     };
 
-    // thumb geometry
+    // thumb geometry, a disc centered on the thumb position
     float norm_value = (*value - min_value) / (max_value - min_value);
     float thumb_x = norm_value * track_rect.width + track_rect.x;
     float thumb_size = ctx->font_height - 4.f;
     float half_size = thumb_size * .5f;
 
-    ui_rect thumb_rect = 
+    ui_rect thumb_rect =
     {
         .x = thumb_x - half_size,
         .y = center_y - half_size,
@@ -701,6 +744,24 @@ void ui_slider(ui_context* ctx, const char* label, float min_value, float max_va
     const bool track_hovered = ui_hovered(ctx, &track_rect);
     const bool thumb_hovered = ui_hovered(ctx, &thumb_rect);
 
+    // hover grow animation, eased in and out
+    if (thumb_hovered)
+    {
+        if (ctx->thumb_hover.widget != value)
+            ctx->thumb_hover = (ui_hover) {.widget = value, .t = 0.f};
+        ctx->thumb_hover.t = fminf(1.f, ctx->thumb_hover.t + ctx->delta_time / HOVER_DURATION);
+    }
+    else if (ctx->thumb_hover.widget == value)
+    {
+        ctx->thumb_hover.t -= ctx->delta_time / HOVER_DURATION;
+        if (ctx->thumb_hover.t <= 0.f)
+            ctx->thumb_hover = (ui_hover) {.widget = NULL, .t = 0.f};
+    }
+    const float hover_grow = (ctx->thumb_hover.widget == value) ? ctx->thumb_hover.t : 0.f;
+
+    float grown_size = thumb_size + 4.f * hover_grow;
+    float grown_half = grown_size * .5f;
+
     // track change color on mouse-over
     uint32_t track_color = (track_hovered || (ctx->dragging_object == value)) ? ctx->colors.widget_hover : ctx->colors.widget_bg;
     ctx->renderer.draw_box(track_rect.x, track_rect.y, track_rect.width, track_rect.height,
@@ -709,7 +770,6 @@ void ui_slider(ui_context* ctx, const char* label, float min_value, float max_va
     // thumb mouse-over and dragging
     if (thumb_hovered)
     {
-        expand_rect(&thumb_rect, 2.f);
         if (ctx->mouse_button == button_pressed)
         {
             ctx->dragging_object = value;
@@ -741,14 +801,82 @@ void ui_slider(ui_context* ctx, const char* label, float min_value, float max_va
     thumb_x = clamp_float(track_rect.x, track_rect.x + track_rect.width, thumb_x);
 
     // keep the thumb geometry in sync with the (possibly) updated thumb position
-    thumb_rect.x = thumb_x - half_size;
+    thumb_rect.x = thumb_x - grown_half;
+    thumb_rect.y = center_y - grown_half;
+    thumb_rect.width = grown_size;
+    thumb_rect.height = grown_size;
 
     norm_value = (thumb_x - track_rect.x) / track_rect.width;
     *value = norm_value * (max_value - min_value) + min_value;
     *value = (step>0.f) ? roundf(*value / step) * step : *value;
 
-    ctx->renderer.draw_box(thumb_rect.x, thumb_rect.y, thumb_rect.width, thumb_rect.height, half_size,
+    ctx->renderer.draw_box(thumb_rect.x, thumb_rect.y, thumb_rect.width, thumb_rect.height, grown_half,
                            ctx->colors.accent, ctx->renderer.user);
+
+    ui_newline(ctx);
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------
+void ui_progress(ui_context* ctx, const char* label, float fraction, const char* fmt, ...)
+{
+    assert(ctx->current_window != NULL);
+
+    fraction = clamp_float(0.f, 1.f, fraction);
+
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(ctx->string_buffer, STRING_BUFFER_SIZE, fmt, args);
+    va_end(args);
+
+    // find the animation state for this bar, or create it already in place
+    float animated = fraction;
+    if (ctx->num_progress_states < MAX_PROGRESS)
+    {
+        uint32_t id = ui_hash(label, strlen(label));
+        ui_progress_state* state = NULL;
+        for (uint32_t i = 0; i < ctx->num_progress_states; ++i)
+            if (ctx->progress_states[i].id == id)
+                state = &ctx->progress_states[i];
+
+        if (state == NULL)
+        {
+            state = &ctx->progress_states[ctx->num_progress_states++];
+            state->id = id;
+            state->animated = fraction;
+        }
+
+        state->animated = lerp_float(state->animated, fraction, 1.f - expf(-15.f * ctx->delta_time));
+        if (fabsf(state->animated - fraction) < 0.001f)
+            state->animated = fraction;
+        animated = state->animated;
+    }
+
+    // label row : label on the left, formatted value on the right
+    draw_align_text(ctx, &ctx->layout, label, ctx->colors.text, align_left);
+    draw_align_text(ctx, &ctx->layout, ctx->string_buffer, ctx->colors.text, align_right);
+    ui_newline(ctx);
+
+    // bar row
+    float center_y = ctx->layout.y + .5f * ctx->layout.height;
+
+    ui_rect track_rect =
+    {
+        .x = ctx->layout.x,
+        .y = center_y - ctx->padding * .5f,
+        .width = ctx->layout.width,
+        .height = ctx->padding
+    };
+
+    ctx->renderer.draw_box(track_rect.x, track_rect.y, track_rect.width, track_rect.height,
+                           track_rect.height * .5f, ctx->colors.value_bg, ctx->renderer.user);
+
+    float fill_width = animated * track_rect.width;
+    if (fill_width > 0.f)
+    {
+        float fill_radius = fminf(track_rect.height * .5f, fill_width * .5f);
+        ctx->renderer.draw_box(track_rect.x, track_rect.y, fill_width, track_rect.height,
+                               fill_radius, ctx->colors.accent, ctx->renderer.user);
+    }
 
     ui_newline(ctx);
 }

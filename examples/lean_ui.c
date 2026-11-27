@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 
 #define SOKOL_METAL
 #include "sokol_app.h"
@@ -16,8 +17,12 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+#define FLAG_IMPLEMENTATION
+#include "flag.h"
+
 #include "../lib/onedraw.h"
 #include "lean_ui.h"
+#include "mjpegw.h"
 #include "vmem.h"
 
 #define COUNOF(a)   (sizeof(a) / sizeof((a)[0]))
@@ -25,7 +30,7 @@
 #define UI_FONT_SIZE (16)
 
 // colors are packed 0xAABBGGRR, the same format lean_ui passes to the renderer callbacks
-#define BG_COLOR (0xff332924u)
+#define BG_COLOR (0xffffffff)
 
 //----------------------------------------------------------------------------------------------------------------------------
 // app state
@@ -56,6 +61,19 @@ enum ui_button_state button_state = button_idle;
 double last_time = 0.0;
 
 static bool do_screenshot = false;
+static bool do_record_video = false;
+static char* record_output = "example.avi";
+static struct mjpegw_context* record_ctx = NULL;
+static uint8_t* record_pixels = NULL;
+static uint32_t record_region_w = 0;
+static uint32_t record_region_h = 0;
+static uint32_t record_frame_count = 0;
+
+// the Widgets window geometry (logical points); the recording capture region is derived from it
+#define WIDGETS_WINDOW_X (24.f)
+#define WIDGETS_WINDOW_Y (24.f)
+#define WIDGETS_WINDOW_W (340.f)
+#define WIDGETS_WINDOW_H (600.f)
 
 //----------------------------------------------------------------------------------------------------------------------------
 // lean_ui renderer callbacks -> onedraw, colors are passed through unchanged
@@ -118,7 +136,7 @@ static void custom_log(const char* string)
 //----------------------------------------------------------------------------------------------------------------------------
 static void draw_window(float dt)
 {
-    ui_begin_window(ui, "Widgets", 24.f, 24.f, 340.f, 500.f, window_resizable);
+    ui_begin_window(ui, "Widgets", WIDGETS_WINDOW_X, WIDGETS_WINDOW_Y, WIDGETS_WINDOW_W, WIDGETS_WINDOW_H, window_resizable);
 
     ui_text(ui, align_left, "On the left");
     ui_text(ui, align_right, "On the right");
@@ -163,6 +181,16 @@ static void draw_window(float dt)
 
     ui_newline(ui);
     ui_separator(ui);
+
+    // oscillate the target so the fill ease is visible (shown in the label row instantly,
+    // the bar catches up over a few frames)
+    static float phase = 0.f;
+    phase += dt;
+    float upload_target = .55f + .45f * sinf(phase * .7f);
+    ui_progress(ui, "Uploading", upload_target, "%.0f%%", upload_target * 100.f);
+
+    // a static target : the bar starts already in place
+    ui_progress(ui, "Storage", 18.4f / 20.f, "%.1f / %.0f GB", 18.4f, 20.f);
 
     static const char paragraph[] = "This paragraph is laid out by ui_paragraph, which wraps the text on spaces to the window's content width "
                                     "and re-flows it every frame.\n"
@@ -245,9 +273,16 @@ static void frame(void)
     if (sc.invalid && !do_screenshot)
         return;
 
-    float dt = frame_delta_time();
-    if (dt > 0.25f)
-        dt = 0.25f;
+    // recording : a fixed timestep so the video timeline is deterministic
+    float dt;
+    if (record_ctx != NULL)
+        dt = 1.f / 60.f;
+    else
+    {
+        dt = frame_delta_time();
+        if (dt > 0.25f)
+            dt = 0.25f;
+    }
 
     // sapp_width() is the framebuffer size in device pixels : divide by the dpi scale to get
     // window points, the canvas maps those points onto the framebuffer
@@ -283,10 +318,12 @@ static void frame(void)
     static uint32_t num_frames = 0;
     ++num_frames;
 
-    // --screenshot : capture the third frame to example_screenshot.png and quit
+    // -screenshot : capture the third frame to example_screenshot.png and quit
     uint8_t* pixels = (do_screenshot && (num_frames == 3)) ? malloc((size_t)sapp_width() * sapp_height() * 4) : NULL;
     if (pixels != NULL)
         od_take_screenshot(renderer, pixels);
+    if (record_ctx != NULL)
+        od_take_screenshot(renderer, record_pixels);
 
     od_end_frame(renderer, do_screenshot ? NULL : (void*)sc.metal.current_drawable);
 
@@ -295,13 +332,37 @@ static void frame(void)
         // the gpu pixels are BGRA, the png wants RGBA
         for (uint32_t i = 0; i < (uint32_t)sapp_width() * sapp_height(); ++i)
         {
-            uint8_t r = pixels[4*i];
-            pixels[4*i] = pixels[4*i + 3];
-            pixels[4*i + 3] = r;
+            uint8_t b = pixels[4*i];
+            pixels[4*i] = pixels[4*i + 2];
+            pixels[4*i + 2] = b;
         }
         stbi_write_png("example_screenshot.png", sapp_width(), sapp_height(), 4, pixels, sapp_width() * sizeof(uint32_t));
         free(pixels);
         sapp_quit();
+    }
+
+    // recording : same capture, encoded as a video frame (BGRA -> RGBA like the png path)
+    if (record_ctx != NULL)
+    {
+        for (uint32_t i = 0; i < record_region_w * record_region_h; ++i)
+        {
+            uint8_t b = record_pixels[4*i];
+            record_pixels[4*i] = record_pixels[4*i + 2];
+            record_pixels[4*i + 2] = b;
+        }
+        mjpegw_add_frame(record_ctx, record_pixels, 2);
+        ++record_frame_count;
+    }
+}
+
+// finalize and free the video; safe to call when nothing is recording
+static void close_recording(void)
+{
+    if (record_ctx != NULL)
+    {
+        printf("video written: %s (%u frames @ 60 fps)\n", record_output, record_frame_count);
+        mjpegw_close(record_ctx);
+        record_ctx = NULL;
     }
 }
 
@@ -334,7 +395,15 @@ static void event(const sapp_event* e)
 
     case SAPP_EVENTTYPE_KEY_DOWN:
         if ((e->key_code == SAPP_KEYCODE_Q) && (e->modifiers & SAPP_MODIFIER_SUPER))
+        {
+            close_recording();
             sapp_quit();
+        }
+        break;
+
+    case SAPP_EVENTTYPE_QUIT_REQUESTED:
+        // let the default quit proceed; just finalize the video first
+        close_recording();
         break;
 
     default:
@@ -360,12 +429,46 @@ static void init(void)
         .viewport_height = (uint32_t)sapp_height(),
         .log_func = custom_log,
         .srgb_backbuffer = false,
-        .allow_screenshot = do_screenshot,
+        .allow_screenshot = do_screenshot || do_record_video,
         .allow_offscreen = do_screenshot
     });
 
     if (renderer == NULL)
         return;
+
+    // recording the Widgets window : the capture region is fixed at the window's initial geometry,
+    // and the recorded pixels are reused frame to frame
+    if (do_record_video)
+    {
+        float scale = sapp_dpi_scale();
+        uint32_t region_x = (uint32_t)(WIDGETS_WINDOW_X * scale + .5f);
+        uint32_t region_y = (uint32_t)(WIDGETS_WINDOW_Y * scale + .5f);
+        uint32_t region_w = (uint32_t)(WIDGETS_WINDOW_W * scale + .5f);
+        uint32_t region_h = (uint32_t)(WIDGETS_WINDOW_H * scale + .5f);
+
+        record_pixels = malloc((size_t)region_w * region_h * 4);
+        if (record_pixels == NULL)
+        {
+            fprintf(stderr, "error: could not allocate the video capture buffer (%ux%u)\n", region_w, region_h);
+            do_record_video = false;
+        }
+        else
+        {
+            record_region_w = region_w;
+            record_region_h = region_h;
+            od_set_capture_region(renderer, region_x, region_y, region_w, region_h);
+
+            record_ctx = mjpegw_open(record_output, region_w, region_h, 60, NULL);
+            if (record_ctx == NULL)
+            {
+                fprintf(stderr, "error: could not open video output '%s'\n", record_output);
+                free(record_pixels);
+                record_pixels = NULL;
+                record_region_w = record_region_h = 0;
+                do_record_video = false;
+            }
+        }
+    }
 
     od_set_clear_color(renderer, BG_COLOR);
 
@@ -391,6 +494,14 @@ static void init(void)
 
 static void cleanup(void)
 {
+    close_recording();
+
+    if (record_pixels != NULL)
+    {
+        free(record_pixels);
+        record_pixels = NULL;
+    }
+
     if (renderer != NULL)
     {
         od_terminate(renderer);
@@ -401,9 +512,23 @@ static void cleanup(void)
 
 sapp_desc sokol_main(int argc, char* argv[])
 {
-    for (int i = 1; i < argc; ++i)
-        if (strcmp(argv[i], "--screenshot") == 0)
-            do_screenshot = true;
+    flag_bool_var(&do_screenshot, "screenshot", false, "capture the third frame to example_screenshot.png and quit");
+    flag_bool_var(&do_record_video, "record-video", false, "record the Widgets window to a video until quit");
+    flag_str_var(&record_output, "record-output", "example.avi", "video output file");
+
+    if (!flag_parse(argc, argv))
+    {
+        flag_print_error(stderr);
+        flag_print_options(stderr);
+        exit(1);
+    }
+
+    if (do_screenshot && do_record_video)
+    {
+        fprintf(stderr, "-screenshot and -record-video are mutually exclusive\n");
+        flag_print_options(stderr);
+        exit(1);
+    }
 
     return (sapp_desc)
     {
